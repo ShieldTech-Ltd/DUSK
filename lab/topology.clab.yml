@@ -1,0 +1,43 @@
+# Dusk lab topology (containerlab) — SKELETON ONLY.
+#
+# This describes the three-segment network Dusk is designed to watch. Full
+# bring-up (interfaces, addressing, FRR configs, traffic generators) lands in
+# v0.2; for now this file documents the intended shape.
+#
+# Segments:
+#   guest                10.0.40.0/24   (where a hijacked agent typically lands)
+#   corporate            10.0.10.0/24   (normal east-west business traffic)
+#   cardholder/restricted 10.0.99.0/24  (the crown jewels — sweep target)
+#
+# Devices: 2 routers + 1 firewall, all using free FRR images (no license).
+
+name: dusk-lab
+
+topology:
+  nodes:
+    # --- Routers (FRRouting, free/open-source) ---
+    router-edge:
+      kind: linux
+      image: frrouting/frr:latest
+      # TODO(v0.2): bind FRR config, define loopbacks, enable OSPF/BGP.
+
+    router-core:
+      kind: linux
+      image: frrouting/frr:latest
+      # TODO(v0.2): inter-segment routing between guest/corporate/restricted.
+
+    # --- Firewall (FRR-based stand-in; swap for nftables container in v0.2) ---
+    firewall:
+      kind: linux
+      image: frrouting/frr:latest
+      # TODO(v0.2): segment ACLs — guest must NOT reach 10.0.99.0/24.
+
+  links:
+    # TODO(v0.2): wire the three segments through the firewall and routers.
+    - endpoints: ["router-edge:eth1", "firewall:eth1"]
+    - endpoints: ["firewall:eth2", "router-core:eth1"]
+
+# Segment reference (addressing applied to node interfaces in v0.2):
+#   guest                -> 10.0.40.0/24
+#   corporate            -> 10.0.10.0/24
+#   cardholder/restricted-> 10.0.99.0/24
