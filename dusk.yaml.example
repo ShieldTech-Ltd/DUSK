@@ -1,0 +1,32 @@
+# Dusk configuration — copy to `dusk.yaml` in your working directory to use.
+#
+# Precedence (lowest to highest):
+#   1. built-in defaults (shown below)
+#   2. this file (dusk.yaml)
+#   3. environment variables prefixed DUSK_ (e.g. DUSK_SWEEP_THRESHOLD=20)
+#
+# Every value is optional; omitted keys fall back to the default.
+
+# --- Sweep detection (T1046, Reconnaissance) ---
+# Unique destinations a single source may contact within the window before it
+# is considered a sweep.
+sweep_threshold: 15
+# Length of the sweep sliding window, in seconds.
+sweep_window_seconds: 10.0
+# Inter-packet interval standard deviation (seconds) below which timing is
+# judged "machine-regular". Lower = stricter (fewer false positives).
+sweep_timing_std_threshold: 0.05
+
+# --- Boundary detection (T1590, Reconnaissance) ---
+# Unique destination ports a single (source, destination) pair may touch within
+# the window before it is considered a port scan.
+boundary_port_threshold: 10
+# Length of the boundary sliding window, in seconds.
+boundary_window_seconds: 30.0
+
+# --- Alerting & logging ---
+# File the alert responder appends JSON entries to (relative to cwd).
+alert_log_path: dusk-alerts.json
+# Default log level when --verbose is not passed.
+# One of: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+log_level: WARNING

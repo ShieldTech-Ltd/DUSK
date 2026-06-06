@@ -25,10 +25,20 @@ dependencies = [
     "scapy>=2.5.0",
     "click>=8.1.0",
     "rich>=13.0.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4.0"]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.4.4",
+    "mypy>=1.10.0",
+    "bandit[toml]>=1.7.8",
+    "pip-audit>=2.7.0",
+    "pre-commit>=3.7.0",
+    "types-PyYAML>=6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/tft444/dusk"
@@ -42,3 +52,38 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# select/ignore live under [tool.ruff.lint] (modern ruff) to avoid the
+# top-level deprecation warning while keeping the same rule selection.
+# ANN101/ANN102 (annotate self/cls) were removed from ruff, so they are not
+# listed here — modern ruff no longer flags self/cls, matching the intent.
+select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "ANN"]
+"lab/*" = ["S", "ANN"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+
+# Scapy ships py.typed but builds its `scapy.all` namespace dynamically, so
+# mypy cannot resolve IP/TCP/UDP/ICMP/Packet as attributes. Skip following it
+# and treat its symbols as untyped rather than littering the sensor with
+# per-line ignores. This is isolated to the one module that touches Scapy.
+[[tool.mypy.overrides]]
+module = ["scapy.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.bandit]
+exclude_dirs = ["tests", "lab"]

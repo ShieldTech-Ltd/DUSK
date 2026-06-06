@@ -15,7 +15,7 @@ from __future__ import annotations
 STAGE_ORDER = ["Reconnaissance", "LateralMovement", "Exfiltration"]
 
 #: Maps each stage to its successor and what to watch for next.
-_PREDICTIONS: dict[str, dict[str, str]] = {
+_PREDICTIONS: dict[str, dict[str, str | None]] = {
     "Reconnaissance": {
         "next": "LateralMovement",
         "watch": (
@@ -56,20 +56,13 @@ def kill_chain(stage: str) -> str:
     key = normalized.get(stage.strip().lower())
 
     if key is None:
-        return (
-            f"Unknown kill-chain stage '{stage}'. Known stages: "
-            f"{', '.join(STAGE_ORDER)}."
-        )
+        return f"Unknown kill-chain stage '{stage}'. Known stages: {', '.join(STAGE_ORDER)}."
 
     info = _PREDICTIONS[key]
     next_stage = info["next"]
     watch = info["watch"]
 
     if next_stage is None:
-        return (
-            f"{key} is the final stage in the chain. Watch for: {watch}."
-        )
+        return f"{key} is the final stage in the chain. Watch for: {watch}."
 
-    return (
-        f"After {key}, expect {next_stage} next. Watch for: {watch}."
-    )
+    return f"After {key}, expect {next_stage} next. Watch for: {watch}."
