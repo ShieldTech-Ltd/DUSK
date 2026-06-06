@@ -24,10 +24,11 @@ Attack example: TODO
 - **MITRE technique:** T1590 — Gather Victim Network Information
 - **Kill-chain stage:** Reconnaissance
 
-The agent repeatedly probes the boundary between network segments — for
-example, a guest-segment host testing reachability into a restricted/cardholder
-segment. Repeated, structured touches against boundary addresses reveal an
-attacker mapping where the walls are before attempting to cross them.
+The agent probes a single destination across many ports in a short window —
+mapping which services are exposed on a target host before attempting an
+exploit. Dusk groups packets by ``(src_ip, dst_ip)`` pair, slides a window
+across the pair's traffic, and flags any pair whose unique destination-port
+count exceeds the configured threshold.
 
 Attack example: TODO
 

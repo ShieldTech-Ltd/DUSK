@@ -7,12 +7,17 @@ responder for any failure, and reports an overall verdict.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
+from dusk.config import Config, get_config
 from dusk.detections.base import Detection, DetectionResult
+from dusk.detections.boundary import BoundaryDetection
 from dusk.detections.sweep import SweepDetection
 from dusk.respond.alert import AlertResponder
+
+logger = logging.getLogger("dusk.core.engine")
 
 #: Overall verdict strings.
 VERDICT_CLEAR = "CLEAR"
@@ -44,13 +49,16 @@ class EngineReport:
         }
 
 
-def default_detections() -> list[Detection]:
-    """Return the detections enabled by default in v0.1.
+def default_detections(config: Config) -> list[Detection]:
+    """Return the detections enabled by default.
 
-    Only the fully-implemented :class:`SweepDetection` runs by default; the
-    boundary/telemetry/lateral detections remain stubs until v0.2.
+    Args:
+        config: Configuration threaded into each detection.
+
+    Returns:
+        The fully-implemented sweep and boundary detections.
     """
-    return [SweepDetection()]
+    return [SweepDetection(config), BoundaryDetection(config)]
 
 
 class Engine:
@@ -58,21 +66,25 @@ class Engine:
 
     def __init__(
         self,
-        detections: Optional[list[Detection]] = None,
-        responder: Optional[AlertResponder] = None,
+        detections: list[Detection] | None = None,
+        responder: AlertResponder | None = None,
         respond: bool = True,
+        config: Config | None = None,
     ) -> None:
         """Create an engine.
 
         Args:
             detections: Detections to run. Defaults to :func:`default_detections`.
             responder: Responder fired on each failing detection. Defaults to
-                a fresh :class:`AlertResponder`.
+                a fresh :class:`AlertResponder` bound to the active config.
             respond: When ``False``, skip responder side effects (useful for
                 tests and ``--json`` output).
+            config: Configuration to use. Defaults to the process-wide
+                singleton via :func:`~dusk.config.get_config`.
         """
-        self.detections = detections if detections is not None else default_detections()
-        self.responder = responder if responder is not None else AlertResponder()
+        self.config = config if config is not None else get_config()
+        self.detections = detections if detections is not None else default_detections(self.config)
+        self.responder = responder if responder is not None else AlertResponder(config=self.config)
         self.respond = respond
 
     def run(self, packets: list[dict[str, Any]]) -> EngineReport:
@@ -81,7 +93,18 @@ class Engine:
         Each detection is executed; any failure triggers the responder (when
         ``respond`` is enabled). The verdict is ``ALERT`` if any detection
         failed, otherwise ``CLEAR``.
+
+        Args:
+            packets: Packet dicts as produced by the sensors.
+
+        Returns:
+            An :class:`EngineReport` with the verdict and per-detection results.
         """
+        logger.info(
+            "Engine run started: %d detection(s) over %d packet(s)",
+            len(self.detections),
+            len(packets),
+        )
         results: list[DetectionResult] = []
         for detection in self.detections:
             result = detection.run(packets)
@@ -90,4 +113,9 @@ class Engine:
                 self.responder.handle(result, detection)
 
         verdict = VERDICT_ALERT if any(not r.passed for r in results) else VERDICT_CLEAR
+        logger.info(
+            "Engine run completed: verdict=%s failures=%d",
+            verdict,
+            len([r for r in results if not r.passed]),
+        )
         return EngineReport(verdict=verdict, results=results)

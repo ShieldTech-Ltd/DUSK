@@ -1,0 +1,65 @@
+name: ✨ Feature request / detection proposal
+description: Propose a feature or a new behavioral detection for DUSK.
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a feature or a **new detection**. For new
+        detections, the MITRE technique and kill-chain stage help us slot the
+        idea into the threat model (`docs/threat-model.md`).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type of request
+      options:
+        - New detection
+        - CLI / UX
+        - Sensor (live, Zeek, ...)
+        - Responder (isolation, integrations)
+        - Configuration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What attacker behaviour or user need does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behaviour. For a detection, include the signal and logic.
+    validations:
+      required: true
+  - type: input
+    id: mitre
+    attributes:
+      label: MITRE ATT&CK technique (detections only)
+      placeholder: "T1046 — Network Service Discovery"
+    validations:
+      required: false
+  - type: input
+    id: stage
+    attributes:
+      label: Kill-chain stage (detections only)
+      placeholder: "Reconnaissance"
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
