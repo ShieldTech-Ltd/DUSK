@@ -42,7 +42,7 @@ def _configure_logging(*, verbose: bool, level_name: str) -> None:
     )
 
 
-@click.group(help="Dusk — behavioral threat detection for agentic networks.")
+@click.group(help="Dusk, behavioral threat detection for agentic networks.")
 @click.version_option(__version__, prog_name="dusk")
 @click.option("--verbose", is_flag=True, default=False, help="Enable DEBUG logging.")
 def main(verbose: bool) -> None:
@@ -107,12 +107,12 @@ def scan(file_path: str, as_json: bool) -> None:
         click.echo(json.dumps(payload, indent=2))
     elif report.verdict == VERDICT_ALERT:
         console.print(
-            f"[bold red]VERDICT: ALERT[/bold red] — analysed "
+            f"[bold red]VERDICT: ALERT[/bold red], analysed "
             f"{len(packets)} packets, {len(report.failures)} detection(s) fired."
         )
     else:
         console.print(
-            f"[bold green]VERDICT: CLEAR[/bold green] — analysed "
+            f"[bold green]VERDICT: CLEAR[/bold green], analysed "
             f"{len(packets)} packets, nothing suspicious."
         )
 

@@ -24,7 +24,7 @@ class DetectionResult:
             (e.g. ``"T1046"``).
         stage: Cyber kill-chain stage the behaviour maps to
             (e.g. ``"Reconnaissance"``).
-        confidence: Confidence in the verdict, in the range ``0.0``–``1.0``.
+        confidence: Confidence in the verdict, in the range ``0.0``-``1.0``.
         source: Optional source IP most associated with the finding.
     """
 

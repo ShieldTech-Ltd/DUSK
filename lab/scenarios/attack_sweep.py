@@ -1,8 +1,8 @@
 """Generate an attack-sweep pcap fixture.
 
 Models a hijacked guest-segment agent (10.0.40.2) systematically sweeping
-the restricted/cardholder segment (10.0.99.1–10.0.99.25) with TCP SYNs at
-a machine-paced 100ms cadence — 25 packets across ~2.5 seconds.
+the restricted/cardholder segment (10.0.99.1 to 10.0.99.25) with TCP SYNs at
+a machine-paced 100ms cadence, 25 packets across ~2.5 seconds.
 
 Run directly to (re)generate ``tests/fixtures/attack_sweep.pcap``::
 
@@ -18,7 +18,7 @@ SOURCE_IP = "10.0.40.2"
 TARGET_PREFIX = "10.0.99."
 TARGET_FIRST = 1
 TARGET_LAST = 25
-INTERVAL_SECONDS = 0.1  # 100ms — machine paced
+INTERVAL_SECONDS = 0.1  # 100ms, machine paced
 BASE_TIME = 1_700_000_000.0  # fixed epoch for reproducible fixtures
 
 FIXTURE_PATH = os.path.join(

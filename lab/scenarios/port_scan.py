@@ -2,7 +2,7 @@
 
 Models a hijacked guest-segment agent (10.0.40.2) probing a single
 restricted-segment host (10.0.99.5) across ports 20-40 (21 unique ports)
-within ~5 seconds — the signature the boundary detection looks for.
+within ~5 seconds, the signature the boundary detection looks for.
 
 Run directly to (re)generate ``tests/fixtures/port_scan.pcap``::
 

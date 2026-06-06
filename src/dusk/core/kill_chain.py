@@ -2,7 +2,7 @@
 
 Dusk frames detections along a simplified kill chain:
 
-    Reconnaissance → LateralMovement → Exfiltration
+    Reconnaissance > LateralMovement > Exfiltration
 
 Given the stage a detection fired in, :func:`kill_chain` predicts what the
 attacker is likely to do next and what an analyst should watch for. This
@@ -33,7 +33,7 @@ _PREDICTIONS: dict[str, dict[str, str | None]] = {
     "Exfiltration": {
         "next": None,
         "watch": (
-            "data leaving the network — this is the final stage; contain the "
+            "data leaving the network, this is the final stage; contain the "
             "source immediately and review what it has already accessed"
         ),
     },

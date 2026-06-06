@@ -1,4 +1,4 @@
-"""Boundary detection — port scanning against a single destination.
+"""Boundary detection, port scanning against a single destination.
 
 A hijacked agent probing where the walls are will hammer one destination
 across many ports in a short window. Unlike the sweep detection (which

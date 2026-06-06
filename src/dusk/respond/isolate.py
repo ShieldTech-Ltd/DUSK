@@ -1,6 +1,6 @@
-"""Isolation responder (stub — planned for v0.2).
+"""Isolation responder (stub, planned for v0.2).
 
-Will actively contain a flagged source — pushing an ACL to a router or a
+Will actively contain a flagged source, pushing an ACL to a router or a
 deny rule to a firewall to cut the agent off before its kill chain
 completes. Active response is deliberately out of scope for v0.1.
 """

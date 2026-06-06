@@ -26,6 +26,6 @@ Closes #
 
 - [ ] Every new function/class has type annotations and a docstring
 - [ ] No `print()` in `src/`; logging only
-- [ ] No magic numbers in detection logic — thresholds come from `Config`
+- [ ] No magic numbers in detection logic, thresholds come from `Config`
 - [ ] Tests cover normal, attack, and edge cases
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
