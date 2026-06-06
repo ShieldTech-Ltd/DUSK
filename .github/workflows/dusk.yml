@@ -32,9 +32,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - run: python -m pip install --upgrade pip
       - run: pip install bandit pip-audit
       - run: bandit -r src/ -ll
-      - run: pip-audit
+      # Audit DUSK's declared dependencies, not the ambient runner toolchain
+      # (a bare `pip-audit` also flags the runner's own pip/setuptools).
+      - run: pip-audit -r requirements.txt
 
   test:
     needs: [lint, typecheck, security]
