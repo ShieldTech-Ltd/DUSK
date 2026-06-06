@@ -8,7 +8,7 @@ describing whether the traffic looks benign and, if not, why.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -29,11 +29,11 @@ class DetectionResult:
     """
 
     passed: bool
-    reason: Optional[str]
+    reason: str | None
     mitre: str
     stage: str
     confidence: float
-    source: Optional[str] = None
+    source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable representation of the result."""

@@ -22,6 +22,4 @@ class ZeekSensor(Sensor):
 
     def read(self) -> list[dict[str, Any]]:
         """Raise: Zeek ingestion is not available until v0.2."""
-        raise NotImplementedError(
-            "Zeek log ingestion is coming in v0.2."
-        )
+        raise NotImplementedError("Zeek log ingestion is coming in v0.2.")

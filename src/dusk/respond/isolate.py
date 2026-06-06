@@ -18,6 +18,4 @@ class IsolateResponder(Responder):
 
     def handle(self, result: DetectionResult, detection: Detection) -> None:
         """Raise: active isolation is coming in v0.2."""
-        raise NotImplementedError(
-            "Active isolation is coming in v0.2. v0.1 alerts only."
-        )
+        raise NotImplementedError("Active isolation is coming in v0.2. v0.1 alerts only.")
