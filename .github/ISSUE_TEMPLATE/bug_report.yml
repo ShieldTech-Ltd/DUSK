@@ -1,4 +1,4 @@
-name: 🐞 Bug report
+name: Bug report
 description: Report a defect in DUSK (CLI, a detection, a sensor, config, etc.).
 title: "[Bug]: "
 labels: ["bug", "triage"]
@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to file a bug. Please fill in the fields
-        below — complete reports are triaged far faster.
+        below, complete reports are triaged far faster.
 
         **Not a bug?** Use a feature request for proposals, or the private
         Security Advisory link for vulnerabilities (never a public issue).
@@ -26,9 +26,9 @@ body:
       description: Which part of DUSK is affected?
       options:
         - CLI
-        - Detection — sweep
-        - Detection — boundary
-        - Sensor — pcap
+        - Detection, sweep
+        - Detection, boundary
+        - Sensor, pcap
         - Configuration
         - Engine / kill-chain
         - Alerting / responder

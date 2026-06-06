@@ -6,7 +6,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-06-05
+### Changed
+- Plain-text style across all docs, issue templates, alert panel, and code
+  docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
+  removed. No functional changes.
+
+## [0.1.0], 2026-06-05
 
 ### Added
 - Sweep detection: machine-paced network scan identification (T1046)

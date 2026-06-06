@@ -1,7 +1,7 @@
 """Generate a normal-traffic pcap fixture.
 
 Models benign, human-paced browsing: 3 source hosts making HTTP requests to
-3 destinations, spread over ~30 seconds at random 0.5–3s intervals
+3 destinations, spread over ~30 seconds at random 0.5 to 3s intervals
 (~20 packets). This is the negative case the sweep detection must NOT flag.
 
 Run directly to (re)generate ``tests/fixtures/normal_traffic.pcap``::

@@ -1,6 +1,6 @@
-"""Lateral-movement detection (stub — planned for v0.2).
+"""Lateral-movement detection (stub, planned for v0.2).
 
-Detects east-west movement across network segments — an agent reaching
+Detects east-west movement across network segments, an agent reaching
 laterally into peers it has no business talking to, the step that turns a
 single foothold into a network-wide compromise.
 

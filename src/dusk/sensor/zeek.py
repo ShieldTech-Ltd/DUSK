@@ -1,4 +1,4 @@
-"""Zeek sensor (stub — planned for v0.2).
+"""Zeek sensor (stub, planned for v0.2).
 
 Will ingest Zeek ``conn.log`` records and convert them into Dusk packet
 dicts, letting Dusk run on top of an existing Zeek deployment. Not

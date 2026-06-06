@@ -1,7 +1,7 @@
 """Base responder interface.
 
 A responder is handed a failing :class:`~dusk.detections.base.DetectionResult`
-and the detection that produced it, and takes some action — alerting,
+and the detection that produced it, and takes some action, alerting,
 logging, or (later) active containment.
 """
 

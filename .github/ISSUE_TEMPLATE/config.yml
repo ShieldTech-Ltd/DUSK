@@ -5,15 +5,15 @@
 # and feature requests. The blank-issue route is reserved for *important /
 # urgent* items that don't fit a form (e.g. coordinated triage, RFC-style
 # design notes, incident follow-ups). Security vulnerabilities must NOT use a
-# public issue — use the private advisory link below.
+# public issue, use the private advisory link below.
 blank_issues_enabled: true
 
 contact_links:
-  - name: 🔒 Report a security vulnerability (private)
+  - name: Report a security vulnerability (private)
     url: https://github.com/TFT444/DUSK/security/advisories/new
     about: >-
       Do not open a public issue for vulnerabilities. Report privately via
       GitHub Security Advisories. See SECURITY.md for our disclosure policy.
-  - name: 💬 Questions & discussion
+  - name: Questions & discussion
     url: https://github.com/TFT444/DUSK/discussions
     about: Ask usage questions or discuss ideas (if Discussions is enabled).

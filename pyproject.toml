@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dusk-security"
 version = "0.1.0"
-description = "Behavioral threat detection for agentic networks — catch AI agent attacks before they complete."
+description = "Behavioral threat detection for agentic networks, catch AI agent attacks before they complete."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -61,7 +61,7 @@ line-length = 100
 # select/ignore live under [tool.ruff.lint] (modern ruff) to avoid the
 # top-level deprecation warning while keeping the same rule selection.
 # ANN101/ANN102 (annotate self/cls) were removed from ruff, so they are not
-# listed here — modern ruff no longer flags self/cls, matching the intent.
+# listed here, modern ruff no longer flags self/cls, matching the intent.
 select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 
 [tool.ruff.lint.per-file-ignores]

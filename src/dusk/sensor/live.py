@@ -1,4 +1,4 @@
-"""Live sensor (stub — planned for v0.2).
+"""Live sensor (stub, planned for v0.2).
 
 Will sniff packets off a live interface in real time and stream Dusk
 packet dicts to the engine. Not implemented yet.
