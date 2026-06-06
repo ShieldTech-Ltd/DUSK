@@ -1,7 +1,7 @@
-"""Telemetry-silence detection (stub — planned for v0.2).
+"""Telemetry-silence detection (stub, planned for v0.2).
 
 Detects when an agent that normally emits a steady stream of flows
-suddenly goes quiet — a sign its telemetry or logging has been disabled to
+suddenly goes quiet, a sign its telemetry or logging has been disabled to
 hide subsequent actions.
 
 MITRE: T1562.001 (Impair Defenses: Disable or Modify Tools).

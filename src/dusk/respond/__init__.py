@@ -1,1 +1,1 @@
-"""Responders act on detection results — alerting now, isolation later."""
+"""Responders act on detection results, alerting now, isolation later."""

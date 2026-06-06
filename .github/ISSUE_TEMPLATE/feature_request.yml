@@ -1,4 +1,4 @@
-name: ✨ Feature request / detection proposal
+name: Feature request / detection proposal
 description: Propose a feature or a new behavioral detection for DUSK.
 title: "[Feature]: "
 labels: ["enhancement", "triage"]
@@ -40,7 +40,7 @@ body:
     id: mitre
     attributes:
       label: MITRE ATT&CK technique (detections only)
-      placeholder: "T1046 — Network Service Discovery"
+      placeholder: "T1046, Network Service Discovery"
     validations:
       required: false
   - type: input

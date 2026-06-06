@@ -1,4 +1,4 @@
-"""Sweep detection — machine-paced systematic scanning of a segment.
+"""Sweep detection, machine-paced systematic scanning of a segment.
 
 A hijacked agent enumerating a network leaves a tell-tale signature: a
 single source touching many destinations in a short window, with timing

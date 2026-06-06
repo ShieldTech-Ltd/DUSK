@@ -1,6 +1,6 @@
 # Dusk
 
-Networks are filling with AI agents that operate autonomously — changing routing,
+Networks are filling with AI agents that operate autonomously, changing routing,
 modifying firewall rules, reconfiguring infrastructure at machine speed. When one
 of those agents is hijacked or poisoned, the attacker doesn't breach the network.
 They command the network's own brain to breach it for them, through actions that
@@ -9,7 +9,7 @@ look completely legitimate.
 Dusk watches how agents move through the network. It detects the machine-paced,
 systematic patterns that signal an attack in progress, and stops it before it lands.
 
-> Status: v0.1 — sweep and boundary detections active. Telemetry and lateral movement in progress.
+> Status: v0.1, sweep and boundary detections active. Telemetry and lateral movement in progress.
 
 ## What it detects
 
@@ -36,14 +36,14 @@ dusk scan --file capture.pcap --json
 
 Dusk is built from four composable layers:
 
-- **Sensors** (`dusk.sensor`) turn a traffic source — a pcap today, live
-  interfaces and Zeek logs next — into a uniform stream of packet records.
+- **Sensors** (`dusk.sensor`) turn a traffic source, a pcap today, live
+  interfaces and Zeek logs next, into a uniform stream of packet records.
 - **Detections** (`dusk.detections`) each look for one behavioural attack
   pattern and return a verdict with a MITRE technique, kill-chain stage, and
   confidence.
 - **Engine** (`dusk.core`) runs every detection, reaches an overall verdict,
   and predicts the attacker's next kill-chain stage.
-- **Responders** (`dusk.respond`) act on findings — alerting today, active
+- **Responders** (`dusk.respond`) act on findings, alerting today, active
   isolation next.
 
 ## Configuration

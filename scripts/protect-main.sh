@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Apply DUSK's branch-protection posture to `main` and harden repo merge
-# settings. Idempotent — safe to re-run. Requires the GitHub CLI (`gh`)
+# settings. Idempotent, safe to re-run. Requires the GitHub CLI (`gh`)
 # authenticated as a repo admin.
 #
 #   gh auth login          # once, as a repo admin
@@ -12,7 +12,7 @@
 #   * the four CI jobs must pass and be up to date: lint, typecheck, security, test
 #   * at least one approving review, including Code Owners (see .github/CODEOWNERS)
 #   * stale approvals dismissed on new pushes; all conversations resolved
-#   * commits must be signed (Verified) — keeps main's history fully verified
+#   * commits must be signed (Verified), keeps main's history fully verified
 #   * linear history; force-pushes and branch deletion blocked
 #
 # Repo-level: squash-only merges (so the merge commit is GitHub-signed and
@@ -58,6 +58,6 @@ echo "==> Requiring signed commits on '${BRANCH}'"
 gh api -X POST "repos/${OWNER}/${REPO}/branches/${BRANCH}/protection/required_signatures" \
   -H "Accept: application/vnd.github+json" >/dev/null
 
-echo "✅ Done. '${BRANCH}' now requires PRs, green CI, code-owner review, and signed commits."
+echo "Done. '${BRANCH}' now requires PRs, green CI, code-owner review, and signed commits."
 echo "   Note: enforce_admins is false so you (admin) can still administer the repo."
 echo "   For maximum strictness (applies rules to admins too), set enforce_admins=true."

@@ -1,4 +1,4 @@
-"""Dusk — behavioral threat detection for agentic networks.
+"""Dusk, behavioral threat detection for agentic networks.
 
 Dusk watches how AI agents move through a network and flags the
 machine-paced, systematic patterns that signal a hijacked or poisoned

@@ -1,4 +1,4 @@
-"""The detection engine — run every detection and reach a verdict.
+"""The detection engine, run every detection and reach a verdict.
 
 The engine holds a set of registered detections and, optionally, an alert
 responder. Given a batch of packets it runs each detection, fires the

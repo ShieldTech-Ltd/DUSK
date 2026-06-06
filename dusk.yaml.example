@@ -1,4 +1,4 @@
-# Dusk configuration — copy to `dusk.yaml` in your working directory to use.
+# Dusk configuration, copy to `dusk.yaml` in your working directory to use.
 #
 # Precedence (lowest to highest):
 #   1. built-in defaults (shown below)

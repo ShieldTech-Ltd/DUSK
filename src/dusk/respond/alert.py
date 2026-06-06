@@ -1,4 +1,4 @@
-"""Alert responder — surface a finding to the analyst and persist it.
+"""Alert responder, surface a finding to the analyst and persist it.
 
 On a failing detection this responder prints a Rich-formatted panel to the
 terminal and appends a structured JSON entry to the configured alert log
@@ -81,7 +81,7 @@ class AlertResponder(Responder):
         self.console.print(
             Panel(
                 table,
-                title="[bold red]⚠  DUSK ALERT[/bold red]",
+                title="[bold red]DUSK ALERT[/bold red]",
                 border_style="red",
             )
         )
@@ -107,7 +107,7 @@ class AlertResponder(Responder):
                 if isinstance(loaded, list):
                     existing = loaded
             except (json.JSONDecodeError, OSError) as exc:
-                # Corrupt or unreadable log — start a fresh list rather than crash.
+                # Corrupt or unreadable log, start a fresh list rather than crash.
                 logger.warning("Could not read existing alert log '%s': %s", self.alerts_file, exc)
                 existing = []
 
