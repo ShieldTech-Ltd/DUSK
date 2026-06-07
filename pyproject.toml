@@ -32,6 +32,7 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
+    "pytest-env>=1.1.0",
     "ruff>=0.4.4",
     "mypy>=1.10.0",
     "bandit[toml]>=1.7.8",
@@ -52,6 +53,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Force UTF-8 for the test process so console capture never falls back to a
+# platform default like Windows cp1252, which cannot encode every character the
+# Rich alert panel may emit.
+env = ["PYTHONIOENCODING=utf-8"]
 
 [tool.ruff]
 target-version = "py311"
