@@ -6,10 +6,20 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Professional README with status badges, a CLI demo, a mermaid architecture
+  diagram, a configuration reference, and a roadmap.
+- Full threat model in docs/threat-model.md with MITRE ATT&CK, MITRE ATLAS, and
+  OWASP Top 10 for Agentic Applications mappings.
+- CONTRIBUTING.md documenting the branch model, issue-first rule, local checks,
+  and how to add a detection.
+
 ### Changed
 - Plain-text style across all docs, issue templates, alert panel, and code
   docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
   removed. No functional changes.
+- Test runs force PYTHONIOENCODING=utf-8 (via pytest-env) so console capture
+  cannot fall back to a platform default such as Windows cp1252.
 
 ## [0.1.0], 2026-06-05
 
