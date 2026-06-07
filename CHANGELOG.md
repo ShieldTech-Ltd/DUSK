@@ -9,6 +9,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ### Added
 - Professional README with status badges, a CLI demo, a mermaid architecture
   diagram, a configuration reference, and a roadmap.
+- README reference sections: table of contents, how it works, usage, JSON output,
+  exit codes, use in CI, alerts, install from source, project layout, and
+  references.
 - Full threat model in docs/threat-model.md with MITRE ATT&CK, MITRE ATLAS, and
   OWASP Top 10 for Agentic Applications mappings.
 - CONTRIBUTING.md documenting the branch model, issue-first rule, local checks,
