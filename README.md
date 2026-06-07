@@ -19,6 +19,29 @@ Dusk sits between your network and the agents that operate it. It detects the
 machine-paced systematic patterns that signal an attack in progress, predicts
 what stage the attacker is targeting next, and stops it before it lands.
 
+## Contents
+
+- [Detection in action](#detection-in-action)
+- [What it detects](#what-it-detects)
+- [How it works](#how-it-works)
+- [Architecture](#architecture)
+- [Quickstart](#quickstart)
+- [Usage](#usage)
+- [JSON output](#json-output)
+- [Exit codes](#exit-codes)
+- [Use in CI](#use-in-ci)
+- [Alerts](#alerts)
+- [Try it with the bundled lab scenarios](#try-it-with-the-bundled-lab-scenarios)
+- [Configuration](#configuration)
+- [Install from source](#install-from-source)
+- [Project layout](#project-layout)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Threat model](#threat-model)
+- [Contributing](#contributing)
+- [References](#references)
+- [License](#license)
+
 ## Detection in action
 
 ```text
@@ -58,6 +81,25 @@ VERDICT: CLEAR, analysed 20 packets, nothing suspicious.
 Each detection returns a confidence score and the predicted next kill-chain stage,
 so operators know what to watch for, not just what fired.
 
+## How it works
+
+Dusk classifies behaviour, not identity. A hijacked agent uses credentials and
+paths that are entirely authorised, so signature and identity controls see
+nothing wrong. What gives it away is the shape of the traffic.
+
+- **Machine pacing.** Automated activity arrives at near-constant intervals.
+  Dusk measures the standard deviation of inter-packet timing; a value near zero
+  is a strong signal of automation rather than a human operator.
+- **Systematic fan-out.** Reconnaissance touches many destinations or many ports
+  in a short window. Dusk counts unique destinations per source (sweep) and
+  unique ports per source-destination pair (boundary) inside sliding windows.
+- **Kill-chain context.** When a detection fires, Dusk maps it to a kill-chain
+  stage and predicts the next stage, turning a single alert into forward-looking
+  guidance for the responder and the analyst.
+
+Every threshold is configurable, so the same engine tunes from a noisy lab to a
+quiet production segment without code changes.
+
 ## Architecture
 
 ```mermaid
@@ -95,11 +137,105 @@ Requirements: Python 3.11 or newer.
 pip install dusk-security
 
 dusk scan --file capture.pcap
-dusk scan --file capture.pcap --json
-dusk scan --file capture.pcap --verbose
 ```
 
 `dusk scan` exits 0 on CLEAR and 1 on ALERT, so it works as a native CI gate.
+
+## Usage
+
+```text
+dusk --help                         Show top-level help
+dusk --version                      Print the installed version
+dusk scan --file <path.pcap>        Analyse a pcap and print a verdict
+dusk scan --file <path> --json      Emit machine-readable JSON
+dusk scan --file <path> --verbose   Add DEBUG logging on stderr
+dusk watch --interface <iface>      Live capture (coming in v0.2)
+```
+
+`--verbose` raises the root logger to DEBUG and writes structured log lines to
+stderr, so you can pipe machine output on stdout and diagnostics on stderr
+independently.
+
+## JSON output
+
+`--json` prints a stable, machine-readable document on stdout and suppresses the
+formatted panel. One entry appears per registered detection.
+
+```json
+{
+  "file": "tests/fixtures/attack_sweep.pcap",
+  "packets_analysed": 25,
+  "verdict": "ALERT",
+  "results": [
+    {
+      "passed": false,
+      "reason": "Source 10.0.40.2 contacted 16 unique destinations within 10s with machine-regular timing (interval std=0.0000s). Looks like an automated network sweep.",
+      "mitre": "T1046",
+      "stage": "Reconnaissance",
+      "confidence": 0.5333,
+      "source": "10.0.40.2"
+    },
+    {
+      "passed": true,
+      "reason": null,
+      "mitre": "T1590",
+      "stage": "Reconnaissance",
+      "confidence": 0.0,
+      "source": null
+    }
+  ]
+}
+```
+
+On an input error such as a missing file, the JSON document is `{"error": "..."}`
+and the exit code is 2.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | CLEAR, no detection fired |
+| 1 | ALERT, at least one detection fired |
+| 2 | Input error, for example a missing, empty, or unreadable pcap |
+
+## Use in CI
+
+Because the exit code encodes the verdict, `dusk scan` drops straight into a
+pipeline as a gate. Example GitHub Actions step:
+
+```yaml
+- name: Scan captured traffic with Dusk
+  run: |
+    pip install dusk-security
+    dusk scan --file artifacts/capture.pcap
+```
+
+The job fails if Dusk raises an ALERT. Add `--json` and archive the output if you
+want a machine-readable record per run.
+
+## Alerts
+
+When a detection fires, the responder prints the alert panel and appends a JSON
+entry to an alert log so findings accumulate across runs. The default path is
+`dusk-alerts.json` in the current working directory.
+
+```json
+[
+  {
+    "timestamp": "2026-06-07T09:00:00+00:00",
+    "detection": "sweep",
+    "source": "10.0.40.2",
+    "mitre": "T1046",
+    "stage": "Reconnaissance",
+    "confidence": 0.5333,
+    "reason": "Source 10.0.40.2 contacted 16 unique destinations ...",
+    "prediction": "After Reconnaissance, expect LateralMovement next. ..."
+  }
+]
+```
+
+Relocate it with the `alert_log_path` setting or the `DUSK_ALERT_LOG_PATH`
+environment variable.
 
 ## Try it with the bundled lab scenarios
 
@@ -113,10 +249,14 @@ dusk scan --file tests/fixtures/port_scan.pcap
 dusk scan --file tests/fixtures/normal_traffic.pcap
 ```
 
+Expected: the attack_sweep fixture raises an ALERT for T1046, the port_scan
+fixture raises an ALERT for T1590, and normal_traffic is CLEAR.
+
 ## Configuration
 
 All thresholds are configurable. Copy `dusk.yaml.example` to `dusk.yaml` in your
 working directory, or override any value with a `DUSK_*` environment variable.
+Precedence is defaults, then `dusk.yaml`, then environment variables.
 
 | Setting | Default | Environment variable |
 |---|---|---|
@@ -128,12 +268,41 @@ working directory, or override any value with a `DUSK_*` environment variable.
 | Alert log path | dusk-alerts.json | `DUSK_ALERT_LOG_PATH` |
 | Log level | WARNING | `DUSK_LOG_LEVEL` |
 
+## Install from source
+
+```bash
+git clone https://github.com/TFT444/DUSK.git
+cd DUSK
+pip install -e ".[dev]"
+```
+
+This installs Dusk in editable mode with the development extras (test, lint,
+type-check, and security tooling).
+
+## Project layout
+
+```text
+src/dusk/
+  cli.py            Command-line interface (Click)
+  config.py         Configuration: defaults, dusk.yaml, DUSK_* env vars
+  core/
+    engine.py       Detection runner and verdict
+    kill_chain.py   Kill-chain stage prediction
+  detections/       One module per behavioral detection
+  sensor/           Traffic sources (pcap now; live and Zeek next)
+  respond/          Responders (alert now; isolation next)
+lab/scenarios/      Generators for the pcap fixtures
+tests/              Unit, edge-case, and end-to-end tests
+docs/               Threat model and operational docs
+```
+
 ## Development
 
 ```bash
 pip install -e ".[dev]"
 
 ruff check src/ tests/
+ruff format --check src/ tests/
 mypy src/dusk/
 bandit -r src/ -ll
 pip-audit -r requirements.txt
@@ -142,7 +311,8 @@ pre-commit install
 ```
 
 CI runs on every push and pull request to `dev` and `main`. The lint, typecheck,
-security, and test jobs must all pass before merge.
+security, and test jobs must all pass before merge. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## Roadmap
 
@@ -165,6 +335,12 @@ All work goes through pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md) for 
 branch model and PR conventions. Report vulnerabilities privately via
 [GitHub Security Advisories](https://github.com/TFT444/DUSK/security/advisories).
 See [SECURITY.md](SECURITY.md) for the full disclosure process.
+
+## References
+
+- [MITRE ATT&CK](https://attack.mitre.org/) for enterprise and network techniques
+- [MITRE ATLAS](https://atlas.mitre.org/) for adversarial threats to AI systems
+- [OWASP](https://owasp.org/) and its work on agentic application security
 
 ## License
 
