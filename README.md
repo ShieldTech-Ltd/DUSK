@@ -19,12 +19,31 @@ Dusk sits between your network and the agents that operate it. It detects the
 machine-paced systematic patterns that signal an attack in progress, predicts
 what stage the attacker is targeting next, and stops it before it lands.
 
+### Where Dusk is heading
+
+The packet detections above are the proven foundation. The direction is larger:
+Dusk is becoming an inline decision gate for the actions agents take on a
+network, not only the traffic they produce.
+
+A hijacked agent does its damage by issuing commands through a control-plane
+API: open this firewall rule, change this route, reassign this segment. That API
+call is the one place the agent states exactly what it intends, in full, before
+it happens, and early enough to refuse. An attacker can encrypt traffic and
+delete logs, but cannot avoid the API call, because the API call is the attack.
+
+So Dusk is growing from watching traffic toward watching actions: analyse the
+requested action, predict its impact, allow or block it before it executes, and
+report the full decision. Detection becomes prevention. The packet engine
+remains, repositioned as the layer that confirms what an agent's command
+actually did on the wire.
+
 ## Contents
 
 - [Detection in action](#detection-in-action)
 - [What it detects](#what-it-detects)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
+- [The control plane is the network](#the-control-plane-is-the-network)
 - [Quickstart](#quickstart)
 - [Usage](#usage)
 - [JSON output](#json-output)
@@ -128,6 +147,20 @@ flowchart LR
 The architecture is layered and pluggable. Sensors are swappable. Detections are
 independent classes that return a `DetectionResult` with verdict, reason, MITRE
 technique, and confidence. New detections drop in without touching the engine.
+
+## The control plane is the network
+
+A modern agent does not log into a router and type commands. It calls a
+controller: a cloud network API, an SDN controller, a network policy endpoint.
+When an agent changes a security group, a route table, or a firewall rule
+through that API, it is performing a network action.
+
+This is why Dusk's forward work begins at the control-plane API rather than the
+packet. The API is a chokepoint the attacker cannot route around, it carries the
+agent's intent in full, and it is reachable early enough to block. Cloud-native
+environments expose this chokepoint today, which makes them the first place Dusk
+can stand inline. The analysis is controller-agnostic by design: an action is
+"an agent changed a network rule," whatever system it came from.
 
 ## Quickstart
 
@@ -316,13 +349,33 @@ security, and test jobs must all pass before merge. See
 
 ## Roadmap
 
+Shipped:
+
 | Version | Focus |
 |---|---|
 | v0.1 | Sweep and boundary detection, pcap sensor, CLI, configurable thresholds |
-| v0.2 | Telemetry silence and lateral movement, Zeek log support, live capture |
-| v0.3 | Behavioral baseline learning, anomaly detection per agent identity |
-| v0.4 | Active isolation response, segment quarantine |
-| v0.5 | OWASP submission, threat-model contribution to agentic-security standards |
+
+Direction. Dusk is built one layer at a time. Each layer ships and proves itself
+before the next begins.
+
+| Version | Layer | What it does |
+|---|---|---|
+| v1 | Agent action layer (control plane) | Ingest agent control-plane actions, learn per-agent baselines, analyse, predict, and render verdicts in watch mode. Cloud control-plane actions are the first source. |
+| v2 | Data plane | Reposition the packet and flow detections as a confirmation layer, correlating what an agent commanded with what the network actually did. |
+| v3 | Reasoning layer | Inspect the agent's decision and tool-call reasoning to catch intent before the action is even formed. |
+
+The v1 layer is built in sub-stages:
+
+| Stage | Scope |
+|---|---|
+| v1.1 | Ingest, normalise agent actions into a controller-agnostic AgentAction event |
+| v1.2 | Baseline, learn each agent's normal action fingerprint |
+| v1.3 | Analyse and predict, score actions, estimate blast radius, predict next stage |
+| v1.4 | Verdict and report, render ALLOW or WOULD-BLOCK with full reasoning and MITRE mapping |
+
+Dusk ships in watch mode first. It renders a verdict on every action but does not
+enforce until its analysis is trusted in a given environment, because an inline
+gate that wrongly blocks a legitimate action can disrupt a network.
 
 ## Threat model
 
