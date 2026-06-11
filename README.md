@@ -7,7 +7,11 @@
 [![OWASP](https://img.shields.io/badge/OWASP-Incubator-orange.svg)](https://owasp.org/projects/)
 [![Status](https://img.shields.io/badge/status-v0.1-brightgreen.svg)](https://github.com/TFT444/DUSK/releases)
 
-**Behavioral threat detection for agentic networks: catch AI agent attacks before they complete.**
+> **Inline agent-action security for networks. DUSK analyses every action an AI agent takes on your infrastructure, predicts its impact, and blocks the hijacked ones before they execute.**
+
+DUSK is built for environments where autonomous agents operate the network. It sits inline at the control-plane API, learns each agent's normal behaviour, and refuses the actions that signal a hijack — turning detection into prevention, with a full decision trail for every call.
+
+---
 
 Networks are filling with AI agents that operate autonomously, changing routing,
 modifying firewall rules, and reconfiguring infrastructure at machine speed. When
