@@ -131,6 +131,61 @@ def watch(interface: str) -> None:
     )
 
 
+@main.command(help="Ingest an agent action log (JSONL) and summarise it.")
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(),
+    help="Path to the JSONL agent action log to ingest.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit a machine-readable JSON summary instead of formatted output.",
+)
+def actions(file_path: str, as_json: bool) -> None:
+    """Ingest a control-plane action log and report what was found.
+
+    This is the v1.1 ingest stage: it validates and normalises the log into
+    AgentAction events and summarises them. Analysis and verdicts arrive in
+    later sub-stages. Exits ``0`` on success and ``2`` on an input error.
+    """
+    from dusk.actions.ingest import read_actions
+
+    try:
+        ingested, skipped = read_actions(file_path)
+    except (FileNotFoundError, ValueError) as exc:
+        _fail(str(exc), as_json=as_json)
+        return
+
+    agents = sorted({a.agent_id for a in ingested})
+    by_resource: dict[str, int] = {}
+    for entry in ingested:
+        by_resource[entry.resource_type] = by_resource.get(entry.resource_type, 0) + 1
+
+    if as_json:
+        payload = {
+            "file": file_path,
+            "actions_ingested": len(ingested),
+            "lines_skipped": skipped,
+            "agents": agents,
+            "by_resource_type": by_resource,
+        }
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        console.print(
+            f"[bold green]INGESTED[/bold green] {len(ingested)} action(s) from "
+            f"{len(agents)} agent(s), {skipped} line(s) skipped."
+        )
+        for resource_type, count in sorted(by_resource.items()):
+            console.print(f"  {resource_type}: {count}")
+
+    sys.exit(0)
+
+
 def _fail(message: str, *, as_json: bool) -> None:
     """Report an input error and exit with code 2."""
     logger.critical("%s", message)
