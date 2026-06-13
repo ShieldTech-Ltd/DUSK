@@ -7,6 +7,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- v1.1 agent action ingest: controller-agnostic AgentAction event
+  (src/dusk/actions/), JSONL ingest with malformed-line skip handling, the
+  `dusk actions --file [--json]` CLI command, a lab generator for the action
+  log fixture, and full test coverage of the layer.
 - Professional README with status badges, a CLI demo, a mermaid architecture
   diagram, a configuration reference, and a roadmap.
 - README reference sections: table of contents, how it works, usage, JSON output,

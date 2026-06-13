@@ -59,8 +59,7 @@ def main() -> int:
         from scapy.all import IP  # noqa: F401
     except ImportError:
         print(
-            "Scapy is required to generate fixtures. Install it with:\n"
-            "    pip install scapy",
+            "Scapy is required to generate fixtures. Install it with:\n    pip install scapy",
             file=sys.stderr,
         )
         return 1
