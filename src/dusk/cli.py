@@ -131,13 +131,19 @@ def watch(interface: str) -> None:
     )
 
 
-@main.command(help="Ingest an agent action log (JSONL) and summarise it.")
+@main.command(help="Ingest an agent action file (JSON list) and summarise it.")
 @click.option(
     "--file",
     "file_path",
     required=True,
     type=click.Path(),
-    help="Path to the JSONL agent action log to ingest.",
+    help="Path to the JSON action file (a list of raw records) to ingest.",
+)
+@click.option(
+    "--source",
+    default="generic",
+    show_default=True,
+    help="Source name selecting the adapter (for example 'azure' or 'generic').",
 )
 @click.option(
     "--json",
@@ -146,42 +152,42 @@ def watch(interface: str) -> None:
     default=False,
     help="Emit a machine-readable JSON summary instead of formatted output.",
 )
-def actions(file_path: str, as_json: bool) -> None:
-    """Ingest a control-plane action log and report what was found.
+def actions(file_path: str, source: str, as_json: bool) -> None:
+    """Ingest a control-plane action file and report what was found.
 
-    This is the v1.1 ingest stage: it validates and normalises the log into
-    AgentAction events and summarises them. Analysis and verdicts arrive in
-    later sub-stages. Exits ``0`` on success and ``2`` on an input error.
+    This is the v1.1 ingest stage: it normalises the records into AgentAction
+    events and summarises them. It assigns no severity or verdict; later
+    layers do that. Exits ``0`` on success and ``2`` on an input error.
     """
-    from dusk.actions.ingest import read_actions
+    from dusk.actions.ingest import ingest_file
 
     try:
-        ingested, skipped = read_actions(file_path)
+        ingested = ingest_file(file_path, source)
     except (FileNotFoundError, ValueError) as exc:
         _fail(str(exc), as_json=as_json)
         return
 
     agents = sorted({a.agent_id for a in ingested})
-    by_resource: dict[str, int] = {}
+    by_action_type: dict[str, int] = {}
     for entry in ingested:
-        by_resource[entry.resource_type] = by_resource.get(entry.resource_type, 0) + 1
+        by_action_type[entry.action_type] = by_action_type.get(entry.action_type, 0) + 1
 
     if as_json:
         payload = {
             "file": file_path,
+            "source": source,
             "actions_ingested": len(ingested),
-            "lines_skipped": skipped,
             "agents": agents,
-            "by_resource_type": by_resource,
+            "by_action_type": by_action_type,
         }
         click.echo(json.dumps(payload, indent=2))
     else:
         console.print(
             f"[bold green]INGESTED[/bold green] {len(ingested)} action(s) from "
-            f"{len(agents)} agent(s), {skipped} line(s) skipped."
+            f"{len(agents)} agent(s) via the '{source}' adapter."
         )
-        for resource_type, count in sorted(by_resource.items()):
-            console.print(f"  {resource_type}: {count}")
+        for action_type, count in sorted(by_action_type.items()):
+            console.print(f"  {action_type}: {count}")
 
     sys.exit(0)
 

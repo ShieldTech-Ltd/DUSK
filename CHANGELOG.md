@@ -7,10 +7,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- v1.1 agent action ingest: controller-agnostic AgentAction event
-  (src/dusk/actions/), JSONL ingest with malformed-line skip handling, the
-  `dusk actions --file [--json]` CLI command, a lab generator for the action
-  log fixture, and full test coverage of the layer.
+- v1.1 agent action ingest layer: the controller-agnostic AgentAction event
+  (timezone-aware timestamp, normalised action_type, target, before/after
+  change, source, raw_ref) with strict validation and to_dict/from_dict
+  round-tripping; a SourceAdapter base with AdapterError; Azure activity-log
+  and generic adapters; a normaliser registry keyed by source name;
+  ingest_file(path, source) reading a JSON list of records and skipping
+  malformed ones; the `dusk actions --file --source [--json]` CLI command; a
+  lab generator for the action fixtures; and docs/action-schema.md.
 - Professional README with status badges, a CLI demo, a mermaid architecture
   diagram, a configuration reference, and a roadmap.
 - README reference sections: table of contents, how it works, usage, JSON output,
