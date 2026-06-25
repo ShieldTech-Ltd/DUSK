@@ -125,6 +125,10 @@ quiet production segment without code changes.
 
 ## Architecture
 
+![DUSK enterprise system architecture](docs/dusk-enterprise-flow.svg)
+
+Simplified component view:
+
 ```mermaid
 flowchart LR
     A["Traffic source<br/>pcap, live, Zeek"] --> B["Sensor<br/>dusk.sensor"]
