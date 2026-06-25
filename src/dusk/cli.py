@@ -192,6 +192,92 @@ def actions(file_path: str, source: str, as_json: bool) -> None:
     sys.exit(0)
 
 
+@main.command(help="Gate agent actions against a learned per-agent baseline.")
+@click.option(
+    "--baseline",
+    "baseline_path",
+    required=True,
+    type=click.Path(),
+    help="JSON list of known-good actions to learn each agent's normal behaviour.",
+)
+@click.option(
+    "--check",
+    "check_path",
+    required=True,
+    type=click.Path(),
+    help="JSON list of actions to evaluate against the baseline.",
+)
+@click.option(
+    "--source",
+    default="generic",
+    show_default=True,
+    help="Source name selecting the adapter for both files.",
+)
+@click.option(
+    "--enforce",
+    is_flag=True,
+    default=False,
+    help="Render BLOCK instead of WOULD-BLOCK for refused actions.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit a machine-readable JSON report instead of formatted output.",
+)
+def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_json: bool) -> None:
+    """Learn a baseline, then render a verdict for each checked action.
+
+    Exits ``1`` when any action is refused (WOULD-BLOCK or BLOCK), ``0`` when
+    every action is allowed, and ``2`` on an input error.
+    """
+    from dusk.actions.ingest import ingest_file
+    from dusk.actions.verdict import ActionGate
+
+    try:
+        known_good = ingest_file(baseline_path, source)
+        to_check = ingest_file(check_path, source)
+    except (FileNotFoundError, ValueError) as exc:
+        _fail(str(exc), as_json=as_json)
+        return
+
+    gate_engine = ActionGate(enforce=enforce)
+    gate_engine.learn(known_good)
+    verdicts = gate_engine.evaluate_all(to_check)
+    refused = [v for v in verdicts if v.refused]
+
+    if as_json:
+        payload = {
+            "baseline": baseline_path,
+            "check": check_path,
+            "actions_evaluated": len(verdicts),
+            "refused": len(refused),
+            "results": [v.to_dict() for v in verdicts],
+        }
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        for v in verdicts:
+            a = v.analysis
+            colour = {"ALLOW": "green", "WOULD-BLOCK": "yellow", "BLOCK": "red"}[v.verdict]
+            console.print(
+                f"[bold {colour}]{v.verdict:<11}[/bold {colour}] "
+                f"{a.agent_id} {a.action_type} {a.target}  "
+                f"[dim]score={a.score:.2f} blast={a.blast_radius}[/dim]"
+            )
+            if v.refused:
+                console.print(f"            [dim]ATT&CK[/dim] {a.mitre_attack}")
+                console.print(f"            [dim]ATLAS[/dim]  {a.mitre_atlas}")
+                for reason in a.reasons:
+                    console.print(f"            [dim]reason[/dim] {reason}")
+                console.print(f"            [dim]next[/dim]   {a.predicted_next}")
+        console.print(
+            f"\n[bold]GATE[/bold] evaluated {len(verdicts)} action(s), refused {len(refused)}."
+        )
+
+    sys.exit(1 if refused else 0)
+
+
 def _fail(message: str, *, as_json: bool) -> None:
     """Report an input error and exit with code 2."""
     logger.critical("%s", message)
