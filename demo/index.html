@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUSK — Behavioural Threat Detection for Agentic Networks</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080e1a;--surface:#0f172a;--surface2:#111827;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#f1f5f9;--muted:#64748b;--dim:#1e293b;
+  --red:#ef4444;--red-s:rgba(239,68,68,0.08);--red-b:rgba(239,68,68,0.3);
+  --purple:#a78bfa;--purple-s:rgba(167,139,250,0.07);--purple-b:rgba(167,139,250,0.35);
+  --cyan:#22d3ee;--cyan-s:rgba(34,211,238,0.07);--cyan-b:rgba(34,211,238,0.25);
+  --green:#4ade80;--green-s:rgba(74,222,128,0.07);--green-b:rgba(74,222,128,0.25);
+  --amber:#fbbf24;--amber-s:rgba(251,191,36,0.1);--amber-b:rgba(251,191,36,0.35);
+  --blue:#60a5fa;--blue-s:rgba(96,165,250,0.07);--blue-b:rgba(96,165,250,0.25);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.6}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse-red{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 10px rgba(239,68,68,0.1)}}
+@keyframes pulse-purple{0%,100%{box-shadow:0 0 0 0 rgba(167,139,250,0)}50%{box-shadow:0 0 0 12px rgba(167,139,250,0.12)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+@keyframes scan{0%{transform:translateY(0);opacity:.7}100%{transform:translateY(100%);opacity:0}}
+@keyframes flow{from{stroke-dashoffset:20}to{stroke-dashoffset:0}}
+@keyframes ticker{0%{opacity:.2}33%{opacity:1}66%{opacity:.5}100%{opacity:.2}}
+
+section{padding:64px 24px;max-width:860px;margin:0 auto}
+
+/* HERO */
+.hero{text-align:center;padding:80px 24px 48px;animation:fadeUp .7s ease-out}
+.hero-tag{font-size:11px;letter-spacing:3px;color:var(--red);text-transform:uppercase;margin-bottom:16px}
+.hero h1{font-size:clamp(28px,5vw,44px);font-weight:500;color:var(--text);line-height:1.2;margin-bottom:16px}
+.hero h1 span{color:var(--red)}
+.hero p{font-size:15px;color:var(--muted);max-width:580px;margin:0 auto 28px}
+.hero-links{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.pill{font-size:11px;padding:5px 14px;border-radius:20px;border:.5px solid;color:var(--muted);border-color:var(--border2);background:var(--surface)}
+
+/* DIVIDER */
+.divider{text-align:center;font-size:10px;letter-spacing:3px;color:var(--dim);text-transform:uppercase;padding:8px 0}
+
+/* PROBLEM SECTION */
+.problem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:28px}
+.attack-card{background:var(--surface);border:.5px solid var(--red-b);border-radius:10px;padding:16px 18px}
+.attack-name{font-size:13px;font-weight:500;color:var(--red);margin-bottom:6px}
+.attack-desc{font-size:12px;color:var(--muted);margin-bottom:6px}
+.attack-why{font-size:11px;color:var(--dim);border-top:.5px solid var(--border);padding-top:6px;margin-top:6px}
+
+/* ENTERPRISE STACK */
+.stack{display:flex;flex-direction:column;gap:0;position:relative;margin-top:28px}
+.s-layer{border-radius:10px;border:.5px solid var(--border2);background:var(--surface);padding:14px 20px;animation:fadeUp .5s ease-out both}
+.s-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.s-title{font-size:14px;font-weight:500;color:var(--text);margin-bottom:2px}
+.s-sub{font-size:12px;color:var(--muted)}
+.connector{display:flex;justify-content:center;align-items:center;height:28px;position:relative}
+.connector svg{position:absolute}
+.connector span{font-size:9px;color:var(--dim);background:var(--bg);padding:0 6px;position:relative;z-index:1;letter-spacing:1px}
+.platform-row{display:grid;gap:8px;margin:0}
+.platform-row.two{grid-template-columns:1fr 1fr}
+.platform-row.three{grid-template-columns:1fr 1fr 1fr}
+.p-card{border-radius:8px;padding:12px 14px;border:.5px solid;cursor:pointer;transition:transform .15s}
+.p-card:hover{transform:translateY(-2px)}
+.p-card.blue{background:var(--blue-s);border-color:var(--blue-b)}
+.p-card.teal{background:var(--cyan-s);border-color:var(--cyan-b)}
+.p-name{font-size:13px;font-weight:500;margin-bottom:3px}
+.p-card.blue .p-name{color:var(--blue)}
+.p-card.teal .p-name{color:var(--cyan)}
+.p-covers{font-size:11px;color:var(--muted);margin-bottom:2px}
+.p-gap{font-size:11px;color:var(--red);opacity:.7}
+.gap-box{border-radius:10px;border:.5px solid var(--red-b);background:var(--red-s);padding:16px 20px;animation:pulse-red 3s ease-in-out 1s infinite;position:relative;overflow:hidden}
+.gap-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--red);animation:scan 2s linear infinite}
+.gap-title{font-size:14px;font-weight:500;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.blink-dot{width:7px;height:7px;background:var(--red);border-radius:50%;animation:blink 1.2s ease-in-out infinite;flex-shrink:0}
+.gap-q{font-size:12px;color:#fca5a5;margin-bottom:3px}
+.dusk-box{border-radius:10px;border:1px solid var(--purple-b);background:var(--purple-s);padding:18px 20px;animation:pulse-purple 3s ease-in-out 1.5s infinite}
+.dusk-title{font-size:16px;font-weight:500;color:var(--purple);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:9px;padding:2px 7px;border-radius:4px;border:.5px solid var(--purple-b);color:var(--purple);letter-spacing:1px;text-transform:uppercase;opacity:.7}
+.dusk-desc{font-size:12px;color:#c4b5fd;margin-bottom:3px}
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.pillar{background:rgba(167,139,250,0.08);border:.5px solid rgba(167,139,250,0.18);border-radius:6px;padding:8px 10px;font-size:11px;color:#c4b5fd;text-align:center}
+.pillar-l{font-size:9px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;opacity:.7}
+
+/* ARCHITECTURE */
+.arch{margin-top:28px}
+.arch-layers{display:flex;flex-direction:column;gap:8px}
+.arch-row{display:grid;gap:8px}
+.arch-row.five{grid-template-columns:repeat(5,1fr)}
+.arch-row.five-dusk{grid-template-columns:repeat(5,1fr)}
+.arch-row.two{grid-template-columns:1fr 1fr}
+.arch-row.oracle{grid-template-columns:repeat(6,1fr)}
+.arch-box{border-radius:8px;border:.5px solid;padding:10px 12px;text-align:center}
+.arch-box .box-title{font-size:12px;font-weight:500;margin-bottom:3px}
+.arch-box .box-sub{font-size:10px}
+.arch-box.agent{background:var(--cyan-s);border-color:var(--cyan-b)}
+.arch-box.agent .box-title{color:var(--cyan)}
+.arch-box.agent .box-sub{color:rgba(34,211,238,.6)}
+.arch-box.hijacked{background:var(--amber-s);border-color:var(--amber-b);animation:pulse-red 2s ease-in-out infinite}
+.arch-box.hijacked .box-title{color:var(--amber)}
+.arch-box.hijacked .box-sub{color:rgba(251,191,36,.6)}
+.arch-box.dusk-step{background:var(--purple-s);border-color:var(--purple-b)}
+.arch-box.dusk-step .box-title{color:var(--purple)}
+.arch-box.dusk-step .box-sub{color:rgba(167,139,250,.6)}
+.arch-box.oracle-box{background:var(--green-s);border-color:var(--green-b)}
+.arch-box.oracle-box .box-title{color:var(--green)}
+.arch-box.oracle-box .box-sub{color:rgba(74,222,128,.6)}
+.arch-box.decision-allow{background:var(--green-s);border-color:var(--green-b)}
+.arch-box.decision-allow .box-title{color:var(--green)}
+.arch-box.decision-block{background:var(--red-s);border-color:var(--red-b);animation:pulse-red 2.5s ease-in-out infinite}
+.arch-box.decision-block .box-title{color:var(--red)}
+.arch-row-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:4px 0 2px}
+.arch-connector-row{display:flex;justify-content:center;gap:0;height:20px;position:relative}
+.arch-connector-row svg{width:100%;height:20px;position:absolute;top:0;left:0}
+.verdict-label{font-size:10px;color:var(--muted);text-align:center;padding:4px 0}
+
+/* ONE-LINER */
+.oneliner{margin-top:40px;text-align:center;padding:20px 24px;border-radius:10px;border:.5px solid var(--border2);background:rgba(255,255,255,0.02)}
+.oneliner p{font-size:14px;color:var(--muted);font-style:italic;line-height:1.8}
+.oneliner strong{color:var(--text);font-weight:500;font-style:normal}
+
+/* FOOTER */
+footer{text-align:center;padding:40px 24px;font-size:11px;color:var(--dim)}
+footer a{color:var(--purple);text-decoration:none;opacity:.7}
+
+h2{font-size:20px;font-weight:500;color:var(--text);margin-bottom:8px}
+.section-sub{font-size:13px;color:var(--muted);margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-tag">open source · Apache-2.0</div>
+  <h1>Behavioural threat detection<br>for <span>agentic networks</span></h1>
+  <p>DUSK sits at the control plane, watches every action an AI agent takes before execution, and blocks the hijacked ones before they reach your infrastructure.</p>
+  <div class="hero-links">
+    <span class="pill">MITRE ATT&CK + ATLAS</span>
+    <span class="pill">Python 3.11+</span>
+    <span class="pill">github.com/TFT444/DUSK</span>
+    <span class="pill">by Tanvir Farhad · ShieldTech Ltd</span>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section>
+  <div class="divider">the problem</div>
+  <h2>The gap nobody is solving</h2>
+  <p class="section-sub">Every security tool ever built assumes the thing making decisions is a human. AI agents are not human. And nobody is watching them.</p>
+  <p class="section-sub" style="margin-bottom:0">Bedrock tells you what an agent is <strong style="color:var(--text)">permitted</strong> to do. Oracle tells you what queries were <strong style="color:var(--text)">executed</strong>. Sentinel tells you what <strong style="color:var(--text)">infrastructure events</strong> occurred. None of them tell you whether an agent is <strong style="color:var(--red)">behaving normally</strong>.</p>
+  <div class="problem-grid">
+    <div class="attack-card">
+      <div class="attack-name">Prompt injection</div>
+      <div class="attack-desc">Agent reads a malicious document, hidden instruction overrides its task, data exfiltrated.</div>
+      <div class="attack-why">Credentials valid. Action looks legitimate. Zero existing tools catch it.</div>
+    </div>
+    <div class="attack-card">
+      <div class="attack-name">Agent impersonation</div>
+      <div class="attack-desc">Compromised agent passes false instructions to another as if from the orchestrator.</div>
+      <div class="attack-why">No PKI. No inter-agent verification. No audit trail in most frameworks.</div>
+    </div>
+    <div class="attack-card">
+      <div class="attack-name">Scope creep at scale</div>
+      <div class="attack-desc">Agent with read permission starts writing, deleting, copying at thousands of ops/sec.</div>
+      <div class="attack-why">Permission is valid. Pattern is invisible to access control tools.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ENTERPRISE STACK -->
+<section>
+  <div class="divider">positioning</div>
+  <h2>Where DUSK sits in the enterprise stack</h2>
+  <p class="section-sub" style="margin-bottom:20px">Each platform covers a layer. DUSK covers the gap none of them address. Click any card to learn more.</p>
+
+  <div class="stack">
+    <div class="s-layer" style="animation-delay:.1s">
+      <div class="s-label">top layer</div>
+      <div class="s-title">Business application</div>
+      <div class="s-sub">the product, the workflow, the enterprise use case</div>
+    </div>
+    <div class="connector">
+      <svg><line x1="50%" y1="0" x2="50%" y2="100%" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 4" style="animation:flow .5s linear infinite"/></svg>
+    </div>
+    <div class="platform-row two" style="animation:fadeUp .5s ease-out .3s both">
+      <div class="p-card blue" onclick="alert('AWS Bedrock: managed LLM gateway. Governs which model the agent calls. Audit logging and access control. Cannot see what the agent does downstream after the call.')">
+        <div class="p-name">AWS Bedrock</div>
+        <div class="p-covers">managed LLM gateway · audit logging</div>
+        <div class="p-gap">gap: no downstream behavioural view</div>
+      </div>
+      <div class="p-card blue" onclick="alert('Google DeepMind: published the AI Control Roadmap June 2026. TRAIT&R framework. Internal to Google — not an open implementation anyone else can use.')">
+        <div class="p-name">Google DeepMind</div>
+        <div class="p-covers">AI Control Roadmap · TRAIT&R framework</div>
+        <div class="p-gap">gap: internal framework only, not open</div>
+      </div>
+    </div>
+    <div class="connector">
+      <svg><line x1="50%" y1="0" x2="50%" y2="100%" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 4" style="animation:flow .5s linear infinite;animation-delay:.15s"/></svg>
+    </div>
+    <div class="platform-row three" style="animation:fadeUp .5s ease-out .5s both">
+      <div class="p-card teal" onclick="alert('Microsoft Sentinel: SIEM and SOAR platform. Detects infrastructure threats via KQL analytics rules. No concept of per-agent behavioural baseline — it watches infrastructure, not agents.')">
+        <div class="p-name">Microsoft Sentinel</div>
+        <div class="p-covers">SIEM · KQL · incident response</div>
+        <div class="p-gap">gap: infra not agent behaviour</div>
+      </div>
+      <div class="p-card teal" onclick="alert('Cisco: monitors OSI layers 3-7. Network traffic, flows, and protocol anomalies. No agent-level context — cannot tell why an agent is generating traffic or whether its pattern is normal.')">
+        <div class="p-name">Cisco</div>
+        <div class="p-covers">network monitoring · OSI layers 3-7</div>
+        <div class="p-gap">gap: no agent context layer</div>
+      </div>
+      <div class="p-card teal" onclick="alert('Oracle SQL Firewall: governs which queries are permitted at the database layer. Downstream only — the agent has already made its decision and sent the query before Oracle sees it.')">
+        <div class="p-name">Oracle SQL Firewall</div>
+        <div class="p-covers">DB access control · query audit</div>
+        <div class="p-gap">gap: downstream of the decision</div>
+      </div>
+    </div>
+    <div class="connector">
+      <svg><line x1="50%" y1="0" x2="50%" y2="100%" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 4" style="animation:flow .4s linear infinite"/></svg>
+      <span>the unmonitored gap</span>
+    </div>
+    <div class="gap-box" style="animation-delay:.7s">
+      <div class="gap-title"><span class="blink-dot"></span>the gap nobody covers</div>
+      <div class="gap-q">What is the agent actually doing between the LLM call and the database?</div>
+      <div class="gap-q">Is it behaving like itself — or has something changed mid-execution?</div>
+      <div class="gap-q">Permitted and normal are not the same thing.</div>
+    </div>
+    <div class="connector">
+      <svg><line x1="50%" y1="0" x2="50%" y2="100%" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4 4" style="animation:flow .45s linear infinite"/></svg>
+    </div>
+    <div class="dusk-box" style="animation-delay:.9s">
+      <div class="dusk-title">DUSK <span class="badge">open source</span><span class="badge">Apache-2.0</span><span class="badge">MITRE ATT&CK + ATLAS</span></div>
+      <div class="dusk-desc">behavioural monitoring layer — sits at the control plane between LLM response and execution</div>
+      <div class="dusk-desc">per-agent baseline · anomaly detection · kill chain correlation · blocks before damage occurs</div>
+      <div class="pillars">
+        <div class="pillar"><div class="pillar-l">detect</div>behavioural drift from per-agent baseline</div>
+        <div class="pillar"><div class="pillar-l">correlate</div>kill chain signals across agent actions</div>
+        <div class="pillar"><div class="pillar-l">block</div>at control plane before execution</div>
+        <div class="pillar"><div class="pillar-l">framework</div>MITRE ATT&CK + ATLAS mapped</div>
+        <div class="pillar"><div class="pillar-l">validated</div>sweep detection T1046 live</div>
+        <div class="pillar"><div class="pillar-l">research</div>DeepMind roadmap aligned</div>
+      </div>
+    </div>
+    <div class="connector">
+      <svg><line x1="50%" y1="0" x2="50%" y2="100%" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="4 4" style="animation:flow .5s linear infinite"/></svg>
+    </div>
+    <div class="s-layer" style="animation-delay:1.1s">
+      <div class="s-label">protected downstream</div>
+      <div class="s-title">Database and infrastructure</div>
+      <div class="s-sub">Oracle 26ai · AWS · Azure · Google Cloud — protected by stopping the compromised agent upstream</div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section>
+  <div class="divider">architecture</div>
+  <h2>How DUSK works</h2>
+  <p class="section-sub" style="margin-bottom:20px">Four layers. Every agent action passes through the DUSK inline gate before reaching infrastructure. The hijacked agent is stopped. The legitimate agents continue unaffected.</p>
+
+  <div class="arch">
+    <div class="arch-row-label">layer 0 — AI agents</div>
+    <div class="arch-row five">
+      <div class="arch-box agent"><div class="box-title">User Agent</div><div class="box-sub">routine ops</div></div>
+      <div class="arch-box agent"><div class="box-title">LLM Agent</div><div class="box-sub">data queries</div></div>
+      <div class="arch-box hijacked"><div class="box-title">⚠ Hijacked Agent</div><div class="box-sub">prompt-injected</div></div>
+      <div class="arch-box agent"><div class="box-title">NetOps Agent</div><div class="box-sub">infra changes</div></div>
+      <div class="arch-box agent"><div class="box-title">Autonomous Agent</div><div class="box-sub">self-directed tasks</div></div>
+    </div>
+
+    <div style="text-align:center;font-size:10px;color:var(--muted);padding:6px 0">all agent action requests flow to the DUSK inline gate</div>
+
+    <div class="arch-row-label">layer 1 — DUSK inline gate</div>
+    <div class="arch-row five">
+      <div class="arch-box dusk-step"><div class="box-title">Ingest</div><div class="box-sub">normalise to AgentAction · Azure · AWS · generic</div></div>
+      <div class="arch-box dusk-step"><div class="box-title">Baseline</div><div class="box-sub">per-agent fingerprint · normal pattern model</div></div>
+      <div class="arch-box dusk-step"><div class="box-title">Analyse</div><div class="box-sub">MITRE ATLAS · ATT&CK · hijack pattern match</div></div>
+      <div class="arch-box dusk-step"><div class="box-title">Predict</div><div class="box-sub">blast radius · kill-chain next stage</div></div>
+      <div class="arch-box dusk-step"><div class="box-title">Verdict + Report</div><div class="box-sub">ALLOW · WOULD-BLOCK · BLOCK · full audit trail</div></div>
+    </div>
+
+    <div class="arch-row-label" style="margin-top:8px">layer 2 — decision</div>
+    <div class="arch-row two">
+      <div class="arch-box decision-block"><div class="box-title">Action refused</div><div class="box-sub">alert raised · logged · quarantine</div></div>
+      <div class="arch-box decision-allow"><div class="box-title">Action allowed</div><div class="box-sub">verdict: permit · continues to infrastructure</div></div>
+    </div>
+
+    <div class="arch-row-label" style="margin-top:8px">layer 3 — Oracle AI database 26ai</div>
+    <div class="arch-row oracle">
+      <div class="arch-box oracle-box"><div class="box-title">SQL Firewall</div><div class="box-sub">2nd line defence at DB</div></div>
+      <div class="arch-box oracle-box"><div class="box-title">AI Vector Search</div><div class="box-sub">DUSK anomaly similarity</div></div>
+      <div class="arch-box oracle-box"><div class="box-title">Property Graphs</div><div class="box-sub">agent relationship mapping</div></div>
+      <div class="arch-box oracle-box"><div class="box-title">LLM Integration</div><div class="box-sub">natural language alert summaries</div></div>
+      <div class="arch-box oracle-box"><div class="box-title">JSON/Relational</div><div class="box-sub">AgentAction events stored</div></div>
+      <div class="arch-box oracle-box"><div class="box-title">Autonomous DB</div><div class="box-sub">enterprise data endpoint</div></div>
+    </div>
+
+    <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:12px;padding:10px;border:.5px solid var(--border);border-radius:8px;background:var(--surface)">
+      DUSK guards the agent layer · Oracle SQL Firewall guards the database layer · complementary, not competing
+    </div>
+  </div>
+</section>
+
+<!-- ONE-LINER -->
+<section style="padding-top:0">
+  <div class="oneliner">
+    <p>
+      <strong>Oracle</strong> protects the database from bad queries.<br>
+      <strong>DUSK</strong> protects the database from good queries made by bad agents.<br><br>
+      <strong>Bedrock manages access. Oracle governs the DB. DUSK watches what happens in between.</strong>
+    </p>
+  </div>
+</section>
+
+<footer>
+  <a href="https://github.com/TFT444/DUSK" target="_blank">github.com/TFT444/DUSK</a>
+  &nbsp;·&nbsp;
+  <a href="https://linkedin.com/in/tanvir-farhad-466940307" target="_blank">Tanvir Farhad</a>
+  &nbsp;·&nbsp; ShieldTech Ltd, London &nbsp;·&nbsp; Apache-2.0
+</footer>
+
+</body>
+</html>
