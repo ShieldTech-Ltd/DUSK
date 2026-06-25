@@ -48,6 +48,9 @@ class Config:
             ``(src, dst)`` pair above which a port scan is flagged.
         boundary_window_seconds: Length of the boundary sliding window, in
             seconds.
+        gate_block_threshold: Anomaly score (0..1) at or above which the agent
+            action gate refuses an action (WOULD-BLOCK in watch mode, BLOCK in
+            enforce mode).
         alert_log_path: Path the alert responder appends JSON entries to.
         log_level: Default logging level name (e.g. ``"WARNING"``).
     """
@@ -57,6 +60,7 @@ class Config:
     sweep_timing_std_threshold: float = 0.05
     boundary_port_threshold: int = 10
     boundary_window_seconds: float = 30.0
+    gate_block_threshold: float = 0.6
     alert_log_path: str = "dusk-alerts.json"
     log_level: str = "WARNING"
 
@@ -73,6 +77,7 @@ class Config:
             "sweep_timing_std_threshold",
             "boundary_port_threshold",
             "boundary_window_seconds",
+            "gate_block_threshold",
         )
         for name in positive_numeric:
             value = getattr(self, name)

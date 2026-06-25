@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Agent action gate (v1.2 to v1.4): per-agent behavioural baseline
+  (src/dusk/actions/baseline.py), an analyser that scores an action against the
+  baseline into an anomaly score with reasons, MITRE ATT&CK + ATLAS mapping,
+  blast radius, and predicted next stage (analyse.py), and a verdict layer that
+  renders ALLOW / WOULD-BLOCK / BLOCK in watch or enforce mode (verdict.py). New
+  `dusk gate --baseline --check [--enforce] [--json]` CLI command. Deterministic
+  and dependency-free so a live demo is stable. A labelled benchmark in the test
+  suite reports precision, recall, and false-positive rate (1.0 / 1.0 / 0.0 on
+  the bundled fixtures).
 - v1.1 agent action ingest layer: the controller-agnostic AgentAction event
   (timezone-aware timestamp, normalised action_type, target, before/after
   change, source, raw_ref) with strict validation and to_dict/from_dict
