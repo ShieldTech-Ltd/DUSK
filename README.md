@@ -9,7 +9,7 @@
 
 > **Inline agent-action security for networks. DUSK analyses every action an AI agent takes on your infrastructure, predicts its impact, and blocks the hijacked ones before they execute.**
 
-DUSK is built for environments where autonomous agents operate the network. It sits inline at the control-plane API, learns each agent's normal behaviour, and refuses the actions that signal a hijack — turning detection into prevention, with a full decision trail for every call.
+Behavioural threat detection for agentic networks. DUSK sits at the control plane, watches every action an AI agent takes before execution, and blocks the hijacked ones before they reach your infrastructure.
 
 ---
 
