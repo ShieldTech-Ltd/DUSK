@@ -4,11 +4,12 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![MITRE ATT&CK + ATLAS](https://img.shields.io/badge/MITRE-ATT%26CK%20%2B%20ATLAS-red.svg)](https://attack.mitre.org/)
-[![OWASP](https://img.shields.io/badge/OWASP-Agentic%20Apps-orange.svg)](https://owasp.org/projects/)
 
 **Behavioral threat detection for agentic networks.**
 
 DUSK watches what AI agents *do*, not what they are permitted to do. It learns each agent's normal action pattern, scores every new action against that baseline, and refuses anomalous actions before they reach the controller -- catching prompt injection, scope creep, and agent impersonation even when the agent's credentials are valid.
+
+On 18 June 2026, Google DeepMind published their AI Control Roadmap -- arguing that runtime behavioural monitoring is the missing layer in agentic AI security. DUSK is the open-source implementation of that layer.
 
 <p align="center">
   <img src="docs/dusk-attack-demo.svg" alt="DUSK live prompt-injection demo: a hijacked network agent is refused before its action reaches the controller" width="100%">
@@ -142,6 +143,8 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 </p>
 
 <p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally -- no behavioral gate, everything flows through. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller -- the network is breached. Phase 3: DUSK is active; the same attack arrives, the three gate layers score it 0.80, and the action is refused before it reaches the controller.</sub></p>
+
+[View interactive architecture →](docs/dusk-arch-animated.html)
 
 The design is layered: the control-plane gate (v1) evaluates agent intent at the API, and the data-plane network layer (v2) confirms what actually happened on the wire. Sensors and adapters are swappable; new detections drop in without touching the engine.
 
@@ -365,10 +368,10 @@ SIEM rules fire on known-bad signatures. A behavioral baseline is the inverse: i
 
 ## References
 
+- [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [MITRE ATT&CK](https://attack.mitre.org/) -- enterprise and network techniques
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
-- [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [Tavily](https://tavily.com/) -- real-time web search API used in the live demo
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 - Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
