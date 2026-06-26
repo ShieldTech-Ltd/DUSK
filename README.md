@@ -21,6 +21,7 @@ On 18 June 2026, Google DeepMind published their AI Control Roadmap -- arguing t
 <summary><b>Table of contents</b></summary>
 
 - [The problem](#the-problem)
+- [Validation](#validation)
 - [Detection in action](#detection-in-action)
 - [What it detects](#what-it-detects)
 - [How it works](#how-it-works)
@@ -33,6 +34,7 @@ On 18 June 2026, Google DeepMind published their AI Control Roadmap -- arguing t
 - [Project layout](#project-layout)
 - [Development](#development)
 - [Roadmap](#roadmap)
+- [Integrations](#integrations)
 - [References](#references)
 - [License](#license)
 
@@ -55,6 +57,17 @@ At agentic scale, that blind spot is where the damage happens:
 | Scope creep | An agent with read scope begins writing and deleting | Each permission check passes; only the behavioral pattern is wrong |
 
 DUSK closes this gap. It is **complementary** to every platform above, not a competitor.
+
+---
+
+## Validation
+
+Two independent findings in June 2026 point at exactly the gap DUSK fills:
+
+- **Anthropic Frontier Red Team (3 June 2026)** -- flagged autonomous killchain orchestration and AI-directed execution with no human in the loop as a leading agentic threat, and noted these techniques do not yet have identifiers in the MITRE ATT&CK framework. DUSK is building that detection vocabulary.
+- **Google DeepMind AI Control Roadmap (18 June 2026)** -- argued that runtime behavioural monitoring is the missing layer in agentic AI security. DUSK is an open-source implementation of that layer.
+
+The pattern is consistent: the agentic threat is real and ahead of the taxonomy, and the missing control is behavioral monitoring at runtime. That is the layer DUSK ships.
 
 ---
 
@@ -363,6 +376,20 @@ A prompt-injected agent has valid credentials. Its token has not changed. The LL
 SIEM rules fire on known-bad signatures. A behavioral baseline is the inverse: it fires on anything that deviates from known-good, whether or not the attacker's technique has been seen before. SIEM can tell you a firewall rule changed. DUSK can tell you that the agent who changed it has never touched firewall rules in its operating history.
 
 **Credentials verify identity. DUSK verifies behavior.**
+
+---
+
+## Integrations
+
+DUSK is built to sit inside an existing stack, not replace it. Every gate verdict is emitted as a stable JSON document (`dusk gate --json`), so downstream wiring is a matter of consuming that output.
+
+| Integration | Role | Status |
+|---|---|---|
+| Tavily | DUSK fetches live web content through Tavily so the prompt-injection demo runs on real, fresh pages instead of canned fixtures | Wired (`demo/live_attack.py`) |
+| n8n | A DUSK alert triggers an n8n workflow to notify, log the incident, and open a ticket -- a SOAR layer over the JSON output | Designed |
+| Mubit | Agent execution memory as a baseline source, so DUSK learns each agent's normal pattern from recorded behavior | Designed |
+
+Tavily runs today: set `TAVILY_API_KEY` and pass `--url` to `demo/live_attack.py`. The n8n and Mubit paths consume the same `dusk gate --json` document and are the next integrations on the roadmap.
 
 ---
 
