@@ -1,15 +1,33 @@
-# DUSK
+<h1 align="center">DUSK</h1>
 
-[![CI](https://github.com/TFT444/DUSK/actions/workflows/dusk.yml/badge.svg?branch=dev)](https://github.com/TFT444/DUSK/actions/workflows/dusk.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![MITRE ATT&CK + ATLAS](https://img.shields.io/badge/MITRE-ATT%26CK%20%2B%20ATLAS-red.svg)](https://attack.mitre.org/)
+<p align="center">
+  <strong>Behavioural threat detection for agentic networks</strong><br>
+  The missing security layer between AI agents and your infrastructure
+</p>
 
-**Behavioral threat detection for agentic networks.**
+<p align="center">
+  <a href="https://github.com/TFT444/DUSK/actions/workflows/dusk.yml"><img src="https://github.com/TFT444/DUSK/actions/workflows/dusk.yml/badge.svg?branch=dev" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python"></a>
+  <a href="https://attack.mitre.org/"><img src="https://img.shields.io/badge/MITRE-ATT%26CK%20%2B%20ATLAS-red.svg" alt="MITRE ATT&CK + ATLAS"></a>
+  <a href="https://github.com/TFT444/DUSK"><img src="https://img.shields.io/badge/status-active-brightgreen.svg" alt="Status"></a>
+</p>
 
-DUSK watches what AI agents *do*, not what they are permitted to do. It learns each agent's normal action pattern, scores every new action against that baseline, and refuses anomalous actions before they reach the controller -- catching prompt injection, scope creep, and agent impersonation even when the agent's credentials are valid.
+<p align="center">
+  <em>Credentials verify identity. DUSK verifies behaviour.</em>
+</p>
 
-On 18 June 2026, Google DeepMind published their AI Control Roadmap -- arguing that runtime behavioural monitoring is the missing layer in agentic AI security. DUSK is the open-source implementation of that layer.
+---
+
+> **Independently validated in the last 30 days**
+>
+> [Anthropic Frontier Red Team (3 Jun 2026)](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) — autonomous killchain orchestration is the #1 AI threat; MITRE ATT&CK has no taxonomy for it yet.
+>
+> [Google DeepMind AI Control Roadmap (18 Jun 2026)](https://deepmind.google/blog/securing-the-future-of-ai-agents/) — runtime behavioural monitoring is the missing security layer.
+>
+> **DUSK is the open-source implementation of that missing layer.**
+
+---
 
 <p align="center">
   <img src="docs/dusk-attack-demo.svg" alt="DUSK live prompt-injection demo: a hijacked network agent is refused before its action reaches the controller" width="100%">
@@ -18,25 +36,16 @@ On 18 June 2026, Google DeepMind published their AI Control Roadmap -- arguing t
 <p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. Run it yourself: <code>python demo/live_attack.py</code></sub></p>
 
 <details>
-<summary><b>Table of contents</b></summary>
+<summary><b>Contents</b></summary>
 
 - [The problem](#the-problem)
-- [Validation](#validation)
 - [Detection in action](#detection-in-action)
 - [What it detects](#what-it-detects)
-- [How it works](#how-it-works)
 - [Architecture](#architecture)
 - [Quickstart](#quickstart)
-- [Usage](#usage)
-- [JSON output](#json-output)
-- [Exit codes](#exit-codes)
-- [Configuration](#configuration)
-- [Project layout](#project-layout)
-- [Development](#development)
 - [Roadmap](#roadmap)
-- [Integrations](#integrations)
+- [Where DUSK sits](#where-dusk-sits-in-the-enterprise-stack)
 - [References](#references)
-- [License](#license)
 
 </details>
 
@@ -57,17 +66,6 @@ At agentic scale, that blind spot is where the damage happens:
 | Scope creep | An agent with read scope begins writing and deleting | Each permission check passes; only the behavioral pattern is wrong |
 
 DUSK closes this gap. It is **complementary** to every platform above, not a competitor.
-
----
-
-## Validation
-
-Two independent findings in June 2026 point at exactly the gap DUSK fills:
-
-- **Anthropic Frontier Red Team (3 June 2026)** -- flagged autonomous killchain orchestration and AI-directed execution with no human in the loop as a leading agentic threat, and noted these techniques do not yet have identifiers in the MITRE ATT&CK framework. DUSK is building that detection vocabulary.
-- **Google DeepMind AI Control Roadmap (18 June 2026)** -- argued that runtime behavioural monitoring is the missing layer in agentic AI security. DUSK is an open-source implementation of that layer.
-
-The pattern is consistent: the agentic threat is real and ahead of the taxonomy, and the missing control is behavioral monitoring at runtime. That is the layer DUSK ships.
 
 ---
 
@@ -151,17 +149,48 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 
 ## Architecture
 
+### Enterprise system architecture
+
 <p align="center">
   <img src="docs/dusk-arch-demo.svg" alt="DUSK three-phase architecture: before deployment, under attack without a gate, and DUSK blocking the hijacked action" width="100%">
 </p>
 
-<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally -- no behavioral gate, everything flows through. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller -- the network is breached. Phase 3: DUSK is active; the same attack arrives, the three gate layers score it 0.80, and the action is refused before it reaches the controller.</sub></p>
-
-[View interactive architecture →](docs/dusk-arch-animated.html)
-
-The design is layered: the control-plane gate (v1) evaluates agent intent at the API, and the data-plane network layer (v2) confirms what actually happened on the wire. Sensors and adapters are swappable; new detections drop in without touching the engine.
+<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller — the network is breached. Phase 3: DUSK is active; the same attack arrives, the gate scores it 0.95, and the action is refused before it reaches the controller.</sub></p>
 
 For the full layered design and integration notes, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### n8n integration demo
+
+<p align="center">
+  <img src="docs/dusk-n8n-demo.svg" alt="DUSK × n8n integration: DUSK fires a WOULD-BLOCK alert, n8n receives it via webhook, enriches via Tavily, notifies the security team, and quarantines the agent" width="100%">
+</p>
+
+<p align="center"><sub>DUSK fires a WOULD-BLOCK alert → n8n webhook receives the payload → three parallel tracks: Tavily enriches the threat in real time, the security team is notified, and the compromised agent is quarantined. Run: <code>python demo/live_attack.py</code> then trigger the n8n workflow from <code>demo/n8n_workflow.json</code>.</sub></p>
+
+---
+
+## Where DUSK sits in the enterprise stack
+
+| Platform | Layer | Covers | Leaves open |
+|---|---|---|---|
+| AWS Bedrock | LLM gateway | Access control and audit for model calls | No baseline of an agent's downstream behavior |
+| Microsoft Sentinel | SIEM | Infrastructure detection and analytics | No per-agent action baseline at the control plane |
+| Cisco and network tooling | Network | Traffic flows at OSI layers 3 to 7 | No agent or action context |
+| Oracle SQL Firewall | Database | Query allow-listing and audit at the database | Downstream of the agent's decision |
+| Google DeepMind agent security | Research | Frameworks for controlling agents | A research direction, not a deployable control |
+| **DUSK** | **Control plane + network** | **Per-agent behavioral monitoring of actions** | **The gap the others leave** |
+
+> Oracle protects the database from bad queries. DUSK protects the database from good queries made by bad agents.
+
+### Why not SIEM or access control?
+
+Every tool above asks one question: **is this agent allowed to do this?** DUSK asks a different question: **does this agent normally do this?** Those are not the same question, and they have different answers when an agent is compromised.
+
+A prompt-injected agent has valid credentials. Its token has not changed. The LLM gateway sees a permitted request. The SIEM sees a permitted API call. Every authorization check passes -- because the agent is who it says it is, it just no longer wants what it used to want.
+
+SIEM rules fire on known-bad signatures. A behavioral baseline fires on anything that deviates from known-good, whether or not the attacker's technique has been seen before.
+
+**Credentials verify identity. DUSK verifies behaviour.**
 
 ---
 
@@ -252,13 +281,11 @@ On an input error the document is `{"error": "..."}` and the exit code is 2.
 | 1 | Alert -- at least one action refused or one detection fired |
 | 2 | Input error -- missing, empty, or unreadable file |
 
-Exit code 1 means DUSK is working: it found something. Add `--json` and pipe the output to your SIEM, incident queue, or CI gate.
-
 ---
 
 ## Configuration
 
-All thresholds are configurable. Copy `dusk.yaml.example` to `dusk.yaml` in your working directory, or override any value with a `DUSK_*` environment variable. Precedence: defaults, then `dusk.yaml`, then environment.
+All thresholds are configurable. Copy `dusk.yaml.example` to `dusk.yaml` in your working directory, or override any value with a `DUSK_*` environment variable.
 
 | Setting | Default | Environment variable |
 |---|---|---|
@@ -295,6 +322,7 @@ src/dusk/
   respond/              Responders (alert log; isolation next)
 demo/
   live_attack.py        End-to-end prompt-injection scenario (Tavily-optional)
+  n8n_workflow.json     Importable n8n workflow for the DUSK integration demo
   index.html            Interactive browser demo
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
@@ -320,7 +348,7 @@ pip-audit -r requirements.txt
 pytest --cov=src/dusk --cov-report=term-missing
 ```
 
-CI runs on every push and pull request to `dev` and `main`. All gates must pass before merge. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch model and PR conventions.
+CI runs on every push and pull request to `dev` and `main`. All gates must pass before merge.
 
 ---
 
@@ -331,17 +359,17 @@ CI runs on every push and pull request to `dev` and `main`. All gates must pass 
 | Layer | What it does | Status |
 |---|---|---|
 | v0.1 -- Network detection | Sweep (T1046) and boundary probe (T1590) over packet captures | Released |
-| v1.1 -- Action ingest | Normalise agent control-plane actions into a controller-agnostic AgentAction event. Azure and generic adapters. | Landed |
+| v1.1 -- Action ingest | Normalise agent control-plane actions into a controller-agnostic AgentAction event | Landed |
 | v1.2 -- Baseline | Per-agent behavioral baseline: action types, target classes, token vocabulary, change values | Landed |
 | v1.3 -- Analyse | Weighted anomaly scoring, MITRE ATT&CK + ATLAS mapping, blast radius, next-stage prediction | Landed |
-| v1.4 -- Verdict gate | ALLOW / WOULD-BLOCK / BLOCK with full reasoning. Watch mode by default; enforce mode upgrades on trust. | Landed |
+| v1.4 -- Verdict gate | ALLOW / WOULD-BLOCK / BLOCK with full reasoning. Watch mode by default; enforce mode on trust. | Landed |
 
 ### In progress
 
 | Layer | What it does |
 |---|---|
-| v1.5 -- Vector baseline | Embedding-based behavioral similarity (Superlinked-compatible) as an optional drop-in behind the baseline seam |
-| v2 -- Data plane | Reposition packet and flow detections as a confirmation layer, correlating what an agent commanded with what the network actually did |
+| v1.5 -- Vector baseline | Embedding-based behavioral similarity (Superlinked-compatible) as an optional drop-in |
+| v2 -- Data plane | Reposition packet and flow detections as a confirmation layer |
 
 ### Direction
 
@@ -354,52 +382,16 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 
 ---
 
-## Where DUSK sits in the enterprise stack
-
-| Platform | Layer | Covers | Leaves open |
-|---|---|---|---|
-| AWS Bedrock | LLM gateway | Access control and audit for model calls | No baseline of an agent's downstream behavior |
-| Microsoft Sentinel | SIEM | Infrastructure detection and analytics | No per-agent action baseline at the control plane |
-| Cisco and network tooling | Network | Traffic flows at OSI layers 3 to 7 | No agent or action context |
-| Oracle SQL Firewall | Database | Query allow-listing and audit at the database | Downstream of the agent's decision |
-| Google DeepMind agent security | Research | Frameworks for controlling agents | A research direction, not a deployable control |
-| **DUSK** | **Control plane + network** | **Per-agent behavioral monitoring of actions** | **The gap the others leave** |
-
-> Oracle protects the database from bad queries. DUSK protects the database from good queries made by bad agents.
-
-### Why not SIEM or access control?
-
-Every tool above asks one question: **is this agent allowed to do this?** DUSK asks a different question: **does this agent normally do this?** Those are not the same question, and they have different answers when an agent is compromised.
-
-A prompt-injected agent has valid credentials. Its token has not changed. The LLM gateway sees a permitted request. The SIEM sees a permitted API call. The network sensor sees a permitted connection. Every authorization check passes -- because the agent is who it says it is, it just no longer wants what it used to want.
-
-SIEM rules fire on known-bad signatures. A behavioral baseline is the inverse: it fires on anything that deviates from known-good, whether or not the attacker's technique has been seen before. SIEM can tell you a firewall rule changed. DUSK can tell you that the agent who changed it has never touched firewall rules in its operating history.
-
-**Credentials verify identity. DUSK verifies behavior.**
-
----
-
-## Integrations
-
-DUSK is built to sit inside an existing stack, not replace it. Every gate verdict is emitted as a stable JSON document (`dusk gate --json`), so downstream wiring is a matter of consuming that output.
-
-| Integration | Role | Status |
-|---|---|---|
-| Tavily | DUSK fetches live web content through Tavily so the prompt-injection demo runs on real, fresh pages instead of canned fixtures | Wired (`demo/live_attack.py`) |
-| n8n | A DUSK alert triggers an n8n workflow to notify, log the incident, and open a ticket -- a SOAR layer over the JSON output | Designed |
-| Mubit | Agent execution memory as a baseline source, so DUSK learns each agent's normal pattern from recorded behavior | Designed |
-
-Tavily runs today: set `TAVILY_API_KEY` and pass `--url` to `demo/live_attack.py`. The n8n and Mubit paths consume the same `dusk gate --json` document and are the next integrations on the roadmap.
-
----
-
 ## References
 
+- [Anthropic Frontier Red Team: Mapping AI-enabled cyber threats](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) -- 832 threat actors analysed; autonomous killchain orchestration identified as highest-risk AI threat with no existing MITRE taxonomy
 - [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [MITRE ATT&CK](https://attack.mitre.org/) -- enterprise and network techniques
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
+- [Superlinked](https://superlinked.com/) -- vector embedding infrastructure compatible with DUSK v1.5 baseline
+- [Tavily](https://tavily.com/) -- real-time web search API used in the live demo and n8n integration
+- [n8n](https://n8n.io/) -- AI agent workflow orchestration used in the integration demo
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
-- [Tavily](https://tavily.com/) -- real-time web search API used in the live demo
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 - Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
 
@@ -411,4 +403,6 @@ Apache-2.0. See [LICENSE](LICENSE) for details.
 
 ---
 
-*Built by [Tanvir Farhad](https://linkedin.com/in/tanvir-farhad-466940307), ShieldTech Ltd, London.*
+<p align="center">
+  Built by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a> · ShieldTech Ltd · London
+</p>
