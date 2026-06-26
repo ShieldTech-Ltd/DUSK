@@ -137,39 +137,11 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 
 ## Architecture
 
-![DUSK enterprise architecture](docs/dusk-enterprise-flow.svg)
+<p align="center">
+  <img src="docs/dusk-arch-demo.svg" alt="DUSK three-phase architecture: before deployment, under attack without a gate, and DUSK blocking the hijacked action" width="100%">
+</p>
 
-```mermaid
-flowchart TD
-    subgraph Sources["Input sources"]
-        S1["pcap / live capture"]
-        S2["Cloud control-plane API\n(Azure, AWS, GCP)"]
-        S3["Web content\n(Tavily fetch)"]
-    end
-
-    subgraph Gate["Agent action gate (v1)"]
-        B["Ingest + normalise\ndusk.actions.ingest"]
-        C["Baseline\ndusk.actions.baseline"]
-        D["Analyse\ndusk.actions.analyse"]
-        E["Verdict\ndusk.actions.verdict"]
-        B --> C --> D --> E
-    end
-
-    subgraph Network["Network layer (v2)"]
-        F["Sensor\ndusk.sensor"]
-        G["Detection runner\ndusk.core.engine"]
-        F --> G
-    end
-
-    S1 --> F
-    S2 --> B
-    S3 --> B
-
-    E -->|ALLOW| H["Pass"]
-    E -->|WOULD-BLOCK / BLOCK| I["Refuse + alert log"]
-    G -->|ALERT| I
-    G -->|CLEAR| H
-```
+<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally -- no behavioral gate, everything flows through. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller -- the network is breached. Phase 3: DUSK is active; the same attack arrives, the three gate layers score it 0.80, and the action is refused before it reaches the controller.</sub></p>
 
 The design is layered: the control-plane gate (v1) evaluates agent intent at the API, and the data-plane network layer (v2) confirms what actually happened on the wire. Sensors and adapters are swappable; new detections drop in without touching the engine.
 
@@ -378,6 +350,16 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 | **DUSK** | **Control plane + network** | **Per-agent behavioral monitoring of actions** | **The gap the others leave** |
 
 > Oracle protects the database from bad queries. DUSK protects the database from good queries made by bad agents.
+
+### Why not SIEM or access control?
+
+Every tool above asks one question: **is this agent allowed to do this?** DUSK asks a different question: **does this agent normally do this?** Those are not the same question, and they have different answers when an agent is compromised.
+
+A prompt-injected agent has valid credentials. Its token has not changed. The LLM gateway sees a permitted request. The SIEM sees a permitted API call. The network sensor sees a permitted connection. Every authorization check passes -- because the agent is who it says it is, it just no longer wants what it used to want.
+
+SIEM rules fire on known-bad signatures. A behavioral baseline is the inverse: it fires on anything that deviates from known-good, whether or not the attacker's technique has been seen before. SIEM can tell you a firewall rule changed. DUSK can tell you that the agent who changed it has never touched firewall rules in its operating history.
+
+**Credentials verify identity. DUSK verifies behavior.**
 
 ---
 
