@@ -34,6 +34,7 @@ api = [
     "flask-cors>=4.0",
     "requests>=2.31",
     "python-dotenv>=1.0",
+    "tavily-python>=0.3",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -49,6 +50,7 @@ dev = [
     "flask-cors>=4.0",
     "requests>=2.31",
     "python-dotenv>=1.0",
+    "tavily-python>=0.3",
 ]
 
 [project.urls]
