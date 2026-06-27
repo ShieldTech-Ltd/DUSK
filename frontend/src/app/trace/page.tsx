@@ -6,6 +6,31 @@ import DeploymentWizard from '@/components/DeploymentWizard'
 import ExecutionCockpit from '@/components/ExecutionCockpit'
 import SponsorPanel from '@/components/SponsorPanel'
 
+const EXTERNAL_BACKEND = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? ''
+
+function BackendBadge() {
+  if (EXTERNAL_BACKEND) {
+    return (
+      <span
+        title={`All API calls proxied to ${EXTERNAL_BACKEND}`}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-green-900/60 text-green-300 border-green-700"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+        Live backend connected
+      </span>
+    )
+  }
+  return (
+    <span
+      title="NEXT_PUBLIC_BACKEND_API_URL not set — using local Next.js API routes with DUSK-schema demo data. Set the env var to proxy to a real backend."
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-yellow-900/40 text-yellow-400 border-yellow-800 cursor-help"
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+      Demo mode · DUSK schema aligned
+    </span>
+  )
+}
+
 type Tab = 'discovery' | 'deployment' | 'cockpit'
 
 const TABS: { id: Tab; label: string; icon: string; description: string }[] = [
@@ -37,15 +62,20 @@ export default function TracePage() {
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/40">
-              <span className="text-white font-bold text-base">T</span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/40">
+                <span className="text-white font-bold text-base">T</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white leading-tight">Trace Execution Layer</h1>
+                <p className="text-gray-400 text-xs hidden sm:block">
+                  AI Agent Security Execution and Deployment Layer · Built at {'{Tech: Europe}'} London 2026
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white leading-tight">Trace Execution Layer</h1>
-              <p className="text-gray-400 text-xs hidden sm:block">
-                AI Agent Security Execution and Deployment Layer · Built at {'{Tech: Europe}'} London 2026
-              </p>
+            <div className="shrink-0">
+              <BackendBadge />
             </div>
           </div>
         </div>
