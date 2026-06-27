@@ -26,7 +26,50 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_decisions: list[dict[str, object]] = []
+_decisions: list[dict[str, object]] = [
+    {
+        "id": "seed-001",
+        "timestamp": "2026-06-27T09:14:02+00:00",
+        "agent_id": "agent-finance-01",
+        "action": "firewall_rule_change",
+        "score": 91,
+        "verdict": "BLOCK",
+        "mitre": "T1562.004",
+        "reasoning": "Agent modified outbound firewall rules outside maintenance window; target segment is PCI-scoped. No prior pattern of network changes in baseline.",
+        "risk_flags": ["out-of-hours", "pci-scope", "no-baseline"],
+        "blast_radius": "CRITICAL",
+        "predicted_next": "lateral_movement",
+        "tavily_enrichment": [],
+    },
+    {
+        "id": "seed-002",
+        "timestamp": "2026-06-27T09:18:44+00:00",
+        "agent_id": "agent-ops-03",
+        "action": "role_assignment",
+        "score": 78,
+        "verdict": "WOULD-BLOCK",
+        "mitre": "T1098",
+        "reasoning": "Privilege escalation to admin role on production cluster. Agent has never performed role assignments in baseline; anomaly score exceeds watch threshold.",
+        "risk_flags": ["privilege-escalation", "prod-cluster"],
+        "blast_radius": "HIGH",
+        "predicted_next": "credential_access",
+        "tavily_enrichment": [],
+    },
+    {
+        "id": "seed-003",
+        "timestamp": "2026-06-27T09:22:11+00:00",
+        "agent_id": "agent-deploy-02",
+        "action": "route_change",
+        "score": 12,
+        "verdict": "ALLOW",
+        "mitre": "T1599",
+        "reasoning": "Routine BGP route update matching agent baseline. Change within expected maintenance window and target.",
+        "risk_flags": [],
+        "blast_radius": "LOW",
+        "predicted_next": "none",
+        "tavily_enrichment": [],
+    },
+]
 
 
 def _fire_n8n(payload: dict[str, object]) -> None:
