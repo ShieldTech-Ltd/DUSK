@@ -36,7 +36,6 @@ api = [
     "python-dotenv>=1.0",
     "tavily-python>=0.3",
     "google-generativeai>=0.8",
-    "aikido-firewall",
     "urllib3>=2.0",
 ]
 dev = [
@@ -55,7 +54,6 @@ dev = [
     "python-dotenv>=1.0",
     "tavily-python>=0.3",
     "google-generativeai>=0.8",
-    "aikido-firewall",
     "urllib3>=2.0",
 ]
 
