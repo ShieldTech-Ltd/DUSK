@@ -66,7 +66,7 @@ def explain_threat(
     )
 
     try:
-        import google.generativeai as genai  # type: ignore[import-not-found]
+        import google.generativeai as genai
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(_MODEL)

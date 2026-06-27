@@ -13,7 +13,7 @@ class ThreatEnrichment:
 
 def enrich_alert(agent_id: str, action_type: str, mitre_id: str) -> ThreatEnrichment:
     try:
-        from tavily import TavilyClient  # type: ignore[import-not-found]
+        from tavily import TavilyClient
 
         client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
         query = f"{mitre_id} {action_type} threat actor technique 2026"
