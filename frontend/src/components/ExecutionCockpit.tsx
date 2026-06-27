@@ -397,17 +397,54 @@ export default function ExecutionCockpit() {
     }
   }
 
+  const executionStep = (() => {
+    if (!selectedIssue) return 1
+    if (!plan) return 2
+    if (!fixResult) return 3
+    return 4
+  })()
+
+  const STEPS = [
+    { n: 1, label: 'Select issue' },
+    { n: 2, label: 'Review plan' },
+    { n: 3, label: 'Approve' },
+    { n: 4, label: 'Execute & audit' },
+  ]
+
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-white mb-1">Execution Cockpit</h2>
-        <p className="text-gray-400 text-sm">
-          DUSK gate verdicts and network detection alerts. Approve fixes, allocate resources
-          and trigger DUSK remediation actions. Powered by{' '}
-          <span className="text-purple-400">DUSK gate</span>,{' '}
-          <span className="text-teal-400">Tavily threat intel</span> and{' '}
-          <span className="text-orange-400">n8n SOAR</span>.
+        <p className="text-gray-400 text-sm mb-4">
+          A detected security issue becomes an approved backend fix in four guided steps.
         </p>
+
+        {/* Step indicator */}
+        <div className="flex items-center gap-0 mb-6">
+          {STEPS.map((s, i) => (
+            <span key={s.n} className="flex items-center">
+              <span
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  executionStep === s.n
+                    ? 'bg-blue-600 text-white'
+                    : executionStep > s.n
+                    ? 'bg-green-900/60 text-green-300 border border-green-800'
+                    : 'bg-gray-800 text-gray-500 border border-gray-700'
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold shrink-0 ${
+                  executionStep > s.n ? 'bg-green-500 text-white' : executionStep === s.n ? 'bg-blue-400 text-blue-900' : 'bg-gray-700 text-gray-400'
+                }`}>
+                  {executionStep > s.n ? '✓' : s.n}
+                </span>
+                {s.label}
+              </span>
+              {i < STEPS.length - 1 && (
+                <span className={`mx-1 text-xs ${executionStep > s.n ? 'text-green-700' : 'text-gray-700'}`}>→</span>
+              )}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
