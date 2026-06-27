@@ -62,12 +62,17 @@ export default function CustomerDiscovery() {
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-white mb-1">Customer Discovery</h2>
-        <p className="text-gray-400 text-sm">
-          Trace automatically researches companies using AI agents and scores them against the
-          ideal customer profile. Powered by{' '}
-          <span className="text-blue-400">Tavily</span>,{' '}
-          <span className="text-blue-400">Superlinked</span> and{' '}
-          <span className="text-blue-400">Mubit</span>.
+        <p className="text-gray-400 text-sm mb-1">
+          Companies that deploy AI agents without a behavioural security layer are DUSK&apos;s
+          target customers. Every agent that can modify infrastructure, access a database, or send
+          external messages is an unmonitored control-plane risk.
+        </p>
+        <p className="text-gray-500 text-xs">
+          Powered by <span className="text-teal-400">Tavily</span> (live research) ·{' '}
+          <span className="text-purple-400">Superlinked</span> (ICP similarity scoring) ·{' '}
+          <span className="text-yellow-400">Mubit</span> (model routing) ·{' '}
+          <span className="text-blue-400">Attio</span> (CRM record) ·{' '}
+          <span className="text-orange-400">n8n</span> (follow-up automation)
         </p>
       </div>
 

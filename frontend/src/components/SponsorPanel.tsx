@@ -10,13 +10,13 @@ interface SponsorRow {
 }
 
 const SPONSORS: SponsorRow[] = [
-  { name: 'Attio',         emoji: '🗃️', role: 'Customer and execution system of record',   statusKey: 'attio' },
-  { name: 'Tavily',        emoji: '🔍', role: 'Customer discovery and threat enrichment',  statusKey: 'tavily' },
-  { name: 'Superlinked',   emoji: '🧠', role: 'ICP similarity matching',                   statusKey: 'superlinked' },
-  { name: 'n8n',           emoji: '⚙️', role: 'Approval workflow and SOAR automation',     statusKey: 'n8n' },
-  { name: 'Mubit',         emoji: '💡', role: 'Cost-aware model routing',                  statusKey: 'mubit' },
-  { name: 'Gemini',        emoji: '✨', role: 'Risk explanation and plan generation',      statusKey: 'gemini' },
-  { name: 'Aikido',        emoji: '🛡️', role: 'Repo security scan evidence',              statusKey: 'aikido' },
+  { name: 'Attio',         emoji: '🗃️', role: 'System of record — customers, opportunities, deployment status, execution history', statusKey: 'attio' },
+  { name: 'Tavily',        emoji: '🔍', role: 'Live threat intel for DUSK MITRE techniques · customer ICP research',               statusKey: 'tavily' },
+  { name: 'Superlinked',   emoji: '🧠', role: 'v1.5 vector baseline — embedding-based behavioural similarity for ICP scoring',     statusKey: 'superlinked' },
+  { name: 'n8n',           emoji: '⚙️', role: 'WOULD-BLOCK alert → SOAR incident → Tavily enrich → quarantine agent',             statusKey: 'n8n' },
+  { name: 'Mubit',         emoji: '💡', role: 'Cost-aware model routing for fix recommendation and risk explanation',               statusKey: 'mubit' },
+  { name: 'Gemini',        emoji: '✨', role: 'Manager-facing plain-English risk summary and deployment plan generation',           statusKey: 'gemini' },
+  { name: 'Aikido',        emoji: '🛡️', role: 'Repo static scan — DUSK CI security gate, Most Secure Build evidence',            statusKey: 'aikido' },
 ]
 
 type IntegrationStatuses = Record<string, string>
@@ -77,7 +77,7 @@ export default function SponsorPanel() {
           <div>
             <h2 className="text-base font-semibold text-white">Partner Integration Status</h2>
             <p className="text-gray-500 text-xs mt-0.5">
-              Green = live integration active. Demo = payload-ready, key not set.{' '}
+              Each partner fills a specific gap in the DUSK stack. Green = live key configured. Demo = payload-ready, key not set.{' '}
               <span className="text-gray-600">
                 {source === 'api' ? 'Status from live backend.' : source === 'local' ? 'Status from local API.' : 'Showing defaults.'}
               </span>

@@ -113,15 +113,17 @@ function BackendEngineCard() {
         {badge}
       </div>
       <p className="text-gray-400 text-xs leading-relaxed mb-4">
-        The backend engine detects agent, API and database risks, then returns issues, plans and
-        execution logs to this frontend.
+        DUSK learns a per-agent behavioural baseline, then scores every new action for anomaly.
+        Prompt injection via drift, privilege escalation, scope creep, network sweep, and boundary
+        probe — each returns ALLOW, WOULD-BLOCK, or BLOCK with MITRE ATT&CK + ATLAS mapping,
+        blast radius, and a next-stage prediction.
       </p>
       <div className="grid grid-cols-2 gap-2 text-xs mb-4">
         {[
-          ['Gate verdicts', 'ActionGate.evaluate()'],
-          ['Network alerts', 'AlertResponder._persist()'],
-          ['Tavily enrichment', 'enrich_alert()'],
-          ['SOAR trigger', 'n8n webhook'],
+          ['Behavioral gate', 'ActionGate.evaluate()'],
+          ['Network detections', 'AlertResponder._persist()'],
+          ['Threat enrichment', 'Tavily enrich_alert()'],
+          ['SOAR automation', 'n8n webhook'],
         ].map(([label, src]) => (
           <div key={label} className="bg-gray-800/60 rounded-lg p-2.5">
             <div className="text-white font-medium mb-0.5">{label}</div>
@@ -189,7 +191,7 @@ function AuditTrailPanel() {
           <div>
             <h2 className="text-base font-semibold text-white">Audit Trail</h2>
             <p className="text-gray-500 text-xs mt-0.5">
-              Every action is recorded with a timestamp and actor.{' '}
+              Every DUSK verdict, fix and integration event is recorded immutably.{' '}
               {loading ? 'Loading…' : `Showing last ${displayed.length} events.`}
             </p>
           </div>
@@ -229,9 +231,9 @@ function AuditTrailPanel() {
 type Tab = 'discovery' | 'deployment' | 'cockpit'
 
 const TABS: { id: Tab; label: string; icon: string; step: number; description: string }[] = [
-  { id: 'discovery', label: 'Customer Discovery', icon: '🔍', step: 1, description: 'Find and qualify potential customers using AI research' },
-  { id: 'deployment', label: 'Deployment Wizard',  icon: '🚀', step: 2, description: "Safely onboard a customer's agent workflow with DUSK" },
-  { id: 'cockpit',   label: 'Execution Cockpit',  icon: '⚡', step: 3, description: 'Approve, resource and execute DUSK security fixes' },
+  { id: 'discovery', label: 'Customer Discovery', icon: '🔍', step: 1, description: 'Find companies whose AI agents need a behavioural security layer — scored by Tavily research and Superlinked ICP matching' },
+  { id: 'deployment', label: 'Deployment Wizard',  icon: '🚀', step: 2, description: "Prepare DUSK's gate policy, allowed/blocked actions and approval manager for a customer's agent workflow" },
+  { id: 'cockpit',   label: 'Execution Cockpit',  icon: '⚡', step: 3, description: 'ALLOW / WOULD-BLOCK / BLOCK verdicts from DUSK → manager approval → backend fix → immutable audit trail' },
 ]
 
 const WORKFLOW_STEPS = ['Discover', 'Onboard', 'Approve', 'Execute', 'Audit']
@@ -263,12 +265,18 @@ export default function TracePage() {
       <div className="bg-gray-900/50 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <p className="text-gray-200 text-lg font-medium max-w-2xl leading-snug mb-1">
-            Find customers, prepare onboarding, and execute approved AI agent security fixes
-            with a full audit trail.
+            Behavioural threat detection for agentic networks — the missing security layer
+            between AI agents and your infrastructure.
           </p>
-          <p className="text-gray-400 text-sm max-w-2xl mb-6">
-            A manager-friendly cockpit for AI agent security onboarding, approval and self-healing execution.
-            Trace turns backend security findings into approved, resourced and auditable actions.
+          <p className="text-gray-400 text-sm max-w-2xl mb-3">
+            Credentials verify identity. DUSK verifies behaviour. Trace turns DUSK&apos;s
+            behavioural verdicts into approved, resourced and auditable fixes — giving managers
+            control and customers confidence.
+          </p>
+          <p className="text-gray-600 text-xs max-w-2xl mb-6 italic">
+            Every existing control asks: <span className="text-gray-500">is this agent allowed to do this?</span>{' '}
+            DUSK asks: <span className="text-gray-400 font-medium">does this agent normally do this?</span>{' '}
+            Those are not the same question.
           </p>
 
           {/* Workflow bar */}

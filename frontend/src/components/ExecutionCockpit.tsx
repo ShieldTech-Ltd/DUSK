@@ -415,8 +415,14 @@ export default function ExecutionCockpit() {
     <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold text-white mb-1">Execution Cockpit</h2>
-        <p className="text-gray-400 text-sm mb-4">
-          A detected security issue becomes an approved backend fix in four guided steps.
+        <p className="text-gray-400 text-sm mb-1">
+          DUSK scores each agent action against its individual behavioural baseline. Actions that
+          deviate — a new action type, new sensitive tokens, new target class — receive
+          WOULD-BLOCK or BLOCK with MITRE ATT&CK + ATLAS mapping and a kill-chain prediction.
+        </p>
+        <p className="text-gray-500 text-xs mb-4">
+          Select a DUSK verdict below, review the execution plan, get manager approval, then
+          trigger the backend fix. Every step is recorded in the audit trail.
         </p>
 
         {/* Step indicator */}
@@ -450,9 +456,10 @@ export default function ExecutionCockpit() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Issue inbox */}
         <div className="xl:col-span-1">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            DUSK Alert Inbox
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            DUSK Behavioural Verdicts
           </h3>
+          <p className="text-gray-600 text-[10px] mb-3">Gate (control plane) · Detection (network)</p>
           <div className="space-y-2">
             {issues.map((issue) => (
               <button
@@ -495,7 +502,7 @@ export default function ExecutionCockpit() {
                   <div>
                     <h3 className="font-semibold text-white mb-1">{issueTitle(selectedIssue)}</h3>
                     <p className="text-gray-400 text-sm">
-                      {selectedIssue.customer} · type: {selectedIssue.type}
+                      {selectedIssue.customer} · {selectedIssue.type === 'gate' ? 'Control-plane gate verdict' : 'Network behavioural detection'}
                     </p>
                   </div>
                   <IssueBadge issue={selectedIssue} />

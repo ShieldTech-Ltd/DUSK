@@ -51,11 +51,11 @@ export interface DetectionIssue {
 
 export type SecurityIssue = GateIssue | DetectionIssue
 
-/** Title for display */
+/** Title for display — uses DUSK's own output vocabulary */
 export function issueTitle(issue: SecurityIssue): string {
   if (issue.type === 'gate')
-    return `${issue.verdict}: ${issue.action_type} by ${issue.agent_id}`
-  return `${issue.detection} from ${issue.source_ip}`
+    return `${issue.verdict}: ${issue.agent_id} → ${issue.action_type} on ${issue.target}`
+  return `${issue.detection.replace(/_/g, ' ')} detected from ${issue.source_ip}`
 }
 
 /** Severity-equivalent label for display */
