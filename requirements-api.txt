@@ -7,6 +7,7 @@ python-dotenv
 # Partner integrations
 tavily-python
 mubit
+google-generativeai
 
 # Aikido runtime security
 aikido-firewall

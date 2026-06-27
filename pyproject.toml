@@ -36,6 +36,7 @@ api = [
     "python-dotenv>=1.0",
     "tavily-python>=0.3",
     "mubit",
+    "google-generativeai>=0.8",
     "aikido-firewall",
     "urllib3>=2.0",
 ]
@@ -55,6 +56,7 @@ dev = [
     "python-dotenv>=1.0",
     "tavily-python>=0.3",
     "mubit",
+    "google-generativeai>=0.8",
     "aikido-firewall",
     "urllib3>=2.0",
 ]
@@ -109,11 +111,16 @@ ignore_missing_imports = true
 follow_imports = "skip"
 
 # Flask 3.x route decorators produce [type-var] in mypy 2.1+ and
-# [untyped-decorator] in older mypy. Suppress both here rather than
-# scattering per-line ignores that rot as mypy versions change.
+# [untyped-decorator] in older mypy. API deps (flask, requests, dotenv)
+# are optional extras so ignore import errors here too.
 [[tool.mypy.overrides]]
 module = ["dusk.api"]
-disable_error_code = ["type-var", "untyped-decorator"]
+ignore_missing_imports = true
+disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
+
+[[tool.mypy.overrides]]
+module = ["dusk.integrations.*", "dusk.trace.*"]
+ignore_missing_imports = true
 
 [tool.bandit]
 exclude_dirs = ["tests", "lab"]
