@@ -1,5 +1,15 @@
+# Flask API server
 flask
 flask-cors
 requests
 python-dotenv
+
+# Partner integrations
 tavily-python
+mubit
+
+# Aikido runtime security
+aikido-firewall
+
+# HTTP client (already in stdlib but explicit for clarity)
+urllib3
