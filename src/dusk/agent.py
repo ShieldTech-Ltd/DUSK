@@ -36,6 +36,23 @@ _DEMO_CONTENT: dict[str, str] = {
         "Cohere provides enterprise NLP APIs, raised $270M. Focused on "
         "retrieval-augmented generation and text understanding for business."
     ),
+    "palantir": (
+        "Palantir Technologies is a data analytics and AI platform company, NYSE:PLTR. "
+        "Revenue $2.9B (2024), profitable, strong US government + enterprise contracts. "
+        "Expanding into AI operations platform (AIP) for commercial sector."
+    ),
+    "scale ai": (
+        "Scale AI provides data labelling, evaluation and RLHF pipelines for AI companies. "
+        "Revenue $1B+, valued at $13.8B. Contracts with US DoD and major AI labs."
+    ),
+    "openai": (
+        "OpenAI builds GPT-4, o3 and ChatGPT. Revenue $3.4B (2024), raising at $300B valuation. "
+        "Enterprise API widely adopted. Non-profit structure converting to public benefit corp."
+    ),
+    "deepmind": (
+        "Google DeepMind is Alphabet's AI research lab. Builds Gemini, AlphaFold. "
+        "Not independently fundable but key strategic asset for Alphabet cloud business."
+    ),
 }
 
 
@@ -69,6 +86,7 @@ def research_company(company: str) -> DuskDecision:
     from dusk.recorder import record
 
     record(decision)
+    _push_attio(decision)
     logger.info(
         "researched company=%s score=%d risk=%s",
         company,
@@ -78,26 +96,66 @@ def research_company(company: str) -> DuskDecision:
     return decision
 
 
+def _push_attio(decision: DuskDecision) -> None:
+    try:
+        from dusk.integrations.attio_client import push_company_score
+
+        push_company_score(
+            company=decision.subject,
+            score=decision.score,
+            confidence=decision.confidence,
+            risk_level=decision.risk_level.value,
+            reasoning=decision.reasoning,
+            risk_flags=decision.risk_flags,
+            decision_id=decision.id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Attio push failed (non-fatal): %s", exc)
+
+
 def _tavily_search(company: str) -> list[dict[str, object]]:
     api_key = os.getenv("TAVILY_API_KEY", "")
-    if not api_key:
-        content = _DEMO_CONTENT.get(company.lower(), f"{company} is a technology company.")
-        return [{"title": company, "content": content, "url": ""}]
-    try:
-        from tavily import TavilyClient  # type: ignore[import-untyped]
+    if api_key:
+        try:
+            from tavily import TavilyClient  # type: ignore[import-untyped]
 
-        client = TavilyClient(api_key=api_key)
-        response = client.search(
-            query=f"{company} company funding revenue business model 2026",
-            search_depth="basic",
-            max_results=3,
-        )
-        results: list[dict[str, object]] = response.get("results", [])
-        return results
+            client = TavilyClient(api_key=api_key)
+            response = client.search(
+                query=f"{company} company funding revenue business model 2026",
+                search_depth="basic",
+                max_results=3,
+            )
+            results: list[dict[str, object]] = response.get("results", [])
+            return results
+        except ImportError:
+            logger.warning("tavily-python not installed -- trying DuckDuckGo")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Tavily search failed: %s -- trying DuckDuckGo", exc)
+
+    return _duckduckgo_search(company)
+
+
+def _duckduckgo_search(company: str) -> list[dict[str, object]]:
+    try:
+        from ddgs import DDGS  # type: ignore[import-not-found,unused-ignore]
+
+        with DDGS() as ddgs:
+            raw = list(
+                ddgs.text(
+                    f"{company} company funding revenue business model 2026",
+                    max_results=3,
+                )
+            )
+        return [
+            {"title": r.get("title", ""), "content": r.get("body", ""), "url": r.get("href", "")}
+            for r in raw
+        ]
     except ImportError:
-        logger.warning("tavily-python not installed -- using demo content")
+        logger.info("duckduckgo-search not installed -- using demo content")
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Tavily search failed: %s", exc)
+        logger.warning("DuckDuckGo search failed: %s -- using demo content", exc)
+    content = _DEMO_CONTENT.get(company.lower(), f"{company} is a technology company.")
+    return [{"title": company, "content": content, "url": ""}]
     content = _DEMO_CONTENT.get(company.lower(), f"{company} is a technology company.")
     return [{"title": company, "content": content, "url": ""}]
 
@@ -107,11 +165,9 @@ def _gemini_score(company: str, sources: list[dict[str, object]]) -> dict[str, o
     if not api_key:
         return _demo_score(company)
     try:
-        import google.generativeai as genai
+        from google import genai  # type: ignore[import-untyped,unused-ignore]
 
-        genai.configure(api_key=api_key)  # type: ignore[attr-defined]
-        model = genai.GenerativeModel("gemini-1.5-flash")  # type: ignore[attr-defined]
-
+        client = genai.Client(api_key=api_key)
         content_text = "\n".join(str(s.get("content", s.get("title", ""))) for s in sources)
         prompt = (
             f"You are a company qualification agent for a B2B sales team.\n"
@@ -121,10 +177,10 @@ def _gemini_score(company: str, sources: list[dict[str, object]]) -> dict[str, o
             f'{{"score": <0-100>, "reasoning": "<one sentence>", '
             f'"confidence": <0.0-1.0>, "risk_flags": ["<flag>"]}}'
         )
-        response = model.generate_content(prompt)
-        return _parse_gemini(response.text)
+        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+        return _parse_gemini(response.text or "")
     except ImportError:
-        logger.warning("google-generativeai not installed -- using demo score")
+        logger.warning("google-genai not installed -- using demo score")
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gemini scoring failed: %s", exc)
     return _demo_score(company)
@@ -180,11 +236,35 @@ def _demo_score(company: str) -> dict[str, object]:
             "risk_flags": ["competitive_market"],
             "reasoning": "Enterprise NLP APIs with proven B2B revenue but crowded market.",
         },
+        "palantir": {
+            "score": 79,
+            "confidence": 0.88,
+            "risk_flags": ["government_dependency"],
+            "reasoning": "Profitable data-analytics platform with strong AIP commercial momentum.",
+        },
+        "scale ai": {
+            "score": 71,
+            "confidence": 0.82,
+            "risk_flags": [],
+            "reasoning": "Critical AI data infrastructure with $1B+ revenue and DoD contracts.",
+        },
+        "openai": {
+            "score": 85,
+            "confidence": 0.94,
+            "risk_flags": ["high_valuation", "governance_risk"],
+            "reasoning": "Dominant generative AI platform; enterprise API adoption accelerating.",
+        },
+        "deepmind": {
+            "score": 52,
+            "confidence": 0.65,
+            "risk_flags": ["not_independently_fundable"],
+            "reasoning": "World-class research but wholly owned by Alphabet -- not standalone.",
+        },
     }
     default: dict[str, object] = {
         "score": 55,
-        "confidence": 0.6,
+        "confidence": 0.60,
         "risk_flags": [],
-        "reasoning": f"{company} shows moderate prospect signals.",
+        "reasoning": f"{company} shows moderate prospect signals based on available data.",
     }
     return scores.get(company.lower(), default)

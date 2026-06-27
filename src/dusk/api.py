@@ -156,6 +156,37 @@ def heal_decision(decision_id: str) -> object:
     return jsonify({"error": "not found"}), 404
 
 
+@app.route("/attio/trigger", methods=["POST"])
+def attio_trigger() -> object:
+    """Webhook called by Attio automations when a Company record is created.
+
+    This is the agentic direction: a new company lands in the CRM and
+    DUSK automatically researches it and posts the score back as a note.
+    Attio calls this URL via its built-in automation editor.
+    """
+    raw = request.get_json(force=True, silent=True)
+    payload: dict[str, object] = raw if isinstance(raw, dict) else {}
+
+    nested = payload.get("data")
+    nested_name = nested.get("name", "") if isinstance(nested, dict) else ""
+    company = str(payload.get("company") or payload.get("name") or nested_name or "").strip()
+
+    if not company:
+        return jsonify({"error": "company name not found in payload"}), 400
+
+    def _background() -> None:
+        try:
+            from dusk.agent import research_company
+
+            research_company(company)
+            logger.info("Attio trigger: research complete for %s", company)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Attio trigger research failed for %s: %s", company, exc)
+
+    threading.Thread(target=_background, daemon=True).start()
+    return jsonify({"status": "research_started", "company": company}), 202
+
+
 @app.route("/research", methods=["POST"])
 def research_endpoint() -> object:
     raw = request.get_json(force=True, silent=True)
