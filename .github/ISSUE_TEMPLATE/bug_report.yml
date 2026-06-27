@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a defect in DUSK (CLI, a detection, a sensor, config, etc.).
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in the fields
+        below, complete reports are triaged far faster.
+
+        **Not a bug?** Use a feature request for proposals, or the private
+        Security Advisory link for vulnerabilities (never a public issue).
+  - type: input
+    id: version
+    attributes:
+      label: DUSK version
+      description: Output of `dusk --version` (or the commit SHA you are on).
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of DUSK is affected?
+      options:
+        - CLI
+        - Detection, sweep
+        - Detection, boundary
+        - Sensor, pcap
+        - Configuration
+        - Engine / kill-chain
+        - Alerting / responder
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Exact command(s) and, if relevant, how to obtain or generate the pcap.
+        Minimal reproductions are best.
+      placeholder: |
+        1. dusk scan --file capture.pcap
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Verbose logs
+      description: Re-run with `dusk --verbose ...` and paste relevant output.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go to a private advisory).
+          required: true

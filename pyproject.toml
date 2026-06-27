@@ -1,0 +1,123 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dusk-security"
+version = "0.1.0"
+description = "Behavioral threat detection for agentic networks, catch AI agent attacks before they complete."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Dusk contributors" }]
+keywords = ["security", "threat-detection", "network", "ai-agents", "behavioral-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "scapy>=2.5.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+api = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "tavily-python>=0.3",
+    "google-generativeai>=0.8",
+    "urllib3>=2.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-env>=1.1.0",
+    "ruff>=0.4.4",
+    "mypy>=1.10.0",
+    "bandit[toml]>=1.7.8",
+    "pip-audit>=2.7.0",
+    "pre-commit>=3.7.0",
+    "types-PyYAML>=6.0",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "tavily-python>=0.3",
+    "google-generativeai>=0.8",
+    "urllib3>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tft444/dusk"
+Repository = "https://github.com/tft444/dusk"
+
+[project.scripts]
+dusk = "dusk.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Force UTF-8 for the test process so console capture never falls back to a
+# platform default like Windows cp1252, which cannot encode every character the
+# Rich alert panel may emit.
+env = ["PYTHONIOENCODING=utf-8"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# select/ignore live under [tool.ruff.lint] (modern ruff) to avoid the
+# top-level deprecation warning while keeping the same rule selection.
+# ANN101/ANN102 (annotate self/cls) were removed from ruff, so they are not
+# listed here, modern ruff no longer flags self/cls, matching the intent.
+select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "ANN"]
+"lab/*" = ["S", "ANN"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+
+# Scapy ships py.typed but builds its `scapy.all` namespace dynamically, so
+# mypy cannot resolve IP/TCP/UDP/ICMP/Packet as attributes. Skip following it
+# and treat its symbols as untyped rather than littering the sensor with
+# per-line ignores. This is isolated to the one module that touches Scapy.
+[[tool.mypy.overrides]]
+module = ["scapy.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+# Flask 3.x route decorators produce [type-var] in mypy 2.1+ and
+# [untyped-decorator] in older mypy. API deps (flask, requests, dotenv)
+# are optional extras so ignore import errors here too.
+[[tool.mypy.overrides]]
+module = ["dusk.api"]
+ignore_missing_imports = true
+disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
+
+[[tool.mypy.overrides]]
+module = ["dusk.integrations.*", "dusk.trace.*"]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "lab"]
