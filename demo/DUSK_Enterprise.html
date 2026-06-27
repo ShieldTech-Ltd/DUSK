@@ -1046,7 +1046,7 @@ function log(type,msg){
 }
 
 // ── API POLL ─────────────────────────────────────────────────
-const API='http://localhost:5000';
+const API=window.location.origin;
 const GEMINI_API_KEY=typeof window!=='undefined'&&window.GEMINI_API_KEY||'';
 let _apiConnected = false;
 let _lastCount = -1;

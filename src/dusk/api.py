@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 import requests as req_lib
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 load_dotenv()
@@ -72,7 +72,7 @@ def receive_alert() -> object:
         entry["verdict"],
     )
 
-    threading.Thread(target=_fire_n8n, args=(entry,), daemon=True).start()
+    _fire_n8n(entry)
 
     enrichment: list[dict[str, object]] = []
 
@@ -249,6 +249,19 @@ def replay_research_decision(decision_id: str) -> object:
             "delta": {"replay_count": original.replay_count},
         }
         return jsonify(fallback), 201
+
+
+_DEMO_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "demo")
+
+
+@app.route("/")
+def demo_index() -> object:
+    return send_from_directory(_DEMO_DIR, "index.html")
+
+
+@app.route("/demo/<path:filename>")
+def demo_file(filename: str) -> object:
+    return send_from_directory(_DEMO_DIR, filename)
 
 
 def run() -> None:
