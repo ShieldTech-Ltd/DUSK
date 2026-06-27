@@ -27,7 +27,7 @@ def _fire_n8n(payload: dict[str, object]) -> None:
     if not url:
         return
     try:
-        req_lib.post(url, json=payload, timeout=5)
+        req_lib.post(url, json=payload, timeout=5)  # type: ignore[arg-type]
         logger.info("n8n webhook fired for verdict=%s", payload.get("verdict"))
     except Exception as exc:
         logger.warning("n8n webhook failed: %s", exc)
