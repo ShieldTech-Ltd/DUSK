@@ -96,8 +96,9 @@ class DuskDecision:
             if isinstance(raw_sources, list)
             else []
         )
+        raw_status = str(data.get("attio_status", AttioStatus.NOT_PUSHED.value))
         try:
-            d.attio_status = AttioStatus(str(data.get("attio_status", AttioStatus.NOT_PUSHED.value)))
+            d.attio_status = AttioStatus(raw_status)
         except ValueError:
             d.attio_status = AttioStatus.NOT_PUSHED
         d.attio_record_id = str(data.get("attio_record_id", ""))
