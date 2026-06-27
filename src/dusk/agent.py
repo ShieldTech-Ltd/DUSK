@@ -102,9 +102,7 @@ def _tavily_search(company: str) -> list[dict[str, object]]:
     return [{"title": company, "content": content, "url": ""}]
 
 
-def _gemini_score(
-    company: str, sources: list[dict[str, object]]
-) -> dict[str, object]:
+def _gemini_score(company: str, sources: list[dict[str, object]]) -> dict[str, object]:
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         return _demo_score(company)
@@ -114,9 +112,7 @@ def _gemini_score(
         genai.configure(api_key=api_key)  # type: ignore[attr-defined]
         model = genai.GenerativeModel("gemini-1.5-flash")  # type: ignore[attr-defined]
 
-        content_text = "\n".join(
-            str(s.get("content", s.get("title", ""))) for s in sources
-        )
+        content_text = "\n".join(str(s.get("content", s.get("title", ""))) for s in sources)
         prompt = (
             f"You are a company qualification agent for a B2B sales team.\n"
             f"Score '{company}' as a sales prospect based on this research:\n\n"
@@ -141,8 +137,12 @@ def _parse_gemini(text: str) -> dict[str, object]:
     start = cleaned.find("{")
     end = cleaned.rfind("}") + 1
     if start == -1 or end <= start:
-        return {"score": 0, "reasoning": "Gemini returned unparseable output",
-                "confidence": 0.0, "risk_flags": ["parse_error"]}
+        return {
+            "score": 0,
+            "reasoning": "Gemini returned unparseable output",
+            "confidence": 0.0,
+            "risk_flags": ["parse_error"],
+        }
     try:
         data = json.loads(cleaned[start:end])
         return {
@@ -152,27 +152,39 @@ def _parse_gemini(text: str) -> dict[str, object]:
             "risk_flags": [str(f) for f in data.get("risk_flags", []) if isinstance(f, str)],
         }
     except (json.JSONDecodeError, ValueError):
-        return {"score": 0, "reasoning": "Gemini JSON parse error",
-                "confidence": 0.0, "risk_flags": ["parse_error"]}
+        return {
+            "score": 0,
+            "reasoning": "Gemini JSON parse error",
+            "confidence": 0.0,
+            "risk_flags": ["parse_error"],
+        }
 
 
 def _demo_score(company: str) -> dict[str, object]:
     scores: dict[str, dict[str, object]] = {
         "anthropic": {
-            "score": 82, "confidence": 0.91, "risk_flags": ["high_valuation"],
+            "score": 82,
+            "confidence": 0.91,
+            "risk_flags": ["high_valuation"],
             "reasoning": "AI safety leader with major funding and enterprise traction.",
         },
         "mistral": {
-            "score": 74, "confidence": 0.85, "risk_flags": [],
+            "score": 74,
+            "confidence": 0.85,
+            "risk_flags": [],
             "reasoning": "Fast-growing open-model lab with strong European enterprise pipeline.",
         },
         "cohere": {
-            "score": 68, "confidence": 0.78, "risk_flags": ["competitive_market"],
+            "score": 68,
+            "confidence": 0.78,
+            "risk_flags": ["competitive_market"],
             "reasoning": "Enterprise NLP APIs with proven B2B revenue but crowded market.",
         },
     }
     default: dict[str, object] = {
-        "score": 55, "confidence": 0.6, "risk_flags": [],
+        "score": 55,
+        "confidence": 0.6,
+        "risk_flags": [],
         "reasoning": f"{company} shows moderate prospect signals.",
     }
     return scores.get(company.lower(), default)

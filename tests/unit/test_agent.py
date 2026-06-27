@@ -17,8 +17,10 @@ def _reset():
 def test_research_returns_decision():
     gemini_return = {"score": 82, "reasoning": "Strong", "confidence": 0.91, "risk_flags": []}
     tavily_return = [{"title": "Anthropic", "content": "AI safety", "url": ""}]
-    with patch("dusk.agent._tavily_search", return_value=tavily_return), \
-            patch("dusk.agent._gemini_score", return_value=gemini_return):
+    with (
+        patch("dusk.agent._tavily_search", return_value=tavily_return),
+        patch("dusk.agent._gemini_score", return_value=gemini_return),
+    ):
         d = research_company("Anthropic")
     assert isinstance(d, DuskDecision)
     assert d.subject == "Anthropic"
