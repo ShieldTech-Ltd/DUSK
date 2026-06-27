@@ -19,19 +19,34 @@ class SimilarDecision:
     verdict: str
 
 
-def _embed_superlinked(text: str) -> list[float] | None:
-    try:
-        from superlinked_client import SuperlinkedClient  # type: ignore[import-not-found]
+_SL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-        client = SuperlinkedClient(
-            api_key=os.getenv("SUPERLINKED_API_KEY", ""),
-            endpoint=os.getenv("SUPERLINKED_ENDPOINT", ""),
-        )
-        result = client.encode(text, model="BAAI/bge-small-en-v1.5")
-        return list(result.embedding)
-    except ImportError:
-        logger.debug("superlinked_client not installed -- using n-gram fallback")
+
+def _embed_superlinked(text: str) -> list[float] | None:
+    import json
+    import urllib.request
+
+    api_key = os.getenv("SUPERLINKED_API_KEY", "")
+    endpoint = os.getenv("SUPERLINKED_ENDPOINT", "").rstrip("/")
+    if not api_key or not endpoint:
         return None
+    try:
+        payload = json.dumps({"model": _SL_MODEL, "input": text}).encode()
+        req = urllib.request.Request(  # noqa: S310
+            endpoint + "/v1/embeddings",
+            data=payload,
+            headers={
+                "Authorization": "Bearer " + api_key,
+                "x-sl-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310  # noqa: S310
+            data: dict[str, object] = json.loads(resp.read())
+        records = data.get("data", [])
+        embedding = records[0].get("embedding", []) if isinstance(records, list) and records else []
+        return [float(v) for v in embedding] if embedding else None
     except Exception as exc:  # noqa: BLE001
         logger.warning("Superlinked encode failed: %s", exc)
         return None

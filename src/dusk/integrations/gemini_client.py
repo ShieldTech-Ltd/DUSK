@@ -18,7 +18,7 @@ import os
 
 logger = logging.getLogger("dusk.integrations.gemini")
 
-_MODEL = "gemini-2.0-flash"
+_MODEL = "gemini-2.5-flash"
 
 _PROMPT_TEMPLATE = """You are a cybersecurity analyst briefing a non-technical executive.
 
@@ -66,16 +66,15 @@ def explain_threat(
     )
 
     try:
-        import google.generativeai as genai
+        from google import genai  # type: ignore[import-untyped]
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(_MODEL)
-        response = model.generate_content(prompt)
-        text: str = response.text.strip()
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(model=_MODEL, contents=prompt)
+        text: str = (response.text or "").strip()
         logger.info("Gemini explanation generated for agent=%s verdict=%s", agent_id, verdict)
-        return text
+        return text or None
     except ImportError:
-        logger.warning("google-generativeai not installed -- skipping AI explanation")
+        logger.warning("google-genai not installed -- run: pip install google-genai")
         return None
     except Exception as exc:  # noqa: BLE001
         logger.warning("Gemini call failed (non-fatal): %s", exc)

@@ -176,6 +176,53 @@ def build_gate() -> ActionGate:
     return gate
 
 
+def _fire_live_integrations(verdict: GateVerdict) -> None:
+    """Fire real Gemini + Attio + n8n calls in a daemon thread."""
+    import threading
+
+    def _run() -> None:
+        analysis = verdict.analysis
+        try:
+            from dusk.integrations.gemini_client import explain_threat
+
+            explanation = explain_threat(
+                agent_id=analysis.agent_id,
+                action=analysis.action_type,
+                score=analysis.score,
+                verdict=str(verdict.verdict),
+                mitre=analysis.mitre_attack,
+                reasoning="; ".join(analysis.reasons),
+                blast_radius=analysis.blast_radius,
+                predicted_next=analysis.predicted_next,
+            )
+            if explanation:
+                console.print(
+                    f"\n[bold purple]GEMINI ANALYSIS[/bold purple]  {explanation}\n"
+                )
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[dim]gemini: {exc}[/dim]")
+
+        try:
+            from dusk.integrations.attio_client import create_incident
+
+            create_incident(
+                agent_id=analysis.agent_id,
+                action=analysis.action_type,
+                score=analysis.score,
+                verdict=str(verdict.verdict),
+                mitre=analysis.mitre_attack,
+                blast_radius=analysis.blast_radius,
+                reasoning="; ".join(analysis.reasons),
+                predicted_next=analysis.predicted_next,
+                decision_id="demo-live",
+                tavily_enrichment=[],
+            )
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[dim]attio: {exc}[/dim]")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _render(page_name: str, verdict: GateVerdict) -> None:
     """Render one run's verdict as a panel."""
     analysis = verdict.analysis
@@ -250,6 +297,9 @@ def run(url: str | None = None) -> int:
             good_history=known_good,
             baseline=gate.baseline,
         )
+
+        # Fire real integrations in background so they don't slow the display.
+        _fire_live_integrations(poisoned_verdict)
 
         console.print()
         console.print("[bold cyan]⟳  DUSK SELF-HEALING INITIATED[/bold cyan]")
