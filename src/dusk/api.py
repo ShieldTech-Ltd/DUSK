@@ -67,6 +67,30 @@ def receive_alert() -> object:
 
     threading.Thread(target=_fire_n8n, args=(entry,), daemon=True).start()
 
+    enrichment: list[dict[str, object]] = []
+    attio_note_id: str | None = None
+    try:
+        from dusk.integrations.attio_client import create_incident
+
+        if data.get("verdict") in ("WOULD-BLOCK", "BLOCK"):
+            attio_note_id = create_incident(
+                agent_id=str(data.get("agent_id", "unknown")),
+                action=str(data.get("action", "")),
+                score=float(str(data.get("score", 0))) / 100,
+                verdict=str(data.get("verdict", "")),
+                mitre=str(data.get("mitre", "")),
+                blast_radius=str(data.get("blast_radius", "low")),
+                reasoning=str(data.get("reasoning", "")),
+                predicted_next=str(data.get("predicted_next", "")),
+                decision_id=str(entry.get("id", "")),
+                tavily_enrichment=enrichment,
+            )
+            if attio_note_id:
+                entry["attio_note_id"] = attio_note_id
+                logger.info("Attio incident created: %s", attio_note_id)
+    except Exception as exc:
+        logger.warning("Attio integration failed (non-fatal): %s", exc)
+
     return jsonify(entry), 201
 
 
@@ -79,6 +103,29 @@ def list_decisions() -> object:
 def get_decision(decision_id: str) -> object:
     for d in _decisions:
         if d["id"] == decision_id:
+            return jsonify(d)
+    return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/decisions/<decision_id>/heal", methods=["POST"])  # type: ignore[untyped-decorator]
+def heal_decision(decision_id: str) -> object:
+    for d in _decisions:
+        if d["id"] == decision_id:
+            d["healed"] = True
+            d["healed_at"] = datetime.now(UTC).isoformat()
+            try:
+                from dusk.integrations.attio_client import update_incident_healed
+
+                note_id = str(d.get("attio_note_id", ""))
+                if note_id:
+                    update_incident_healed(
+                        note_id=note_id,
+                        agent_id=str(d.get("agent_id", "")),
+                        actions_replayed=5,
+                        healed_at=str(d["healed_at"]),
+                    )
+            except Exception as exc:
+                logger.warning("Attio heal update failed (non-fatal): %s", exc)
             return jsonify(d)
     return jsonify({"error": "not found"}), 404
 
