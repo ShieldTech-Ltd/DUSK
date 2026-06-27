@@ -100,5 +100,12 @@ module = ["scapy.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 
+# Flask 3.x route decorators produce [type-var] in mypy 2.1+ and
+# [untyped-decorator] in older mypy. Suppress both here rather than
+# scattering per-line ignores that rot as mypy versions change.
+[[tool.mypy.overrides]]
+module = ["dusk.api"]
+disable_error_code = ["type-var", "untyped-decorator"]
+
 [tool.bandit]
 exclude_dirs = ["tests", "lab"]

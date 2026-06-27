@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 
 import requests as req_lib
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request  # type: ignore[import-not-found]
-from flask_cors import CORS  # type: ignore[import-untyped]
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 load_dotenv()
 
@@ -33,12 +33,12 @@ def _fire_n8n(payload: dict[str, object]) -> None:
         logger.warning("n8n webhook failed: %s", exc)
 
 
-@app.route("/health")  # type: ignore[untyped-decorator]
+@app.route("/health")
 def health() -> object:
     return jsonify({"status": "ok", "decisions": len(_decisions)})
 
 
-@app.route("/api/alert", methods=["POST"])  # type: ignore[untyped-decorator]
+@app.route("/api/alert", methods=["POST"])
 def receive_alert() -> object:
     data: dict[str, object] = request.json or {}
 
@@ -94,12 +94,12 @@ def receive_alert() -> object:
     return jsonify(entry), 201
 
 
-@app.route("/api/decisions")  # type: ignore[untyped-decorator]
+@app.route("/api/decisions")
 def list_decisions() -> object:
     return jsonify(_decisions)
 
 
-@app.route("/api/decisions/<decision_id>")  # type: ignore[untyped-decorator]
+@app.route("/api/decisions/<decision_id>")
 def get_decision(decision_id: str) -> object:
     for d in _decisions:
         if d["id"] == decision_id:
@@ -107,7 +107,7 @@ def get_decision(decision_id: str) -> object:
     return jsonify({"error": "not found"}), 404
 
 
-@app.route("/api/decisions/<decision_id>/heal", methods=["POST"])  # type: ignore[untyped-decorator]
+@app.route("/api/decisions/<decision_id>/heal", methods=["POST"])
 def heal_decision(decision_id: str) -> object:
     for d in _decisions:
         if d["id"] == decision_id:
