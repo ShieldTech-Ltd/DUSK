@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dusk.actions.analyse import AnalysisResult, analyse
 from dusk.actions.baseline import Baseline
 from dusk.actions.event import AgentAction
 from dusk.config import Config, get_config
+
+if TYPE_CHECKING:
+    from dusk.actions.learner import ActionMemory
 
 logger = logging.getLogger("dusk.actions.verdict")
 
@@ -57,6 +60,7 @@ class ActionGate:
         baseline: Baseline | None = None,
         config: Config | None = None,
         enforce: bool = False,
+        memory: ActionMemory | None = None,
     ) -> None:
         """Create the gate.
 
@@ -67,10 +71,15 @@ class ActionGate:
                 to the process-wide singleton.
             enforce: When ``True``, refused actions are BLOCK; otherwise they
                 are WOULD-BLOCK (watch mode).
+            memory: Optional :class:`~dusk.actions.learner.ActionMemory` for
+                self-learning. When supplied, past decisions automatically
+                influence future scores -- repeated mistakes score higher,
+                known-good patterns score lower.
         """
         self.config = config if config is not None else get_config()
         self.baseline = baseline if baseline is not None else Baseline()
         self.enforce = enforce
+        self.memory = memory
 
     def learn(self, actions: list[AgentAction]) -> None:
         """Fold known-good actions into the baseline."""
@@ -85,6 +94,13 @@ class ActionGate:
     def evaluate(self, action: AgentAction) -> GateVerdict:
         """Analyse one action and render a verdict."""
         result = analyse(self.baseline, action)
+
+        if self.memory is not None:
+            delta, extra_reasons = self.memory.adjust(action)
+            if delta != 0.0:
+                result.score = min(1.0, max(0.0, result.score + delta))
+                result.reasons.extend(extra_reasons)
+
         if result.score >= self.config.gate_block_threshold:
             verdict = BLOCK if self.enforce else WOULD_BLOCK
             logger.error(
@@ -101,6 +117,12 @@ class ActionGate:
             )
         else:
             verdict = ALLOW
+
+        if self.memory is not None:
+            gate_verdict = GateVerdict(verdict=verdict, analysis=result)
+            self.memory.record(action, gate_verdict)
+            return gate_verdict
+
         return GateVerdict(verdict=verdict, analysis=result)
 
     def evaluate_all(self, actions: list[AgentAction]) -> list[GateVerdict]:
