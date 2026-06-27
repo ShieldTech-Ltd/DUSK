@@ -251,7 +251,7 @@ def replay_research_decision(decision_id: str) -> object:
         return jsonify(fallback), 201
 
 
-_DEMO_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "demo")
+_DEMO_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "demo")
 
 
 @app.route("/")
