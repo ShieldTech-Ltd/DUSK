@@ -1,9 +1,3 @@
-"""Semantic similarity search for past agent decisions.
-
-Attempts to use Superlinked for real embeddings; falls back to a deterministic
-n-gram hash embedding so the demo always works without an API key.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -11,7 +5,7 @@ import math
 import os
 from dataclasses import dataclass
 
-from dusk.trace.models import TraceDecision
+from dusk.models import DuskDecision
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +13,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SimilarDecision:
     id: str
-    agent_id: str
-    action: str
+    subject: str
+    score: int
     similarity: float
     verdict: str
-    score: int
 
 
 _SL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -76,25 +69,20 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def find_similar(
-    target_action: str,
-    target_agent: str,
-    past_decisions: list[TraceDecision],
+    target: DuskDecision,
+    past_decisions: list[DuskDecision],
     top_k: int = 3,
 ) -> list[SimilarDecision]:
-    """Return the top_k most similar past decisions to a new one.
-
-    Returns an empty list when fewer than 2 past decisions exist.
-    Never raises -- worst case is an empty list.
-    """
+    """Return the top_k most similar past decisions. Never raises."""
     if len(past_decisions) < 2:
         return []
 
-    query = f"{target_agent} {target_action}"
+    query = f"{target.subject} {target.reasoning}"
     query_vec = _embed_superlinked(query) or _ngram_fallback(query)
 
-    scored: list[tuple[float, TraceDecision]] = []
+    scored: list[tuple[float, DuskDecision]] = []
     for d in past_decisions:
-        candidate = f"{d.agent_id} {d.action} {d.reasoning}"
+        candidate = f"{d.subject} {d.reasoning}"
         candidate_vec = _embed_superlinked(candidate) or _ngram_fallback(candidate)
         sim = _cosine(query_vec, candidate_vec)
         if sim > 0.3:
@@ -105,11 +93,10 @@ def find_similar(
     return [
         SimilarDecision(
             id=d.id,
-            agent_id=d.agent_id,
-            action=d.action,
-            similarity=round(sim, 3),
-            verdict="BLOCK" if d.score >= 70 else "ALLOW",
+            subject=d.subject,
             score=d.score,
+            similarity=round(sim, 3),
+            verdict="QUALIFIED" if d.score >= 65 else "FLAGGED",
         )
         for sim, d in scored[:top_k]
     ]

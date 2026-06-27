@@ -33,7 +33,11 @@
   <img src="docs/dusk-attack-demo.svg" alt="DUSK live prompt-injection demo: a hijacked network agent is refused before its action reaches the controller" width="100%">
 </p>
 
-<p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. Run it yourself: <code>python demo/live_attack.py</code></sub></p>
+<p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. DUSK simultaneously fires Gemini Flash (plain-English briefing), Attio CRM (incident record), n8n SOAR (security team alert), and Superlinked (similarity search) -- all in under 2 seconds.</sub></p>
+
+<p align="center">
+  <strong>Interactive demo:</strong> open <code>demo/live_demo.html</code> in a browser for an animated walkthrough of the full 6-phase attack and response pipeline. No server required.
+</p>
 
 <details>
 <summary><b>Contents</b></summary>
@@ -214,6 +218,101 @@ dusk scan --file tests/fixtures/attack_sweep.pcap
 
 ---
 
+## Live Dashboard -- Full End-to-End Demo
+
+DUSK ships with a real-time security operations dashboard and a Flask API that wires all partner integrations together.
+
+### Partner integrations (live)
+
+| Partner | Role | What DUSK does |
+|---------|------|----------------|
+| **Attio** | CRM hub | Auto-creates a CRM incident on every WOULD-BLOCK; closes it on self-heal; pushes research scores back as company notes |
+| **Gemini 2.5 Flash** | AI reasoning | Produces a plain-English threat explanation for every alert |
+| **n8n** | SOAR automation | Webhook fires on every alert; n8n routes to security team and enriches the record |
+| **Superlinked** | Vector search | 384-dim semantic embeddings surface similar past decisions |
+| **DuckDuckGo** | Threat intel | Free real-time web search for MITRE enrichment (no API key needed) |
+
+### Setup
+
+```bash
+# 1. Clone and install
+git clone https://github.com/TFT444/DUSK.git
+cd DUSK
+pip install -e ".[dev]"
+
+# 2. Configure integrations -- copy and fill in your keys
+cp .env.example .env   # edit with your GEMINI_API_KEY, ATTIO_API_KEY, N8N_WEBHOOK_URL,
+                       # SUPERLINKED_API_KEY, SUPERLINKED_ENDPOINT
+
+# 3. Verify all integrations before demo
+python demo/preflight.py   # must show 6 PASS
+
+# 4. Start the API server
+flask --app dusk.api run --port 5000
+
+# 5. Serve the frontend (separate terminal)
+python3 -m http.server 8081 --directory demo
+```
+
+Open `http://localhost:8081/index.html` in Chrome.
+
+### Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | Yes | Google AI Studio key (ai.google.dev) |
+| `ATTIO_API_KEY` | Yes | Attio workspace API key (app.attio.com/settings/api) |
+| `N8N_WEBHOOK_URL` | Yes | Production webhook URL from your n8n workflow |
+| `SUPERLINKED_API_KEY` | Yes | Superlinked cluster key |
+| `SUPERLINKED_ENDPOINT` | Yes | Superlinked cluster endpoint URL |
+| `TAVILY_API_KEY` | No | Falls back to DuckDuckGo automatically if not set |
+
+### API endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Server health and decision count |
+| `/api/alert` | POST | Record a security verdict -- triggers Gemini, n8n, Attio, Superlinked |
+| `/api/decisions` | GET | All recorded decisions |
+| `/api/decisions/<id>/heal` | POST | Trigger self-healing -- closes Attio incident |
+| `/research` | POST | Research a company via Gemini + DuckDuckGo -- pushes score to Attio |
+| `/research/decisions` | GET | All research results |
+| `/attio/trigger` | POST | Attio webhook -- receives company name, fires research in background |
+
+### Alert payload
+
+```json
+{
+  "agent_id": "netops-agent",
+  "action": "firewall_rule_change",
+  "score": 0.92,
+  "verdict": "WOULD-BLOCK",
+  "mitre": "T1562.004",
+  "blast_radius": "HIGH",
+  "reasoning": "opens guest-to-restricted segment",
+  "predicted_next": "lateral movement",
+  "decision_id": "demo-001"
+}
+```
+
+DUSK responds with a Gemini explanation, Attio note ID, n8n delivery status, and Superlinked similarity results synchronously.
+
+### Attio CRM -- bidirectional flow
+
+```
+New company in Attio
+  --> POST /attio/trigger {"company": "Acme Corp"}
+  --> DUSK researches via Gemini + DuckDuckGo
+  --> Score pushed as note on Attio company record
+
+Agent WOULD-BLOCK
+  --> DUSK calls create_incident() on "DUSK Security Hub" company
+  --> n8n webhook fires in parallel
+  --> Self-heal --> incident marked closed in Attio
+```
+
+---
+
 ## Usage
 
 ```text
@@ -321,9 +420,12 @@ src/dusk/
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
 demo/
-  live_attack.py        End-to-end prompt-injection scenario (Tavily-optional)
-  n8n_workflow.json     Importable n8n workflow for the DUSK integration demo
-  index.html            Interactive browser demo
+  live_demo.html        Interactive animated demo -- 6-phase prompt injection + pipeline response
+  index.html            Live security operations dashboard (Security Gate + Research Pipeline)
+  live_attack.py        End-to-end terminal scenario (DuckDuckGo + Attio)
+  preflight.py          Pre-demo smoke test -- verifies all 6 integrations
+  seed_attio.py         Seeds Attio with demo companies and incidents
+  DEMO_GUIDE.md         Timed 2-min video script and 5-min finalist guide
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
   scenarios/            pcap generators for network fixture data
