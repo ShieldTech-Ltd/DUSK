@@ -68,6 +68,25 @@ def receive_alert() -> object:
     threading.Thread(target=_fire_n8n, args=(entry,), daemon=True).start()
 
     enrichment: list[dict[str, object]] = []
+
+    try:
+        from dusk.integrations.gemini_client import explain_threat
+
+        explanation = explain_threat(
+            agent_id=str(data.get("agent_id", "unknown")),
+            action=str(data.get("action", "")),
+            score=float(str(data.get("score", 0))) / 100,
+            verdict=str(data.get("verdict", "")),
+            mitre=str(data.get("mitre", "")),
+            reasoning=str(data.get("reasoning", "")),
+            blast_radius=str(data.get("blast_radius", "low")),
+            predicted_next=str(data.get("predicted_next", "")),
+        )
+        if explanation:
+            entry["gemini_explanation"] = explanation
+    except Exception as exc:
+        logger.warning("Gemini integration failed (non-fatal): %s", exc)
+
     attio_note_id: str | None = None
     try:
         from dusk.integrations.attio_client import create_incident
