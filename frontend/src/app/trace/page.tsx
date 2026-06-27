@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import CustomerDiscovery from '@/components/CustomerDiscovery'
 import DeploymentWizard from '@/components/DeploymentWizard'
 import ExecutionCockpit from '@/components/ExecutionCockpit'
@@ -8,25 +8,62 @@ import SponsorPanel from '@/components/SponsorPanel'
 
 const EXTERNAL_BACKEND = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? ''
 
+type BackendStatus = 'checking' | 'live' | 'fallback'
+
 function BackendBadge() {
-  if (EXTERNAL_BACKEND) {
+  const [status, setStatus] = useState<BackendStatus>(EXTERNAL_BACKEND ? 'checking' : 'fallback')
+  const [detail, setDetail] = useState('')
+
+  useEffect(() => {
+    if (!EXTERNAL_BACKEND) return
+    const url = `${EXTERNAL_BACKEND}/api/trace/health`
+    fetch(url, { signal: AbortSignal.timeout(3000) })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((data: { mode?: string; tavily?: string; n8n?: string }) => {
+        setStatus('live')
+        const parts = [`mode: ${data.mode ?? 'live'}`]
+        if (data.tavily) parts.push(`tavily: ${data.tavily}`)
+        if (data.n8n) parts.push(`n8n: ${data.n8n}`)
+        setDetail(parts.join(' · '))
+      })
+      .catch((err: unknown) => {
+        setStatus('fallback')
+        setDetail(`${EXTERNAL_BACKEND} unreachable — ${err instanceof Error ? err.message : 'error'}`)
+      })
+  }, [])
+
+  if (status === 'checking') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-gray-800 text-gray-400 border-gray-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" />
+        Connecting…
+      </span>
+    )
+  }
+
+  if (status === 'live') {
     return (
       <span
-        title={`All API calls proxied to ${EXTERNAL_BACKEND}`}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-green-900/60 text-green-300 border-green-700"
+        title={detail || `Backend: ${EXTERNAL_BACKEND}`}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-green-900/60 text-green-300 border-green-700 cursor-help"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
         Live backend connected
       </span>
     )
   }
+
+  // fallback
+  const fallbackTitle = EXTERNAL_BACKEND
+    ? detail || `${EXTERNAL_BACKEND} unreachable — using demo data`
+    : 'NEXT_PUBLIC_BACKEND_API_URL not set — using local Next.js API routes with DUSK-schema demo data'
   return (
     <span
-      title="NEXT_PUBLIC_BACKEND_API_URL not set — using local Next.js API routes with DUSK-schema demo data. Set the env var to proxy to a real backend."
+      title={fallbackTitle}
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-yellow-900/40 text-yellow-400 border-yellow-800 cursor-help"
     >
       <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-      Demo mode · DUSK schema aligned
+      {EXTERNAL_BACKEND ? 'Backend unavailable · mock fallback' : 'Demo mode · DUSK schema aligned'}
     </span>
   )
 }

@@ -93,12 +93,22 @@ export async function getSecurityIssueDetail(issueId: string): Promise<SecurityI
   return apiFetch<SecurityIssue>(`/api/security/issues/${issueId}`)
 }
 
+// When NEXT_PUBLIC_BACKEND_API_URL is set, these call the dedicated backend routes
+// (GET /api/dusk/gate-verdicts and GET /api/dusk/alerts) which return real DUSK
+// gate verdicts from ActionGate and AlertResponder respectively.
+// When the env var is empty, they fall through to the local Next.js routes.
 export async function getDuskGateVerdicts(): Promise<SecurityIssue[]> {
+  if (BASE_URL) {
+    return apiFetch<SecurityIssue[]>('/api/dusk/gate-verdicts')
+  }
   const issues = await getSecurityIssues()
   return issues.filter(i => i.type === 'gate')
 }
 
 export async function getDuskAlerts(): Promise<SecurityIssue[]> {
+  if (BASE_URL) {
+    return apiFetch<SecurityIssue[]>('/api/dusk/alerts')
+  }
   const issues = await getSecurityIssues()
   return issues.filter(i => i.type === 'detection')
 }
@@ -117,16 +127,22 @@ export async function getTavilyEnrichment(
   actionType: string,
   mitreId: string
 ): Promise<TavilyEnrichment> {
+  // When live backend is set, call the dedicated /api/dusk/tavily-enrichment route
+  // which calls Python enrich_alert() when TAVILY_API_KEY is present.
+  const path = BASE_URL ? '/api/dusk/tavily-enrichment' : '/api/integrations/tavily/research'
+
   const result = await apiFetch<{
     query: string
     summary?: string
     sources: { title: string; url: string; snippet: string }[]
     enrichment?: { query: string; summary?: string; sources: { title: string; url: string; snippet: string }[] }
-  }>('/api/integrations/tavily/research', {
+    mode?: string
+  }>(path, {
     method: 'POST',
     body: JSON.stringify({ agent_id: agentId, action_type: actionType, mitre_id: mitreId }),
   })
 
+  // Direct backend response (mode field present) or Next.js wrapped response
   const data = result.enrichment ?? result
   return {
     query: data.query,
@@ -232,17 +248,23 @@ export async function triggerN8nWorkflow(payload: {
     blast_radius: string
   }
 }): Promise<{ success: boolean; execution_id?: string; message: string }> {
+  // When live backend is set, call /api/dusk/n8n-soar which uses Python fire_webhook()
+  // with the real N8N_WEBHOOK_URL. Falls back to /api/integrations/n8n/trigger (Next.js).
+  const path = BASE_URL ? '/api/dusk/n8n-soar' : '/api/integrations/n8n/trigger'
+
   const result = await apiFetch<{
-    integration_status: string
+    integration_status?: string
+    mode?: string
     status: string
     message: string
     payload?: { workflow_run_id?: string }
-  }>('/api/integrations/n8n/trigger', {
+  }>(path, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  const isLive = result.mode === 'live' || result.integration_status === 'live' || result.status.includes('triggered')
   return {
-    success: result.integration_status === 'live' || result.status.includes('triggered'),
+    success: isLive,
     execution_id: (result.payload as { workflow_run_id?: string } | undefined)?.workflow_run_id,
     message: result.message,
   }

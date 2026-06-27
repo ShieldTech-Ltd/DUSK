@@ -213,23 +213,72 @@ detected → planned → approval_requested → approved → resource_allocated 
 
 ## Setup and run
 
-### Frontend (Trace execution cockpit)
+### Frontend only (demo mode — no backend required)
 
 ```bash
 cd frontend
 cp .env.example .env.local
-# Add API keys as needed — all integrations work in demo mode without keys
+# Leave NEXT_PUBLIC_BACKEND_API_URL empty for demo mode
 npm install
 npm run dev
 # Open http://localhost:3000/trace
 ```
 
-### Backend (DUSK detection engine)
+The page shows a yellow **Demo mode · DUSK schema aligned** badge. All UI features work using in-memory DUSK-schema mock data.
+
+---
+
+### Frontend + live DUSK backend
+
+**Terminal 1 — start the DUSK Trace backend:**
+
+```bash
+cd ~/Playground/hackathon/Trace-LondonHack-2026-06-27/DUSK
+pip install fastapi "uvicorn[standard]" python-dotenv
+PYTHONPATH=src uvicorn dusk.trace.api:app --reload --port 8000
+```
+
+**Terminal 2 — start the frontend:**
+
+```bash
+cd frontend
+cp .env.example .env.local
+# .env.example already sets: NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000
+npm install
+npm run dev
+```
+
+Open **http://localhost:3000/trace**
+
+The header badge turns green: **Live backend connected** (health check via `GET /api/trace/health`).
+
+**Browser network requests go to `localhost:8000`:**
+
+| Action | Backend endpoint |
+|---|---|
+| Load gate verdicts | `GET /api/dusk/gate-verdicts` |
+| Load alerts | `GET /api/dusk/alerts` |
+| Tavily enrichment | `POST /api/dusk/tavily-enrichment` |
+| n8n SOAR trigger | `POST /api/dusk/n8n-soar` |
+| Execute fix | `POST /api/security/fix` |
+| Audit trail | `GET/POST /api/security/audit` |
+
+**To enable live Tavily and n8n**, add to `frontend/.env.local`:
+
+```bash
+TAVILY_API_KEY=your-key
+N8N_WEBHOOK_URL=https://your-n8n.example.com/webhook/dusk-alert
+```
+
+---
+
+### DUSK CLI (detection engine)
 
 ```bash
 # Python 3.11+ required
 pip install -e .
 dusk --help
+dusk gate --baseline examples/safe-action.json --check examples/risky-action.json
 ```
 
 ### Tests
@@ -237,10 +286,10 @@ dusk --help
 ```bash
 # Frontend
 cd frontend
-npm test
+npm test          # 41 Jest tests
 
 # Backend
-python3.11 -m pytest tests/ -v
+python3.11 -m pytest tests/ -v  # 93 pytest tests
 ```
 
 ---
@@ -250,7 +299,7 @@ python3.11 -m pytest tests/ -v
 | Variable | Required | Purpose |
 |---|---|---|
 | `TRACE_MODE` | No | `demo` (default) or `live` |
-| `NEXT_PUBLIC_BACKEND_API_URL` | No | External backend URL. Leave empty to use local API routes. |
+| `NEXT_PUBLIC_BACKEND_API_URL` | No | DUSK backend URL. Default: `http://localhost:8000`. Empty = local Next.js routes. |
 | `ATTIO_API_KEY` | No | Attio CRM live sync |
 | `ATTIO_WORKSPACE_ID` | No | Attio workspace |
 | `TAVILY_API_KEY` | No | Tavily threat enrichment |
