@@ -393,7 +393,6 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [n8n](https://n8n.io/) -- AI agent workflow orchestration used in the integration demo
 - [Mubit](https://mubit.ai/) -- agent execution memory explored as a baseline source for per-agent behaviour
 - [Aikido Security](https://aikido.dev/) -- runtime security scanning integrated into DUSK CI
-- [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 - Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
 
