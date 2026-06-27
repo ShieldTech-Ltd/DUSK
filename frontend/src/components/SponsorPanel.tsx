@@ -12,10 +12,10 @@ const sponsors = [
   {
     name: 'Tavily',
     emoji: '🔍',
-    status: 'demo',
+    status: 'live',
     color: 'teal',
-    description: 'Web intelligence for customer discovery, external research and public AI agent adoption signals.',
-    uses: ['Company research from public signals', 'AI agent adoption detection', 'Prompt injection source checking'],
+    description: 'Live threat intel enrichment via DUSK backend (enrich_alert). Searches MITRE technique + action_type for 2026 threat actor reports.',
+    uses: ['MITRE ATT&CK threat intel fetch', 'Gate verdict enrichment', 'Customer discovery research'],
   },
   {
     name: 'Superlinked',
@@ -28,10 +28,10 @@ const sponsors = [
   {
     name: 'n8n',
     emoji: '⚙️',
-    status: 'demo',
+    status: 'live',
     color: 'orange',
-    description: 'Workflow automation for manager approval, escalation, post-fix notifications and follow-up tasks.',
-    uses: ['Manager approval workflow', 'Escalation routing', 'Post-fix notifications', 'Follow-up task automation'],
+    description: 'Live SOAR workflow via demo/n8n_workflow.json. DUSK alert → Format Alert → Open SOAR Incident → Acknowledge. POST /webhook/dusk-alert.',
+    uses: ['DUSK alert → SOAR incident', 'Verdict + blast_radius dispatch', 'Manager escalation automation', 'Post-fix notifications'],
   },
   {
     name: 'Mubit Minima',
