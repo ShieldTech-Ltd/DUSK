@@ -6,8 +6,8 @@ python-dotenv
 
 # Partner integrations
 tavily-python
-mubit
 google-generativeai
+# mubit -- not on PyPI; install via hackathon access: pip install mubit
 
 # Aikido runtime security
 aikido-firewall
