@@ -13,6 +13,13 @@ from flask_cors import CORS
 
 load_dotenv()
 
+try:
+    import aikido_zen  # type: ignore[import-not-found]
+
+    aikido_zen.protect()
+except ImportError:
+    pass
+
 app = Flask(__name__)
 CORS(app)
 
@@ -149,7 +156,75 @@ def heal_decision(decision_id: str) -> object:
     return jsonify({"error": "not found"}), 404
 
 
-if __name__ == "__main__":
+@app.route("/research", methods=["POST"])
+def research_endpoint() -> object:
+    raw = request.get_json(force=True, silent=True)
+    body: dict[str, object] = raw if isinstance(raw, dict) else {}
+    company = str(body.get("company", "")).strip()
+    if not company:
+        return jsonify({"error": "company required"}), 400
+    try:
+        from dusk.agent import research_company
+
+        decision = research_company(company)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("research_company failed for %s", company)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(decision.to_dict()), 201
+
+
+@app.route("/research/decisions")
+def list_research_decisions() -> object:
+    from dusk.recorder import all_decisions
+
+    return jsonify([d.to_dict() for d in all_decisions()])
+
+
+@app.route("/research/decisions/<decision_id>")
+def get_research_decision(decision_id: str) -> object:
+    from dusk.recorder import get_by_id
+
+    try:
+        return jsonify(get_by_id(decision_id).to_dict())
+    except KeyError:
+        return jsonify({"error": "not found"}), 404
+
+
+@app.route("/research/decisions/<decision_id>/replay", methods=["POST"])
+def replay_research_decision(decision_id: str) -> object:
+    from dusk.recorder import get_by_id, mark_replayed
+
+    try:
+        original = get_by_id(decision_id)
+    except KeyError:
+        return jsonify({"error": "not found"}), 404
+    mark_replayed(decision_id)
+    try:
+        from dusk.agent import research_company
+
+        fresh = research_company(original.subject)
+        delta: dict[str, object] = {
+            "score_change": fresh.score - original.score,
+            "previous_score": original.score,
+            "new_score": fresh.score,
+            "reasoning_changed": fresh.reasoning != original.reasoning,
+        }
+        result = {"original": original.to_dict(), "replayed": fresh.to_dict(), "delta": delta}
+        return jsonify(result), 201
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Replay re-research failed: %s", exc)
+        fallback = {
+            "original": original.to_dict(),
+            "delta": {"replay_count": original.replay_count},
+        }
+        return jsonify(fallback), 201
+
+
+def run() -> None:
     port = int(os.getenv("FLASK_PORT", "5000"))
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     app.run(host=host, port=port)
+
+
+if __name__ == "__main__":
+    run()
