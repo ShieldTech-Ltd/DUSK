@@ -25,8 +25,16 @@ def test_risk_level_low():
 def test_to_dict_has_required_keys():
     d = make_decision()
     result = d.to_dict()
-    required = ("id", "subject", "score", "confidence", "reasoning",
-                "risk_level", "output", "trace")
+    required = (
+        "id",
+        "subject",
+        "score",
+        "confidence",
+        "reasoning",
+        "risk_level",
+        "output",
+        "trace",
+    )
     for key in required:
         assert key in result
 
@@ -58,7 +66,11 @@ def test_from_dict_round_trip():
 
 def test_from_dict_ignores_bad_attio_status():
     data: dict[str, object] = {
-        "subject": "X", "score": 50, "confidence": 0.5, "reasoning": "ok", "attio_status": "bad",
+        "subject": "X",
+        "score": 50,
+        "confidence": 0.5,
+        "reasoning": "ok",
+        "attio_status": "bad",
     }
     d = DuskDecision.from_dict(data)
     assert d.attio_status == AttioStatus.NOT_PUSHED
