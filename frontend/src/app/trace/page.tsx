@@ -1,372 +1,559 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import CustomerDiscovery from '@/components/CustomerDiscovery'
-import DeploymentWizard from '@/components/DeploymentWizard'
-import ExecutionCockpit from '@/components/ExecutionCockpit'
-import SponsorPanel from '@/components/SponsorPanel'
-import { initialAuditTrail, type AuditEvent } from '@/data/mockAuditTrail'
+import { useState } from 'react'
 
-const EXTERNAL_BACKEND = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? ''
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ── Backend connection badge ──────────────────────────────────────────────────
+interface AgentForm {
+  agentName: string
+  actionType: string
+  target: string
+  description: string
+  externalSource: string
+  mode: 'Watch' | 'Enforce'
+}
 
-type BackendStatus = 'checking' | 'live' | 'fallback'
+interface CheckResult {
+  verdict: 'ALLOW' | 'WOULD-BLOCK' | 'BLOCK'
+  score: number
+  blastRadius: 'Low' | 'Medium' | 'High'
+  nextMove: string
+  reason: string
+  mitreAttack: string
+  mitreAtlas: string
+  recommendedFix: string
+}
 
-function BackendBadge() {
-  const [status, setStatus] = useState<BackendStatus>(EXTERNAL_BACKEND ? 'checking' : 'fallback')
-  const [detail, setDetail] = useState('')
+type GateDecision = 'approve' | 'block' | 'plan'
 
-  useEffect(() => {
-    if (!EXTERNAL_BACKEND) return
-    fetch(`${EXTERNAL_BACKEND}/api/trace/health`, { signal: AbortSignal.timeout(3000) })
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { mode?: string; tavily?: string; n8n?: string }) => {
-        setStatus('live')
-        const parts = [`mode: ${data.mode ?? 'live'}`]
-        if (data.tavily) parts.push(`tavily: ${data.tavily}`)
-        if (data.n8n) parts.push(`n8n: ${data.n8n}`)
-        setDetail(parts.join(' · '))
-      })
-      .catch((err: unknown) => {
-        setStatus('fallback')
-        setDetail(`${EXTERNAL_BACKEND} unreachable — ${err instanceof Error ? err.message : 'error'}`)
-      })
-  }, [])
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-  if (status === 'checking')
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-gray-800 text-gray-400 border-gray-700">
-        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" />
-        Connecting…
-      </span>
-    )
-  if (status === 'live')
-    return (
-      <span title={detail} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-green-900/60 text-green-300 border-green-700 cursor-help">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-        Live backend connected
-      </span>
-    )
+const DEMO_FORM: AgentForm = {
+  agentName: 'netops-agent',
+  actionType: 'firewall_rule_change',
+  target: 'restricted-segment',
+  description: 'Open firewall path from guest network to restricted segment',
+  externalSource: 'Poisoned web page',
+  mode: 'Watch',
+}
+
+const DEMO_RESULT: CheckResult = {
+  verdict: 'WOULD-BLOCK',
+  score: 0.95,
+  blastRadius: 'High',
+  nextMove: 'Lateral movement',
+  reason: "Action type 'firewall_rule_change' is new for this agent, which normally does route operations",
+  mitreAttack: 'T1562.004 — Impair Defenses: Disable or Modify System Firewall',
+  mitreAtlas: 'AML.T0051 — LLM Prompt Injection',
+  recommendedFix: 'Restrict firewall changes for netops-agent. Require approval policy before execution.',
+}
+
+const AUDIT_STEPS = [
+  'Action received',
+  'Behaviour baseline checked',
+  'Anomaly score calculated',
+  'WOULD-BLOCK verdict generated',
+  'Manager decision recorded',
+  'Audit record created',
+]
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function verdictStyle(v: string) {
+  if (v === 'ALLOW')        return 'text-emerald-700 bg-emerald-50 border-emerald-200'
+  if (v === 'WOULD-BLOCK')  return 'text-amber-700   bg-amber-50   border-amber-200'
+  return                          'text-red-700    bg-red-50     border-red-200'
+}
+
+function blastStyle(b: string) {
+  if (b === 'Low')    return 'text-emerald-600 bg-emerald-50 border-emerald-200'
+  if (b === 'Medium') return 'text-amber-600   bg-amber-50   border-amber-200'
+  return                    'text-red-600    bg-red-50     border-red-200'
+}
+
+function StatusDot({ live }: { live: boolean }) {
   return (
-    <span
-      title={EXTERNAL_BACKEND ? detail : 'No external backend — using local Next.js API with DUSK-schema demo data'}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium bg-yellow-900/40 text-yellow-400 border-yellow-800 cursor-help"
-    >
-      <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
-      {EXTERNAL_BACKEND ? 'Backend unavailable · mock fallback' : 'Demo mode · DUSK schema aligned'}
-    </span>
+    <span className={`inline-block w-1.5 h-1.5 rounded-full ${live ? 'bg-emerald-500' : 'bg-gray-300'}`} />
   )
 }
 
-// ── KPI cards ─────────────────────────────────────────────────────────────────
+// ── Small components ──────────────────────────────────────────────────────────
 
-const KPI_CARDS = [
-  { label: 'Potential Customers', value: '5', icon: '🏢', color: 'border-blue-800/50 bg-blue-950/20' },
-  { label: 'Security Issues', value: '5', icon: '⚠️', color: 'border-red-800/50 bg-red-950/20' },
-  { label: 'Approved Fixes', value: '2', icon: '✅', color: 'border-green-800/50 bg-green-950/20' },
-  { label: 'Partner Integrations', value: '7', icon: '🔗', color: 'border-purple-800/50 bg-purple-950/20' },
+function SectionHeader({ step, title, subtitle }: { step: number; title: string; subtitle?: string }) {
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-xs flex items-center justify-center font-semibold shrink-0">
+          {step}
+        </span>
+        <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+      </div>
+      {subtitle && <p className="text-gray-500 text-sm ml-8">{subtitle}</p>}
+    </div>
+  )
+}
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`bg-white rounded-2xl border border-gray-200/80 shadow-sm ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+function PrimaryButton({ children, onClick, loading = false, disabled = false }: {
+  children: React.ReactNode
+  onClick?: () => void
+  loading?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      className="px-6 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      {loading ? 'Checking…' : children}
+    </button>
+  )
+}
+
+function GhostButton({ children, onClick, disabled = false }: {
+  children: React.ReactNode
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      {children}
+    </button>
+  )
+}
+
+// ── Input Section ─────────────────────────────────────────────────────────────
+
+function InputSection({
+  form,
+  onChange,
+  onSubmit,
+  onDemo,
+  loading,
+}: {
+  form: AgentForm
+  onChange: (f: AgentForm) => void
+  onSubmit: () => void
+  onDemo: () => void
+  loading: boolean
+}) {
+  const field = (label: string, key: keyof AgentForm, placeholder: string) => (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1.5">{label}</label>
+      <input
+        type="text"
+        value={form[key] as string}
+        onChange={e => onChange({ ...form, [key]: e.target.value })}
+        placeholder={placeholder}
+        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition"
+      />
+    </div>
+  )
+
+  return (
+    <section>
+      <SectionHeader step={1} title="Check an agent action" subtitle="Describe what your agent is about to do." />
+      <Card className="p-6">
+        <div className="grid sm:grid-cols-2 gap-4 mb-4">
+          {field('Agent name', 'agentName', 'e.g. netops-agent')}
+          {field('Action type', 'actionType', 'e.g. firewall_rule_change')}
+          {field('Target system', 'target', 'e.g. restricted-segment')}
+          {field('External content source', 'externalSource', 'e.g. Poisoned web page')}
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Action description</label>
+          <textarea
+            value={form.description}
+            onChange={e => onChange({ ...form, description: e.target.value })}
+            placeholder="Describe what the agent is trying to do…"
+            rows={2}
+            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400 transition resize-none"
+          />
+        </div>
+        <div className="mb-6">
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Mode</label>
+          <div className="flex gap-2">
+            {(['Watch', 'Enforce'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => onChange({ ...form, mode: m })}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                  form.mode === m
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1.5">
+            Watch reports without blocking. Enforce upgrades WOULD-BLOCK to BLOCK.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <PrimaryButton onClick={onSubmit} loading={loading}>Run behaviour check</PrimaryButton>
+          <GhostButton onClick={onDemo}>Load prompt-injection demo</GhostButton>
+        </div>
+      </Card>
+    </section>
+  )
+}
+
+// ── Dashboard Section ─────────────────────────────────────────────────────────
+
+function DashboardSection({ result }: { result: CheckResult }) {
+  const kpis = [
+    { label: 'Verdict',            value: result.verdict,               style: verdictStyle(result.verdict) },
+    { label: 'Anomaly Score',      value: result.score.toFixed(2),      style: 'text-gray-900 bg-gray-50 border-gray-200' },
+    { label: 'Blast Radius',       value: result.blastRadius,           style: blastStyle(result.blastRadius) },
+    { label: 'Next Expected Move', value: result.nextMove,              style: 'text-gray-700 bg-gray-50 border-gray-200' },
+  ]
+
+  return (
+    <section>
+      <SectionHeader step={2} title="Behaviour Check Dashboard" />
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {kpis.map(k => (
+          <Card key={k.label} className="p-4">
+            <p className="text-xs text-gray-400 mb-1.5">{k.label}</p>
+            <span className={`inline-block px-2.5 py-1 rounded-lg border text-sm font-semibold ${k.style}`}>
+              {k.value}
+            </span>
+          </Card>
+        ))}
+      </div>
+      <Card className="p-5">
+        <p className="text-sm text-gray-600 leading-relaxed">
+          <span className="font-medium text-gray-900">Why? </span>
+          {result.reason}
+        </p>
+      </Card>
+    </section>
+  )
+}
+
+// ── Action Gate Section ───────────────────────────────────────────────────────
+
+function ActionGateSection({
+  result,
+  decision,
+  onDecide,
+}: {
+  result: CheckResult
+  decision: GateDecision | null
+  onDecide: (d: GateDecision) => void
+}) {
+  const decisionMessage: Record<GateDecision, { text: string; style: string }> = {
+    block:   { text: 'Action refused before reaching the controller.', style: 'text-red-700 bg-red-50 border-red-200' },
+    approve: { text: 'Manager override recorded in audit log.', style: 'text-amber-700 bg-amber-50 border-amber-200' },
+    plan:    { text: 'Recommended fix generated.', style: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  }
+
+  return (
+    <section>
+      <SectionHeader step={3} title="Action Gate" subtitle="What should happen to this action?" />
+      <Card className="p-6">
+        <div className="space-y-3 mb-6">
+          {[
+            { label: 'Verdict',       value: result.verdict,          badge: true },
+            { label: 'Reason',        value: result.reason,           badge: false },
+            { label: 'MITRE ATT&CK', value: result.mitreAttack,      badge: false },
+            { label: 'MITRE ATLAS',  value: result.mitreAtlas,        badge: false },
+            { label: 'Recommendation', value: result.recommendedFix,  badge: false },
+          ].map(row => (
+            <div key={row.label} className="flex items-start gap-3">
+              <span className="w-36 shrink-0 text-xs font-medium text-gray-400 pt-0.5">{row.label}</span>
+              {row.badge
+                ? <span className={`px-2.5 py-0.5 rounded-lg border text-sm font-semibold ${verdictStyle(result.verdict)}`}>{row.value}</span>
+                : <span className="text-sm text-gray-700">{row.value}</span>
+              }
+            </div>
+          ))}
+        </div>
+
+        {!decision ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => onDecide('block')}
+              className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              Block action
+            </button>
+            <button
+              onClick={() => onDecide('approve')}
+              className="px-5 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 transition-colors"
+            >
+              Approve anyway
+            </button>
+            <button
+              onClick={() => onDecide('plan')}
+              className="px-5 py-2.5 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
+            >
+              Generate fix plan
+            </button>
+          </div>
+        ) : (
+          <div className={`px-4 py-3 rounded-xl border text-sm font-medium ${decisionMessage[decision].style}`}>
+            {decisionMessage[decision].text}
+          </div>
+        )}
+      </Card>
+    </section>
+  )
+}
+
+// ── Output Section ────────────────────────────────────────────────────────────
+
+function OutputSection({ result, decision }: { result: CheckResult; decision: GateDecision }) {
+  const outputCards = [
+    {
+      label: 'Action Result',
+      value: decision === 'block' ? 'Blocked before controller' : decision === 'approve' ? 'Approved with override' : 'Fix plan generated',
+    },
+    {
+      label: 'Security Fix',
+      value: result.recommendedFix,
+    },
+    {
+      label: 'Audit Record',
+      value: 'Recorded with verdict, score, reason and manager decision',
+    },
+    {
+      label: 'Integration Status',
+      value: 'n8n alert ready · Tavily enrichment ready · Attio record ready',
+    },
+  ]
+
+  return (
+    <section>
+      <SectionHeader step={4} title="Execution Output" />
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        {outputCards.map(c => (
+          <Card key={c.label} className="p-4">
+            <p className="text-xs font-medium text-gray-400 mb-1">{c.label}</p>
+            <p className="text-sm text-gray-800 leading-relaxed">{c.value}</p>
+          </Card>
+        ))}
+      </div>
+      <Card className="p-5">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Audit timeline</p>
+        <div className="space-y-2">
+          {AUDIT_STEPS.map((step, i) => (
+            <div key={step} className="flex items-center gap-3">
+              <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] flex items-center justify-center font-bold shrink-0">
+                ✓
+              </span>
+              <span className="text-sm text-gray-700">{step}</span>
+              {i === 0 && <span className="ml-auto text-xs text-gray-400 font-mono">now</span>}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </section>
+  )
+}
+
+// ── Backend Placeholder ───────────────────────────────────────────────────────
+
+function BackendPlaceholder() {
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-base">🛡️</span>
+            <h3 className="text-sm font-semibold text-gray-900">Backend Detection Engine</h3>
+            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">
+              Demo mode
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed mb-3">
+            DUSK backend calculates the behavioural baseline, anomaly score, MITRE mapping and action verdict.
+            Backend visualisation handled by the backend team.
+          </p>
+          <button
+            disabled
+            className="px-4 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-400 cursor-not-allowed"
+          >
+            Open backend demo
+          </button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// ── Integration Bar ───────────────────────────────────────────────────────────
+
+const INTEGRATIONS = [
+  { name: 'Tavily',       role: 'live search',      live: true },
+  { name: 'n8n',          role: 'alert workflow',   live: true },
+  { name: 'Superlinked',  role: 'vector baseline',  live: false },
+  { name: 'Mubit',        role: 'model routing',    live: false },
+  { name: 'Gemini',       role: 'explanation',      live: false },
+  { name: 'Attio',        role: 'customer record',  live: false },
+  { name: 'Aikido',       role: 'security report',  live: false },
 ]
 
-function KpiCards() {
+function IntegrationBar() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {KPI_CARDS.map(k => (
-        <div key={k.label} className={`rounded-xl border p-4 ${k.color}`}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-2xl">{k.icon}</span>
-            <span className="text-3xl font-bold text-white">{k.value}</span>
-          </div>
-          <p className="text-gray-400 text-xs mt-1">{k.label}</p>
+    <div className="flex flex-wrap items-center gap-3">
+      {INTEGRATIONS.map(s => (
+        <div key={s.name} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-xl shadow-sm">
+          <StatusDot live={s.live} />
+          <span className="text-xs font-medium text-gray-700">{s.name}</span>
+          <span className="text-xs text-gray-400">{s.role}</span>
         </div>
       ))}
     </div>
   )
 }
 
-// ── Backend Security Engine placeholder ───────────────────────────────────────
-
-function BackendEngineCard() {
-  const [connected, setConnected] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    if (!EXTERNAL_BACKEND) { setConnected(false); return }
-    fetch(`${EXTERNAL_BACKEND}/api/trace/health`, { signal: AbortSignal.timeout(3000) })
-      .then(r => setConnected(r.ok))
-      .catch(() => setConnected(false))
-  }, [])
-
-  const badge =
-    connected === null
-      ? <span className="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-400 border border-gray-700">Checking…</span>
-      : connected
-      ? <span className="px-2 py-0.5 rounded text-xs bg-green-900/60 text-green-300 border border-green-700">Connected</span>
-      : <span className="px-2 py-0.5 rounded text-xs bg-yellow-900/40 text-yellow-400 border border-yellow-800">Demo mode</span>
-
-  return (
-    <div className="rounded-xl border border-gray-700 bg-gray-900/60 p-5">
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🛡️</span>
-          <h3 className="font-semibold text-white text-sm">Backend Security Engine</h3>
-        </div>
-        {badge}
-      </div>
-      <p className="text-gray-400 text-xs leading-relaxed mb-4">
-        DUSK learns a per-agent behavioural baseline, then scores every new action for anomaly.
-        Prompt injection via drift, privilege escalation, scope creep, network sweep, and boundary
-        probe — each returns ALLOW, WOULD-BLOCK, or BLOCK with MITRE ATT&CK + ATLAS mapping,
-        blast radius, and a next-stage prediction.
-      </p>
-      <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-        {[
-          ['Behavioral gate', 'ActionGate.evaluate()'],
-          ['Network detections', 'AlertResponder._persist()'],
-          ['Threat enrichment', 'Tavily enrich_alert()'],
-          ['SOAR automation', 'n8n webhook'],
-        ].map(([label, src]) => (
-          <div key={label} className="bg-gray-800/60 rounded-lg p-2.5">
-            <div className="text-white font-medium mb-0.5">{label}</div>
-            <div className="text-gray-500 font-mono text-[10px]">{src}</div>
-          </div>
-        ))}
-      </div>
-      <button
-        disabled
-        className="w-full px-3 py-2 rounded-lg text-xs bg-gray-800 border border-gray-700 text-gray-500 cursor-not-allowed"
-      >
-        Open backend dashboard — handled by backend team
-      </button>
-    </div>
-  )
-}
-
-// ── Audit Trail panel ─────────────────────────────────────────────────────────
-
-const EVENT_ICON: Record<string, string> = {
-  issue_detected: '🔍',
-  tavily_enrichment: '🌐',
-  approval_requested: '📧',
-  manager_approved: '✅',
-  manager_rejected: '❌',
-  resource_allocated: '🔧',
-  fix_triggered: '⚡',
-  fix_executed: '⚡',
-  backend_response: '📡',
-  n8n_soar_triggered: '⚙️',
-  attio_updated: '🗃️',
-  issue_selected: '👁️',
-  issue_detected_backend: '🔍',
-}
-
-function fmtTime(ts: string | number) {
-  const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function AuditTrailPanel() {
-  const [events, setEvents] = useState<AuditEvent[]>(initialAuditTrail)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    const url = EXTERNAL_BACKEND
-      ? `${EXTERNAL_BACKEND}/api/security/audit`
-      : '/api/security/audit'
-    setLoading(true)
-    fetch(url)
-      .then(r => (r.ok ? r.json() : Promise.reject()))
-      .then((data: AuditEvent[]) => {
-        if (Array.isArray(data) && data.length > 0) setEvents(data)
-      })
-      .catch(() => {/* keep mock */})
-      .finally(() => setLoading(false))
-  }, [])
-
-  const displayed = events.slice(0, 8)
-
-  return (
-    <div className="border-t border-gray-800 bg-gray-900/20">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-semibold text-white">Audit Trail</h2>
-            <p className="text-gray-500 text-xs mt-0.5">
-              Every DUSK verdict, fix and integration event is recorded immutably.{' '}
-              {loading ? 'Loading…' : `Showing last ${displayed.length} events.`}
-            </p>
-          </div>
-          <span className="text-xs text-gray-600">
-            {EXTERNAL_BACKEND ? 'Live from backend' : 'Demo data'}
-          </span>
-        </div>
-
-        <div className="space-y-1">
-          {displayed.map((e, i) => (
-            <div key={e.id ?? i} className="flex items-start gap-3 py-2 border-b border-gray-800/50 last:border-0">
-              <span className="text-sm shrink-0 mt-0.5">{EVENT_ICON[e.event_type] ?? '📋'}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-gray-300 text-xs leading-relaxed truncate">{e.description}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-gray-600 text-[10px]">{fmtTime(e.timestamp)}</span>
-                  <span className="text-gray-700 text-[10px]">·</span>
-                  <span className="text-gray-600 text-[10px]">{e.actor}</span>
-                  {e.issue_id && (
-                    <>
-                      <span className="text-gray-700 text-[10px]">·</span>
-                      <span className="text-gray-700 text-[10px] font-mono">{e.issue_id}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
-
-type Tab = 'discovery' | 'deployment' | 'cockpit'
-
-const TABS: { id: Tab; label: string; icon: string; step: number; description: string }[] = [
-  { id: 'discovery', label: 'Customer Discovery', icon: '🔍', step: 1, description: 'Find companies whose AI agents need a behavioural security layer — scored by Tavily research and Superlinked ICP matching' },
-  { id: 'deployment', label: 'Deployment Wizard',  icon: '🚀', step: 2, description: "Prepare DUSK's gate policy, allowed/blocked actions and approval manager for a customer's agent workflow" },
-  { id: 'cockpit',   label: 'Execution Cockpit',  icon: '⚡', step: 3, description: 'ALLOW / WOULD-BLOCK / BLOCK verdicts from DUSK → manager approval → backend fix → immutable audit trail' },
-]
-
-const WORKFLOW_STEPS = ['Discover', 'Onboard', 'Approve', 'Execute', 'Audit']
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function TracePage() {
-  const [activeTab, setActiveTab] = useState<Tab>('discovery')
+  const [form, setForm]       = useState<AgentForm>(DEMO_FORM)
+  const [result, setResult]   = useState<CheckResult | null>(null)
+  const [decision, setDecision] = useState<GateDecision | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const runCheck = async () => {
+    setLoading(true)
+    setResult(null)
+    setDecision(null)
+    try {
+      const body = JSON.stringify({ issue_id: 'demo', agent_id: form.agentName, action_type: form.actionType })
+      const res = await fetch('/api/security/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(3000),
+      })
+      if (res.ok) {
+        const data = await res.json() as Record<string, unknown>
+        setResult({
+          verdict:      String(data.verdict ?? DEMO_RESULT.verdict) as CheckResult['verdict'],
+          score:        Number(data.score ?? DEMO_RESULT.score),
+          blastRadius:  String(data.blast_radius ?? DEMO_RESULT.blastRadius) as CheckResult['blastRadius'],
+          nextMove:     String(data.predicted_next ?? DEMO_RESULT.nextMove),
+          reason:       Array.isArray(data.reasons) ? String(data.reasons[0]) : DEMO_RESULT.reason,
+          mitreAttack:  String(data.mitre_attack ?? DEMO_RESULT.mitreAttack),
+          mitreAtlas:   String(data.mitre_atlas  ?? DEMO_RESULT.mitreAtlas),
+          recommendedFix: String(data.recommended_fix ?? DEMO_RESULT.recommendedFix),
+        })
+        return
+      }
+    } catch { /* fall through */ }
+    // Demo fallback
+    await new Promise(r => setTimeout(r, 600))
+    setResult(DEMO_RESULT)
+    setLoading(false)
+  }
+
+  // need to set loading false after success path too
+  const handleRun = () => {
+    runCheck().finally(() => setLoading(false))
+  }
+
+  const loadDemo = () => {
+    setForm(DEMO_FORM)
+    setResult(null)
+    setDecision(null)
+  }
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/40">
-              <span className="text-white font-bold text-base">T</span>
-            </div>
+      <header className="bg-white border-b border-gray-100">
+        <div className="max-w-3xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-white leading-tight">Trace Execution Layer</h1>
-              <p className="text-gray-400 text-xs hidden sm:block">
-                AI Agent Security · Built at {'{Tech: Europe}'} London 2026
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">DUSK Behaviour Gate</h1>
+              <p className="text-gray-500 text-sm mt-0.5">
+                Detect abnormal agent behaviour before it reaches your infrastructure.
               </p>
             </div>
+            <span className="hidden sm:block text-xs text-gray-400 italic text-right max-w-[180px] leading-relaxed">
+              Credentials verify identity.<br />DUSK verifies behaviour.
+            </span>
           </div>
-          <BackendBadge />
         </div>
       </header>
 
-      {/* Hero */}
-      <div className="bg-gray-900/50 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <p className="text-gray-200 text-lg font-medium max-w-2xl leading-snug mb-1">
-            Behavioural threat detection for agentic networks — the missing security layer
-            between AI agents and your infrastructure.
-          </p>
-          <p className="text-gray-400 text-sm max-w-2xl mb-3">
-            Credentials verify identity. DUSK verifies behaviour. Trace turns DUSK&apos;s
-            behavioural verdicts into approved, resourced and auditable fixes — giving managers
-            control and customers confidence.
-          </p>
-          <p className="text-gray-600 text-xs max-w-2xl mb-6 italic">
-            Every existing control asks: <span className="text-gray-500">is this agent allowed to do this?</span>{' '}
-            DUSK asks: <span className="text-gray-400 font-medium">does this agent normally do this?</span>{' '}
-            Those are not the same question.
-          </p>
-
-          {/* Workflow bar */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {WORKFLOW_STEPS.map((step, i) => (
-              <span key={step} className="flex items-center gap-1.5">
-                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-200 font-medium">
-                  <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold shrink-0">
-                    {i + 1}
-                  </span>
-                  {step}
-                </span>
-                {i < WORKFLOW_STEPS.length - 1 && <span className="text-gray-600 text-xs">→</span>}
-              </span>
-            ))}
-          </div>
+      {/* Workflow pill */}
+      <div className="bg-white border-b border-gray-100">
+        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center gap-1.5 overflow-x-auto">
+          {['User input', 'Behaviour check', 'Action gate verdict', 'Manager decision', 'Audit output'].map((s, i, arr) => (
+            <span key={s} className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs text-gray-500 whitespace-nowrap">{s}</span>
+              {i < arr.length - 1 && <span className="text-gray-300 text-xs">→</span>}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        <KpiCards />
-      </div>
+      {/* Content */}
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-10">
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-800 bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-6">
-          <nav className="flex gap-0.5">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`group flex items-center gap-2 px-5 py-4 text-sm font-medium border-b-2 transition-all ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-700'
-                }`}
-              >
-                <span className="w-5 h-5 rounded-full bg-gray-800 text-gray-400 text-[10px] flex items-center justify-center font-bold shrink-0 group-hover:bg-gray-700 transition-colors">
-                  {tab.step}
-                </span>
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-      </div>
+        {/* 1. Input */}
+        <InputSection
+          form={form}
+          onChange={setForm}
+          onSubmit={handleRun}
+          onDemo={loadDemo}
+          loading={loading}
+        />
 
-      {/* Tab description */}
-      <div className="bg-gray-900/20 border-b border-gray-800/50">
-        <div className="max-w-7xl mx-auto px-6 py-2">
-          <p className="text-gray-500 text-xs">
-            {TABS.find(t => t.id === activeTab)?.description}
+        {/* 2. Dashboard */}
+        {result && <DashboardSection result={result} />}
+
+        {/* 3. Action Gate */}
+        {result && (
+          <ActionGateSection
+            result={result}
+            decision={decision}
+            onDecide={setDecision}
+          />
+        )}
+
+        {/* 4. Output */}
+        {decision && result && (
+          <OutputSection result={result} decision={decision} />
+        )}
+
+        {/* Backend placeholder */}
+        <BackendPlaceholder />
+
+        {/* Integration bar */}
+        <section>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Partner integrations
           </p>
-        </div>
+          <IntegrationBar />
+        </section>
+
       </div>
-
-      {/* Tab content + Backend Engine sidebar */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex gap-6 items-start">
-          <div className="flex-1 min-w-0">
-            {activeTab === 'discovery'  && <CustomerDiscovery />}
-            {activeTab === 'deployment' && <DeploymentWizard />}
-            {activeTab === 'cockpit'    && <ExecutionCockpit />}
-          </div>
-          <div className="w-72 shrink-0 hidden xl:block">
-            <BackendEngineCard />
-          </div>
-        </div>
-      </div>
-
-      {/* Backend engine card for smaller screens */}
-      <div className="xl:hidden max-w-7xl mx-auto px-6 pb-8">
-        <BackendEngineCard />
-      </div>
-
-      {/* Integration Status */}
-      <SponsorPanel />
-
-      {/* Audit Trail */}
-      <AuditTrailPanel />
 
       {/* Footer */}
-      <div className="border-t border-gray-800 bg-gray-900/30">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between text-xs text-gray-600">
-          <span>Trace — AI Agent Security Execution Layer · {'{Tech: Europe}'} London AI Hackathon 2026</span>
-          <span>MIT License</span>
+      <footer className="border-t border-gray-100 mt-10">
+        <div className="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between text-xs text-gray-400">
+          <span>DUSK · AI Agent Behavioural Threat Detection · {'{Tech: Europe}'} London 2026</span>
+          <span>Apache-2.0</span>
         </div>
-      </div>
+      </footer>
     </div>
   )
 }
