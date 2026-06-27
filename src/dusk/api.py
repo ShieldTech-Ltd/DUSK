@@ -220,7 +220,11 @@ def replay_research_decision(decision_id: str) -> object:
         return jsonify(fallback), 201
 
 
-if __name__ == "__main__":
+def run() -> None:
     port = int(os.getenv("FLASK_PORT", "5000"))
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     app.run(host=host, port=port)
+
+
+if __name__ == "__main__":
+    run()
