@@ -506,7 +506,7 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 |---|---|---|
 | [<img src="https://github.com/TFT444.png" width="32" style="border-radius:50%">](https://github.com/TFT444) | [Tanvir Farhad](https://linkedin.com/in/tanvir-farhad-466940307) | Lead -- architecture, detection engine, partner integrations |
 | [<img src="https://github.com/ritiksah141.png" width="32" style="border-radius:50%">](https://github.com/ritiksah141) | [ritiksah141](https://github.com/ritiksah141) | Agent research pipeline, Flask API, live demo |
-| [<img src="https://github.com/HXIAOSHAW.png" width="32" style="border-radius:50%">](https://github.com/HXIAOSHAW) | [HXIAOSHAW](https://github.com/HXIAOSHAW) | Contributor |
+| [<img src="https://github.com/HXIAOSHAW.png" width="32" style="border-radius:50%">](https://github.com/HXIAOSHAW) | [He Xiao](https://github.com/HXIAOSHAW) | Contributor |
 
 ---
 
@@ -519,6 +519,6 @@ Apache-2.0. See [LICENSE](LICENSE) for details.
 <p align="center">
   Built by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a>,
   <a href="https://github.com/ritiksah141">ritiksah141</a> and
-  <a href="https://github.com/HXIAOSHAW">HXIAOSHAW</a>
+  <a href="https://github.com/HXIAOSHAW">He Xiao</a>
   · ShieldTech Ltd · London
 </p>
