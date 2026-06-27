@@ -52,6 +52,120 @@ def _post(path: str, body: dict[str, object]) -> dict[str, object] | None:
         return None
 
 
+def _get(path: str) -> dict[str, object] | None:
+    try:
+        url = f"{ATTIO_BASE}{path}"
+        req = urllib.request.Request(url, headers=_headers(), method="GET")  # noqa: S310
+        with urllib.request.urlopen(req, timeout=8) as resp:  # noqa: S310  # nosec B310
+            return json.loads(resp.read())  # type: ignore[no-any-return]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Attio GET failed (non-fatal): %s", exc)
+        return None
+
+
+def find_company(name: str) -> str | None:
+    """Search Attio for a company by name. Returns record_id or None."""
+    result = _post(
+        "/objects/companies/records/query",
+        {
+            "filter": {
+                "name": {"$eq": name},
+            },
+            "limit": 1,
+        },
+    )
+    if not result:
+        return None
+    data = result.get("data")
+    if isinstance(data, list) and data:
+        record = data[0]
+        id_block = record.get("id") if isinstance(record, dict) else None
+        if isinstance(id_block, dict):
+            return str(id_block.get("record_id", ""))
+    return None
+
+
+def upsert_company(name: str) -> str | None:
+    """Find or create a Company record. Returns record_id or None."""
+    existing = find_company(name)
+    if existing:
+        return existing
+    result = _post(
+        "/objects/companies/records",
+        {"data": {"values": {"name": [{"value": name}]}}},
+    )
+    if not result:
+        return None
+    data = result.get("data")
+    id_block = data.get("id") if isinstance(data, dict) else None
+    if isinstance(id_block, dict):
+        return str(id_block.get("record_id", ""))
+    return None
+
+
+def push_company_score(
+    company: str,
+    score: int,
+    confidence: float,
+    risk_level: str,
+    reasoning: str,
+    risk_flags: list[str],
+    decision_id: str,
+) -> str | None:
+    """Find or create a Company record and attach a DUSK research note to it.
+
+    This is the CRM-as-data-foundation direction: research results flow
+    back into Attio so the sales team sees DUSK scores alongside pipeline data.
+    Returns the note_id if created, None on failure.
+    """
+    api_key = os.getenv("ATTIO_API_KEY", "")
+    if not api_key:
+        return None
+
+    record_id = upsert_company(company)
+    if not record_id:
+        logger.warning("Could not upsert Attio company for %s", company)
+        return None
+
+    flag_str = ", ".join(risk_flags) if risk_flags else "none"
+    note_content = (
+        f"DUSK Research Score -- {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+        f"Company:       {company}\n"
+        f"Score:         {score}/100\n"
+        f"Risk Level:    {risk_level.upper()}\n"
+        f"Confidence:    {confidence:.0%}\n"
+        f"Risk Flags:    {flag_str}\n"
+        f"Decision ID:   {decision_id}\n\n"
+        f"Reasoning:\n{reasoning}\n\n"
+        f"-- DUSK autonomous company research\n"
+        f"   Powered by Tavily + Gemini Flash\n"
+        f"   github.com/TFT444/DUSK"
+    )
+
+    verdict_label = "QUALIFIED" if score >= 65 else "FLAGGED"
+    result = _post(
+        "/notes",
+        {
+            "data": {
+                "format": "plaintext",
+                "title": f"[{verdict_label}] DUSK Score: {score}/100 -- {company}",
+                "content": note_content,
+                "parent_object": "companies",
+                "parent_record_id": record_id,
+            }
+        },
+    )
+    if result:
+        data_field = result.get("data")
+        id_block = data_field.get("id") if isinstance(data_field, dict) else None
+        note_id = str(id_block.get("note_id", "")) if isinstance(id_block, dict) else ""
+        logger.info(
+            "Attio company note created: company=%s score=%d note_id=%s", company, score, note_id
+        )
+        return note_id
+    return None
+
+
 def _patch(path: str, body: dict[str, object]) -> dict[str, object] | None:
     try:
         url = f"{ATTIO_BASE}{path}"
@@ -64,6 +178,18 @@ def _patch(path: str, body: dict[str, object]) -> dict[str, object] | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Attio PATCH failed (non-fatal): %s", exc)
         return None
+
+
+_hub_record_id: str | None = None
+
+
+def _get_or_create_hub() -> str | None:
+    """Find or create the 'DUSK Security Hub' company used to anchor incident notes."""
+    global _hub_record_id  # noqa: PLW0603
+    if _hub_record_id:
+        return _hub_record_id
+    _hub_record_id = upsert_company("DUSK Security Hub")
+    return _hub_record_id
 
 
 def create_incident(
@@ -129,17 +255,16 @@ Status: ACTIVE -- agent quarantined, self-healing in progress{enrichment_summary
 -- Generated automatically by DUSK behavioural threat detection
    github.com/TFT444/DUSK · ShieldTech Ltd · London"""
 
-    result = _post(
-        "/notes",
-        {
-            "data": {
-                "format": "plaintext",
-                "title": f"[{threat_level}] DUSK Alert -- {agent_id} -- {action}",
-                "content": note_body,
-                "parent_object": "workspaces",
-            }
-        },
-    )
+    hub_id = _get_or_create_hub()
+    note_data: dict[str, object] = {
+        "format": "plaintext",
+        "title": f"[{threat_level}] DUSK Alert -- {agent_id} -- {action}",
+        "content": note_body,
+    }
+    if hub_id:
+        note_data["parent_object"] = "companies"
+        note_data["parent_record_id"] = hub_id
+    result = _post("/notes", {"data": note_data})
 
     if result:
         data_field = result.get("data")
