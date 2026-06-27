@@ -1,0 +1,43 @@
+{
+  "issues": [
+    {
+      "id": "issue_001",
+      "title": "Prompt injection risk in customer support agent",
+      "severity": "critical",
+      "affected_system": "agent_workflow",
+      "customer": "Acme Ltd",
+      "source": "Backend scan + Tavily external content check",
+      "status": "open",
+      "evidence": "External content attempted to override agent policy",
+      "affected_tools": ["email_tool", "crm_write"],
+      "affected_permissions": ["agent_workflow_write", "crm_contact_read"],
+      "suggested_risk_category": "prompt_injection"
+    },
+    {
+      "id": "issue_002",
+      "title": "Over-permissive API key",
+      "severity": "high",
+      "affected_system": "api",
+      "customer": "FinFlow Automation",
+      "source": "Aikido-style security scan",
+      "status": "open",
+      "evidence": "Agent workflow can access write operations not required for its task",
+      "affected_tools": ["finance_api"],
+      "affected_permissions": ["api_write", "api_delete"],
+      "suggested_risk_category": "over_permissive_access"
+    },
+    {
+      "id": "issue_003",
+      "title": "Database write permission exposed to agent",
+      "severity": "high",
+      "affected_system": "database",
+      "customer": "NovaCRM Labs",
+      "source": "Backend permission check",
+      "status": "open",
+      "evidence": "Agent has write access without approval policy",
+      "affected_tools": ["db_connector"],
+      "affected_permissions": ["database_write"],
+      "suggested_risk_category": "excessive_database_access"
+    }
+  ]
+}

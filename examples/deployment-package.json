@@ -1,0 +1,48 @@
+{
+  "input": {
+    "company": "Acme AI Ops",
+    "agent_workflow_url": "https://acme.example.com/agent-workflow.json",
+    "api_access_type": "REST",
+    "database_type": "PostgreSQL",
+    "tool_list": ["email_tool", "crm_write", "web_search"],
+    "approval_manager_email": "manager@acme.example.com",
+    "allowed_actions": ["crm_read", "send_internal_email", "web_search"],
+    "blocked_actions": [
+      "export_contacts",
+      "send_external_email_without_approval",
+      "database_write_without_policy"
+    ],
+    "test_environment_url": "https://staging.acme.example.com",
+    "deployment_mode": "shadow_monitoring"
+  },
+  "output": {
+    "deployment_id": "deploy_001",
+    "company": "Acme AI Ops",
+    "mode": "shadow_monitoring",
+    "required_permissions": [
+      "read_agent_workflow",
+      "read_api_schema",
+      "read_database_schema",
+      "create_policy_hook"
+    ],
+    "blocked_actions": [
+      "export_contacts",
+      "send_external_email_without_approval",
+      "database_write_without_policy"
+    ],
+    "approval_required": true,
+    "manager_email": "manager@acme.example.com",
+    "status": "ready_for_manager_approval",
+    "generated_at": "2026-06-27T10:00:00Z"
+  },
+  "attio_deployment_record": {
+    "object": "deployment",
+    "values": {
+      "company": "Acme AI Ops",
+      "deployment_id": "deploy_001",
+      "mode": "shadow_monitoring",
+      "status": "ready_for_manager_approval",
+      "manager": "manager@acme.example.com"
+    }
+  }
+}

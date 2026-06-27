@@ -1,0 +1,47 @@
+{
+  "leads": [
+    {
+      "id": "lead_001",
+      "company": "Acme AI Ops",
+      "use_case": "Customer-facing support agent",
+      "security_pain": "Agent can access customer data and send external messages",
+      "fit_score": 87,
+      "source": "Tavily research + Superlinked ICP match",
+      "suggested_pitch": "Secure your AI agent workflows with approval, monitoring and self-healing execution.",
+      "status": "Ready to create in Attio"
+    },
+    {
+      "id": "lead_002",
+      "company": "FinFlow Automation",
+      "use_case": "Finance workflow automation",
+      "security_pain": "Agent has API access to sensitive transaction workflows",
+      "fit_score": 81,
+      "source": "Tavily research + Mubit classification",
+      "suggested_pitch": "Add a controlled execution layer before agents can access finance APIs.",
+      "status": "Ready to review"
+    }
+  ],
+  "attio_payload": {
+    "object": "company",
+    "values": {
+      "name": "Acme AI Ops",
+      "tags": ["ai-agent-customer", "security-prospect", "fit-score-87"],
+      "custom_fields": {
+        "security_pain": "Agent can access customer data and send external messages",
+        "fit_score": 87,
+        "source": "Trace customer discovery pipeline",
+        "status": "prospect"
+      }
+    }
+  },
+  "n8n_payload": {
+    "workflow": "customer_follow_up",
+    "customer_id": "lead_001",
+    "action": "create_review_task",
+    "metadata": {
+      "company": "Acme AI Ops",
+      "fit_score": 87,
+      "suggested_pitch": "Secure your AI agent workflows with approval, monitoring and self-healing execution."
+    }
+  }
+}

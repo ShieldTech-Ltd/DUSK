@@ -1,0 +1,25 @@
+{
+  "trace_version": "0.1.0",
+  "event_type": "agent_action",
+  "timestamp": "2026-06-27T10:15:00Z",
+  "agent_id": "sales-agent-v2",
+  "action": {
+    "type": "crm_read",
+    "tool": "attio_get_contact",
+    "parameters": {
+      "target": "contact:alice@example.com",
+      "fields": ["name", "company", "last_interaction"]
+    }
+  },
+  "trace_evaluation": {
+    "risk_score": 0.05,
+    "risk_level": "LOW",
+    "decision": "ALLOWED",
+    "prompt_injection_detected": false,
+    "semantic_similarity_to_known_threats": 0.03,
+    "tavily_claim_verified": null,
+    "aikido_flags": []
+  },
+  "attio_audit_record_id": "rec_safe_001",
+  "execution_result": "success"
+}

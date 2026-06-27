@@ -1,0 +1,16 @@
+{
+  "request": {
+    "issue_id": "issue_001"
+  },
+  "response": {
+    "issue_id": "issue_001",
+    "recommended_fix": "Disable external email tool until approval policy is attached. Block all agent actions that reference injected external content.",
+    "required_permissions": ["agent_workflow_write", "policy_update"],
+    "required_resources": ["engineering_time", "test_environment"],
+    "backend_action": "POST /api/security/fix",
+    "rollback_plan": "Re-enable previous workflow version if fix fails",
+    "risk_after_fix": "low",
+    "approval_required": true,
+    "estimated_time": "30 minutes"
+  }
+}

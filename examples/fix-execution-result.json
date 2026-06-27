@@ -1,0 +1,53 @@
+{
+  "request": {
+    "issue_id": "issue_001",
+    "approved_by": "manager@example.com",
+    "resources": ["engineering_time", "test_environment"],
+    "action_plan": "Disable external email tool and attach approval policy"
+  },
+  "response": {
+    "execution_id": "exec_001",
+    "status": "fixed",
+    "message": "Security policy attached and risky tool disabled",
+    "logs": [
+      "Policy check created",
+      "External email tool restricted",
+      "Approval rule attached",
+      "Audit record generated",
+      "Attio customer record updated",
+      "n8n post-fix notification triggered"
+    ],
+    "started_at": "2026-06-27T10:00:00Z",
+    "completed_at": "2026-06-27T10:01:45Z"
+  },
+  "audit_events_generated": [
+    {
+      "event_type": "fix_triggered",
+      "description": "Backend fix triggered for: Prompt injection risk in customer support agent",
+      "actor": "manager@example.com",
+      "issue_id": "issue_001"
+    },
+    {
+      "event_type": "backend_response",
+      "description": "Backend responded: fixed — Security policy attached and risky tool disabled",
+      "actor": "system",
+      "issue_id": "issue_001",
+      "metadata": {
+        "execution_id": "exec_001",
+        "status": "fixed"
+      }
+    },
+    {
+      "event_type": "attio_updated",
+      "description": "Attio customer record updated for Acme Ltd",
+      "actor": "system",
+      "issue_id": "issue_001"
+    },
+    {
+      "event_type": "n8n_triggered",
+      "description": "n8n post-fix notification workflow triggered",
+      "actor": "system",
+      "issue_id": "issue_001"
+    }
+  ]
+}
