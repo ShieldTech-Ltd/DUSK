@@ -391,6 +391,7 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [Superlinked](https://superlinked.com/) -- vector embedding infrastructure compatible with DUSK v1.5 baseline
 - [Tavily](https://tavily.com/) -- real-time web search API used in the live demo and n8n integration
 - [n8n](https://n8n.io/) -- AI agent workflow orchestration used in the integration demo
+- [Aikido Security](https://aikido.dev/) -- runtime security scanning integrated into DUSK CI
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 - Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
