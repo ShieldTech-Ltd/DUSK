@@ -33,7 +33,11 @@
   <img src="docs/dusk-attack-demo.svg" alt="DUSK live prompt-injection demo: a hijacked network agent is refused before its action reaches the controller" width="100%">
 </p>
 
-<p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. Run it yourself: <code>python demo/live_attack.py</code></sub></p>
+<p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. DUSK simultaneously fires Gemini Flash (plain-English briefing), Attio CRM (incident record), n8n SOAR (security team alert), and Superlinked (similarity search) -- all in under 2 seconds.</sub></p>
+
+<p align="center">
+  <strong>Interactive demo:</strong> open <code>demo/live_demo.html</code> in a browser for an animated walkthrough of the full 6-phase attack and response pipeline. No server required.
+</p>
 
 <details>
 <summary><b>Contents</b></summary>
@@ -416,8 +420,9 @@ src/dusk/
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
 demo/
-  live_attack.py        End-to-end prompt-injection scenario (DuckDuckGo + Attio)
+  live_demo.html        Interactive animated demo -- 6-phase prompt injection + pipeline response
   index.html            Live security operations dashboard (Security Gate + Research Pipeline)
+  live_attack.py        End-to-end terminal scenario (DuckDuckGo + Attio)
   preflight.py          Pre-demo smoke test -- verifies all 6 integrations
   seed_attio.py         Seeds Attio with demo companies and incidents
   DEMO_GUIDE.md         Timed 2-min video script and 5-min finalist guide

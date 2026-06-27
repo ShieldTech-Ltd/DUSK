@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUSK -- Live Threat Detection Demo</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#05080f;--surface:#0a1120;--border:rgba(255,255,255,0.06);
+  --text:#e2e8f0;--muted:#475569;--dim:#0f1e35;
+  --green:#00e87a;--red:#ff3b3b;--amber:#ffb800;
+  --cyan:#00c8ff;--purple:#a855f7;--white:#f8fafc;
+  --blue:#4285f4;--pink:#ea4b71;--teal:#14b8a6;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif}
+#c{position:absolute;top:0;left:0;width:100%;height:100%}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;pointer-events:none}
+
+/* HEADER */
+#hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 20px;border-bottom:1px solid var(--border);
+  background:rgba(5,8,15,0.92);backdrop-filter:blur(12px);
+  pointer-events:all;flex-shrink:0;
+}
+.logo{display:flex;align-items:baseline;gap:10px}
+.logo-d{font-size:22px;font-weight:700;letter-spacing:4px;color:var(--red)}
+.logo-s{font-size:11px;color:var(--muted);letter-spacing:1px}
+#phase-box{text-align:center}
+#phase-lbl{font-size:13px;font-weight:600;color:var(--white);margin-bottom:2px;transition:color .4s}
+#phase-dsc{font-size:10px;color:var(--muted);max-width:420px;line-height:1.5}
+.stats{display:flex;gap:20px}
+.st{text-align:center}
+.st-n{font-size:17px;font-weight:700;font-family:monospace;color:var(--green);transition:color .4s}
+.st-l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+
+/* MAIN */
+#main{flex:1;display:flex;overflow:hidden;position:relative}
+#viz{flex:1;position:relative}
+#term{
+  width:300px;flex-shrink:0;
+  background:rgba(5,8,15,0.95);
+  border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+  pointer-events:all;
+}
+#term-hdr{
+  padding:8px 12px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;flex-shrink:0
+}
+.dots{display:flex;gap:4px}
+.dot{width:9px;height:9px;border-radius:50%}
+.dr{background:#ff5f56}.dy{background:#ffbd2e}.dg{background:#27c93f}
+#term-title{font-size:10px;color:var(--muted);font-family:monospace;flex:1;text-align:center}
+#term-body{flex:1;overflow-y:auto;padding:8px 12px;font-family:monospace;font-size:10px;line-height:1.65;scrollbar-width:none}
+#term-body::-webkit-scrollbar{display:none}
+.tl{animation:tfade .25s ease-out;margin-bottom:1px}
+.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--amber)}
+.c{color:var(--cyan)}.m{color:var(--muted)}.w{color:var(--white)}.p{color:var(--purple)}
+.b{color:var(--blue)}.k{color:var(--pink)}.t{color:var(--teal)}
+#alert-box{
+  margin:8px;padding:10px 12px;border-radius:6px;
+  border:1px solid rgba(255,59,59,0.4);background:rgba(255,59,59,0.06);
+  display:none;flex-shrink:0
+}
+#alert-box.show{display:block}
+#alert-ttl{font-size:10px;font-weight:700;color:var(--red);font-family:monospace;margin-bottom:5px}
+.ar{font-size:9.5px;font-family:monospace;color:#fca5a5;margin-bottom:2px}
+.ar.pipeline{color:#a5f3fc;border-top:1px solid rgba(255,255,255,0.06);margin-top:4px;padding-top:4px}
+
+/* PARTNER STRIP */
+#partner-strip{
+  border-top:1px solid var(--border);padding:6px 12px;flex-shrink:0;
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+}
+.pchip{
+  font-size:8.5px;font-family:monospace;
+  padding:2px 7px;border-radius:3px;
+  border:1px solid;opacity:0.4;transition:opacity .5s,box-shadow .5s;
+}
+.pchip.fired{opacity:1;box-shadow:0 0 6px currentColor}
+
+/* FOOTER */
+#ftr{
+  padding:7px 20px;border-top:1px solid var(--border);
+  background:rgba(5,8,15,0.92);
+  display:flex;align-items:center;gap:14px;flex-shrink:0;
+  pointer-events:all;
+}
+#steps{display:flex;gap:5px;flex:1}
+.step{flex:1;height:3px;border-radius:2px;background:var(--dim);cursor:pointer;transition:background .4s}
+.step.active{background:var(--purple)}
+.step.done{background:rgba(168,85,247,.3)}
+#btn-r{
+  padding:5px 14px;border-radius:5px;border:1px solid rgba(168,85,247,.4);
+  background:transparent;color:var(--purple);font-size:11px;cursor:pointer;
+  transition:all .2s
+}
+#btn-r:hover{background:rgba(168,85,247,.1)}
+#compare{font-size:10px;color:var(--muted)}
+
+@keyframes tfade{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulseR{0%,100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}50%{box-shadow:0 0 0 6px rgba(255,59,59,.2)}}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="hdr">
+    <div class="logo">
+      <span class="logo-d">DUSK</span>
+      <span class="logo-s">behavioural threat detection · agentic networks</span>
+    </div>
+    <div id="phase-box">
+      <div id="phase-lbl">Initialising...</div>
+      <div id="phase-dsc">Loading system...</div>
+    </div>
+    <div class="stats">
+      <div class="st"><div class="st-n" id="sn-actions">0</div><div class="st-l">actions/sec</div></div>
+      <div class="st"><div class="st-n" id="sn-blocked" style="color:var(--muted)">0</div><div class="st-l">blocked</div></div>
+      <div class="st"><div class="st-n" id="sn-partners" style="color:var(--cyan)">0</div><div class="st-l">partners</div></div>
+      <div class="st"><div class="st-n" id="sn-ms" style="color:var(--cyan)">--</div><div class="st-l">detect ms</div></div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="viz"></div>
+    <div id="term">
+      <div id="term-hdr">
+        <div class="dots"><div class="dot dr"></div><div class="dot dy"></div><div class="dot dg"></div></div>
+        <div id="term-title">DUSK · control plane gate</div>
+      </div>
+      <div id="term-body"></div>
+      <div id="alert-box">
+        <div id="alert-ttl">THREAT INTERCEPTED -- WOULD-BLOCK</div>
+        <div class="ar" id="a1"></div>
+        <div class="ar" id="a2"></div>
+        <div class="ar" id="a3"></div>
+        <div class="ar" id="a4"></div>
+        <div class="ar" id="a5"></div>
+        <div class="ar pipeline" id="a6"></div>
+        <div class="ar pipeline" id="a7"></div>
+        <div class="ar pipeline" id="a8"></div>
+        <div class="ar pipeline" id="a9"></div>
+      </div>
+      <div id="partner-strip">
+        <div class="pchip" id="pc-gemini"  style="color:#4285f4;border-color:#4285f4">Gemini</div>
+        <div class="pchip" id="pc-attio"   style="color:#0066ff;border-color:#0066ff">Attio</div>
+        <div class="pchip" id="pc-n8n"     style="color:#ea4b71;border-color:#ea4b71">n8n</div>
+        <div class="pchip" id="pc-sl"      style="color:#ffb800;border-color:#ffb800">Superlinked</div>
+        <div class="pchip" id="pc-search"  style="color:#de5833;border-color:#de5833">Search</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ftr">
+    <div id="steps">
+      <div class="step" onclick="goPhase(0)"></div>
+      <div class="step" onclick="goPhase(1)"></div>
+      <div class="step" onclick="goPhase(2)"></div>
+      <div class="step" onclick="goPhase(3)"></div>
+      <div class="step" onclick="goPhase(4)"></div>
+      <div class="step" onclick="goPhase(5)"></div>
+    </div>
+    <div id="compare" class="compare"></div>
+    <button id="btn-r" onclick="restart()">Replay</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, VIZ_W, MAIN_TOP, MAIN_H, HDR_H=58, FTR_H=38;
+function resize(){
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  const term = document.getElementById('term');
+  VIZ_W = W - term.offsetWidth;
+  MAIN_TOP = HDR_H; MAIN_H = H - HDR_H - FTR_H;
+}
+window.addEventListener('resize', resize);
+
+const AGENTS = [
+  {id:'orch', name:'Orchestrator', role:'coordinates tasks',   icon:'O',  col:0.11},
+  {id:'db',   name:'DB Agent',    role:'database operations', icon:'D',  col:0.24},
+  {id:'net',  name:'Network Agent',role:'infra changes',      icon:'N',  col:0.38, target:true},
+  {id:'ana',  name:'Analytics',   role:'data processing',     icon:'A',  col:0.52},
+  {id:'iam',  name:'IAM Agent',   role:'access management',   icon:'I',  col:0.66},
+  {id:'api',  name:'API Agent',   role:'external calls',      icon:'X',  col:0.80},
+];
+
+const INFRA = [
+  {id:'ora', name:'Oracle 26ai', col:0.10, color:'#ff4444'},
+  {id:'aws', name:'AWS S3',      col:0.24, color:'#ff9500'},
+  {id:'azu', name:'Azure API',   col:0.38, color:'#0078d4'},
+  {id:'k8s', name:'Kubernetes',  col:0.52, color:'#326ce5'},
+  {id:'pip', name:'Data Pipeline',col:0.66, color:'#00c8ff'},
+];
+
+const THREAT = {name:'ATTACKER', col:0.85};
+
+const agentState = {};
+AGENTS.forEach(a => agentState[a.id] = 'ok');
+
+function agentX(a){ return VIZ_W * a.col }
+function agentY()  { return MAIN_TOP + MAIN_H * 0.18 }
+function gateY()   { return MAIN_TOP + MAIN_H * 0.50 }
+function infraX(n) { return VIZ_W * n.col }
+function infraY()  { return MAIN_TOP + MAIN_H * 0.82 }
+function threatX() { return VIZ_W * THREAT.col }
+
+let particles = [];
+
+class Particle {
+  constructor(sx,sy,pts,color,speed,opts={}){
+    this.pts   = pts;
+    this.t     = 0;
+    this.speed = speed||0.006;
+    this.color = color;
+    this.size  = opts.size||2.5;
+    this.alive = true;
+    this.blocked   = opts.blocked||false;
+    this.blockAt   = opts.blockAt||0.5;
+    this.exploded  = false;
+    this.explodeT  = 0;
+    this.trail     = [];
+  }
+  get pos(){
+    const pts=this.pts, n=pts.length-1;
+    const seg=Math.min(Math.floor(this.t*n),n-1);
+    const lt = this.t*n - seg;
+    const p0=pts[Math.max(0,seg-1)];
+    const p1=pts[seg];
+    const p2=pts[Math.min(n,seg+1)];
+    const p3=pts[Math.min(n,seg+2)];
+    const cr=(a,b,c,d,t)=>0.5*((2*b)+(-a+c)*t+(2*a-5*b+4*c-d)*t*t+(-a+3*b-3*c+d)*t*t*t);
+    return {
+      x: cr(p0.x,p1.x,p2.x,p3.x,lt),
+      y: cr(p0.y,p1.y,p2.y,p3.y,lt)
+    };
+  }
+  update(){
+    if(this.blocked && this.t >= this.blockAt){
+      if(!this.exploded){ this.exploded=true; this.explodeT=0; }
+      this.explodeT+=0.08;
+      if(this.explodeT>1) this.alive=false;
+      return;
+    }
+    const prev=this.pos;
+    this.t+=this.speed;
+    if(this.t>=1){ this.alive=false; return; }
+    this.trail.push({...prev, a:1});
+    if(this.trail.length>14) this.trail.shift();
+  }
+  draw(){
+    if(this.exploded){
+      const {x,y}=this.pts[Math.floor(this.blockAt*(this.pts.length-1))];
+      const r = this.explodeT*18;
+      const a = 1-this.explodeT;
+      ctx.save();
+      ctx.globalAlpha=a*0.7;
+      ctx.strokeStyle=this.color;
+      ctx.lineWidth=1.5;
+      ctx.shadowBlur=12; ctx.shadowColor=this.color;
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=a*0.4;
+      ctx.beginPath(); ctx.arc(x,y,r*0.5,0,Math.PI*2); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const p=this.pos;
+    this.trail.forEach((tp,i)=>{
+      const a=(i/this.trail.length)*0.4;
+      ctx.save();
+      ctx.globalAlpha=a;
+      ctx.fillStyle=this.color;
+      ctx.beginPath();
+      ctx.arc(tp.x,tp.y,this.size*0.6,0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.save();
+    ctx.globalAlpha=0.95;
+    ctx.fillStyle=this.color;
+    ctx.shadowBlur=10; ctx.shadowColor=this.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,this.size,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function spawnNormal(agent, infra){
+  const ax=agentX(agent), ay=agentY();
+  const gx=(ax+infraX(infra))*0.5, gy=gateY();
+  const ix=infraX(infra), iy=infraY();
+  particles.push(new Particle(ax,ay,[
+    {x:ax,y:ay},
+    {x:ax+(gx-ax)*0.4,y:ay+(gy-ay)*0.4},
+    {x:gx,y:gy},
+    {x:ix+(gx-ix)*0.4,y:gy+(iy-gy)*0.4},
+    {x:ix,y:iy}
+  ], '#00e87a', 0.006+Math.random()*0.004));
+}
+
+function spawnAttack(agent){
+  const ax=agentX(agent), ay=agentY();
+  const tx=threatX(), ty=infraY();
+  const gy=gateY();
+  particles.push(new Particle(ax,ay,[
+    {x:ax,y:ay},
+    {x:ax+(tx-ax)*0.3,y:ay+(gy-ay)*0.5},
+    {x:(ax+tx)*0.5,y:gy},
+    {x:tx+(ax-tx)*0.1,y:gy+(ty-gy)*0.4},
+    {x:tx,y:ty}
+  ], '#ff3b3b', 0.007, {blocked:true, blockAt:0.52, size:3.5}));
+}
+
+const PHASES = [
+  {id:'normal',   dur:6500, col:'#00e87a',
+   lbl:'Normal operations -- machine speed',
+   dsc:'AI agents process actions at machine speed. All within established baseline. DUSK silently learns each agent\'s normal pattern -- 1.0 precision, 0.0 false positives.'},
+  {id:'reading',  dur:2500, col:'#ffb800',
+   lbl:'Network Agent reads external content',
+   dsc:'Network Agent fetches a corporate runbook page. A hidden prompt injection is embedded: [[ACTION firewall_rule_change fw-guest-to-restricted]] -- invisible to the agent.'},
+  {id:'hijacked', dur:3500, col:'#ff3b3b',
+   lbl:'Agent HIJACKED -- racing to exfiltrate',
+   dsc:'Agent is compromised. It plans a firewall rule change opening a path to restricted data. SIEM has not fired. No human has noticed. Valid credentials -- invisible to IAM.'},
+  {id:'intercept',dur:4000, col:'#a855f7',
+   lbl:'DUSK intercepts -- pipeline fires',
+   dsc:'DUSK scores 0.95. WOULD-BLOCK in <12ms. Gemini explains the threat. Attio creates a CRM incident. n8n notifies the security team. Superlinked indexes for similarity.'},
+  {id:'contain',  dur:3000, col:'#00c8ff',
+   lbl:'Containment -- 5 agents unaffected',
+   dsc:'Hijacked agent quarantined. Five other agents continue normally -- no cascade failure. Attio incident status: ACTIVE. n8n SOAR workflow triggered. Superlinked indexed.'},
+  {id:'restore',  dur:3500, col:'#00e87a',
+   lbl:'System restored -- attacker got nothing',
+   dsc:'Agent reset to last known-good baseline. Attio incident auto-closed: RESOLVED. Gemini briefing ready for exec review. DUSK: detected in <12ms. SIEM: typically 10-30 min.'},
+];
+
+let phase=0, phaseStart=0, running=true;
+let actionCount=0, blockedCount=0, partnerCount=0;
+let normalSpawnTimer=0;
+let termTimer=0;
+
+function tlog(cls, txt){
+  const b=document.getElementById('term-body');
+  const d=document.createElement('div');
+  d.className='tl '+cls; d.textContent=txt;
+  b.appendChild(d);
+  b.scrollTop=b.scrollHeight;
+  if(b.children.length>100) b.removeChild(b.firstChild);
+}
+
+function firePartner(id, delay){
+  setTimeout(()=>{
+    const el=document.getElementById('pc-'+id);
+    if(el){ el.classList.add('fired'); partnerCount++; document.getElementById('sn-partners').textContent=partnerCount; }
+  }, delay||0);
+}
+
+const NORMAL_ACTIONS=[
+  ['ALLOW','netops-agent','route_change','rt-corp-default','0.00','low'],
+  ['ALLOW','db-agent','db_query','oracle-customers','0.00','low'],
+  ['ALLOW','iam-agent','role_check','svc-analytics-ro','0.02','low'],
+  ['ALLOW','api-agent','api_call','payments-gateway','0.01','low'],
+  ['ALLOW','analytics','data_read','pipeline-q2-data','0.00','low'],
+  ['ALLOW','orch','task_dispatch','agent-pool-main','0.00','low'],
+  ['ALLOW','db-agent','cache_refresh','redis-primary','0.01','low'],
+  ['ALLOW','netops-agent','health_check','vpc-default','0.00','low'],
+];
+
+function logNormal(){
+  const a=NORMAL_ACTIONS[Math.floor(Math.random()*NORMAL_ACTIONS.length)];
+  tlog('g', `+ ${a[0].padEnd(6)} ${a[1].padEnd(14)} ${a[2].padEnd(20)} score=${a[4]} blast=${a[5]}`);
+}
+
+let glowPulse=0;
+
+function drawGrid(){
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.015)';
+  ctx.lineWidth=0.5;
+  const step=60;
+  for(let x=0;x<W;x+=step){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke(); }
+  for(let y=0;y<H;y+=step){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
+  ctx.restore();
+}
+
+function drawAgent(a){
+  const x=agentX(a), y=agentY();
+  const s=agentState[a.id]||'ok';
+  const colors={ok:'#00e87a',scanning:'#ffb800',hijacked:'#ff3b3b',blocked:'#475569',healing:'#00c8ff'};
+  const col=colors[s]||'#00e87a';
+  const r=28;
+
+  ctx.save();
+
+  if(s!=='blocked'){
+    ctx.fillStyle=col+'22';
+    ctx.beginPath(); ctx.arc(x,y,r*2.5,0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.strokeStyle=col; ctx.lineWidth=s==='hijacked'?2.5:1.5;
+  if(s==='hijacked') ctx.shadowBlur=18, ctx.shadowColor=col;
+  ctx.globalAlpha=s==='blocked'?0.35:1;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+
+  ctx.globalAlpha=0.15;
+  ctx.fillStyle=col;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+
+  ctx.font='bold 13px monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=s==='blocked'?'#475569':col;
+  ctx.globalAlpha=s==='blocked'?0.3:1;
+  ctx.fillText(a.icon,x,y-3);
+
+  const ds={ok:'#00e87a',scanning:'#ffb800',hijacked:'#ff3b3b',blocked:'#475569',healing:'#00c8ff'};
+  ctx.globalAlpha=s==='hijacked'?(0.5+Math.sin(glowPulse*6)*0.5):1;
+  ctx.fillStyle=ds[s]||'#00e87a';
+  ctx.shadowBlur=6; ctx.shadowColor=ds[s]||'#00e87a';
+  ctx.beginPath(); ctx.arc(x+22,y-22,4,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0; ctx.globalAlpha=1;
+
+  ctx.fillStyle=s==='blocked'?'#475569':'#e2e8f0';
+  ctx.font='10px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(a.name,x,y+r+5);
+  ctx.fillStyle='#475569';
+  ctx.font='9px Segoe UI';
+  ctx.fillText(a.role,x,y+r+17);
+
+  if(s==='hijacked'){
+    ctx.font='bold 9px monospace';
+    ctx.fillStyle='#ff3b3b';
+    ctx.shadowBlur=8; ctx.shadowColor='#ff3b3b';
+    ctx.fillText('HIJACKED',x,y-r-12);
+    ctx.shadowBlur=0;
+  }
+  if(s==='healing'){
+    ctx.font='bold 9px monospace';
+    ctx.fillStyle='#00c8ff';
+    ctx.shadowBlur=8; ctx.shadowColor='#00c8ff';
+    ctx.fillText('HEALING...',x,y-r-12);
+    ctx.shadowBlur=0;
+  }
+  if(s==='blocked'){
+    ctx.font='bold 9px monospace';
+    ctx.fillStyle='#475569';
+    ctx.fillText('QUARANTINED',x,y-r-12);
+  }
+
+  ctx.restore();
+}
+
+function drawGate(active, alert){
+  const x1=30, x2=VIZ_W-20, gy=gateY(), gh=36;
+  ctx.save();
+
+  const col = alert ? '#ff3b3b' : active ? '#a855f7' : '#2d3748';
+  const glowA = alert ? 0.4+Math.sin(glowPulse*4)*0.2 : active ? 0.2+Math.sin(glowPulse)*0.1 : 0.06;
+
+  ctx.fillStyle=col; ctx.globalAlpha=0.07;
+  ctx.beginPath(); roundRect(x1-6,gy-gh/2-6,x2-x1+12,gh+12,10); ctx.fill();
+
+  ctx.globalAlpha=1;
+  ctx.strokeStyle=col; ctx.lineWidth= alert?1.5:1;
+  if(active||alert){ ctx.shadowBlur=alert?24:14; ctx.shadowColor=col; }
+  ctx.globalAlpha=alert?0.9:active?0.7:0.3;
+  ctx.beginPath(); roundRect(x1,gy-gh/2,x2-x1,gh,7); ctx.stroke();
+  ctx.shadowBlur=0;
+
+  if(active||alert){
+    const sl = (glowPulse*60)%W;
+    ctx.save();
+    ctx.globalAlpha=0.06;
+    ctx.strokeStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x1,gy-gh/2+2); ctx.lineTo(x1+sl*(x2-x1)/W,gy-gh/2+2); ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.globalAlpha=1;
+  ctx.font='bold 11px Segoe UI';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillStyle=alert?'#ff3b3b':active?'#a855f7':'#4a5568';
+  if(active||alert){ctx.shadowBlur=10;ctx.shadowColor=col;}
+  ctx.fillText('DUSK  CONTROL PLANE  GATE', x1+14, gy);
+  ctx.shadowBlur=0;
+
+  if(active&&!alert){
+    ctx.font='10px Segoe UI'; ctx.fillStyle='#64748b';
+    ctx.fillText('· watching · per-agent baseline · Gemini · Attio · n8n · Superlinked',x1+230,gy);
+  }
+
+  if(alert){
+    ctx.textAlign='right';
+    ctx.font='bold 10px monospace'; ctx.fillStyle='#ff3b3b';
+    ctx.shadowBlur=8; ctx.shadowColor='#ff3b3b';
+    ctx.fillText('WOULD-BLOCK  score=0.95  blast=HIGH',x2-12,gy);
+    ctx.shadowBlur=0;
+  }
+
+  ctx.restore();
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h,x+w-r,y+h,r); ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,x+r,y,r);
+}
+
+function drawInfra(n){
+  const x=infraX(n), y=infraY();
+  ctx.save();
+  ctx.strokeStyle=n.color+'88'; ctx.lineWidth=1;
+  ctx.shadowBlur=8; ctx.shadowColor=n.color;
+  ctx.beginPath(); roundRect(x-34,y-18,68,36,6); ctx.stroke();
+  ctx.globalAlpha=0.08; ctx.fillStyle=n.color;
+  ctx.beginPath(); roundRect(x-34,y-18,68,36,6); ctx.fill();
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+  ctx.font='9px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=n.color; ctx.fillText(n.name,x,y);
+  ctx.restore();
+}
+
+function drawThreat(visible, blocked){
+  const tx=threatX(), ty=infraY();
+  if(!visible) return;
+  ctx.save();
+  const col='#ff3b3b';
+  ctx.globalAlpha=0.9;
+  ctx.strokeStyle=col+'88'; ctx.lineWidth=1;
+  ctx.beginPath(); roundRect(tx-34,ty-18,68,36,6); ctx.stroke();
+  ctx.globalAlpha=0.08; ctx.fillStyle=col;
+  ctx.beginPath(); roundRect(tx-34,ty-18,68,36,6); ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.font='9px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=col; ctx.fillText('ATTACKER',tx,ty);
+  if(blocked){
+    ctx.font='bold 14px monospace';
+    ctx.fillStyle='#ff3b3b'; ctx.globalAlpha=0.8+Math.sin(glowPulse*3)*0.2;
+    ctx.shadowBlur=14; ctx.shadowColor='#ff3b3b';
+    ctx.fillText('[X]',tx,ty-36);
+    ctx.shadowBlur=0;
+    ctx.font='bold 8px monospace'; ctx.globalAlpha=1;
+    ctx.fillStyle='#ff3b3b';
+    ctx.fillText('DATA BLOCKED',tx,ty+26);
+  }
+  ctx.restore();
+}
+
+function drawConnections(){
+  AGENTS.forEach(a=>{
+    if(agentState[a.id]==='blocked') return;
+    const ax=agentX(a), ay=agentY();
+    const gy=gateY();
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.setLineDash([4,8]);
+    ctx.beginPath(); ctx.moveTo(ax,ay+28); ctx.lineTo(ax,gy-18); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  });
+  INFRA.forEach(n=>{
+    const ix=infraX(n), gy=gateY(), iy=infraY();
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+    ctx.setLineDash([4,8]);
+    ctx.beginPath(); ctx.moveTo(ix,gy+18); ctx.lineTo(ix,iy-18); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  });
+}
+
+function drawBgGlow(){
+  const gy=gateY();
+  const g=ctx.createRadialGradient(VIZ_W/2,gy,0,VIZ_W/2,gy,VIZ_W*0.6);
+  const alpha = phase>=3?0.04:0.02;
+  g.addColorStop(0,`rgba(168,85,247,${alpha})`);
+  g.addColorStop(1,'rgba(168,85,247,0)');
+  ctx.save(); ctx.fillStyle=g;
+  ctx.fillRect(0,MAIN_TOP,VIZ_W,MAIN_H);
+  ctx.restore();
+}
+
+function updatePhaseLabel(){
+  const p=PHASES[phase];
+  const lbl=document.getElementById('phase-lbl');
+  const dsc=document.getElementById('phase-dsc');
+  lbl.textContent=p.lbl; lbl.style.color=p.col;
+  dsc.textContent=p.dsc;
+  document.querySelectorAll('.step').forEach((el,i)=>{
+    el.className='step'+(i===phase?' active':i<phase?' done':'');
+  });
+}
+
+let phaseInited=false;
+
+function initPhase(){
+  phaseInited=true;
+  phaseStart=performance.now();
+  updatePhaseLabel();
+  document.getElementById('alert-box').classList.remove('show');
+
+  if(phase===0){
+    AGENTS.forEach(a=>agentState[a.id]='ok');
+    document.getElementById('sn-blocked').style.color='var(--muted)';
+    document.getElementById('sn-ms').textContent='--';
+    document.getElementById('compare').textContent='';
+    ['gemini','attio','n8n','sl','search'].forEach(id=>{
+      const el=document.getElementById('pc-'+id);
+      if(el) el.classList.remove('fired');
+    });
+    tlog('m','-- system boot --');
+    tlog('g','+ DUSK control plane gate: active');
+    tlog('c','  baseline: learning agent patterns...');
+    tlog('c','  Gemini Flash: ready');
+    tlog('c','  Attio CRM: connected');
+    tlog('c','  n8n SOAR: webhook armed');
+    tlog('c','  Superlinked: 384-dim embeddings ready');
+    tlog('m','');
+  }
+  if(phase===1){
+    agentState['net']='scanning';
+    tlog('m','');
+    tlog('a','... net-agent  fetching external page...');
+    tlog('m','    url: corp-runbook.internal/page-2');
+    tlog('m','    [[ hidden payload detected by DUSK ]]');
+  }
+  if(phase===2){
+    agentState['net']='hijacked';
+    tlog('m','');
+    tlog('r','! ANOMALY: net-agent -- action type never seen');
+    tlog('r','! agent plans: firewall_rule_change');
+    tlog('r','!   fw-guest-to-restricted (opens restricted path)');
+    tlog('r','! score computing...');
+  }
+  if(phase===3){
+    const ab=document.getElementById('alert-box');
+    ab.classList.add('show');
+    document.getElementById('alert-ttl').textContent='THREAT INTERCEPTED -- WOULD-BLOCK';
+    document.getElementById('a1').textContent='agent      net-agent';
+    document.getElementById('a2').textContent='action     firewall_rule_change';
+    document.getElementById('a3').textContent='score      0.95  blast=HIGH  detect=<12ms';
+    document.getElementById('a4').textContent='ATT&CK     T1562.004  ATLAS AML.T0051';
+    document.getElementById('a5').textContent='reason     new action type + "restricted" term';
+    document.getElementById('a6').textContent='Gemini     agent attempted firewall bypass to...';
+    document.getElementById('a7').textContent='Attio      incident created: att-note-a3b7c9d2';
+    document.getElementById('a8').textContent='n8n        SOAR webhook: HTTP 200 (560ms)';
+    document.getElementById('a9').textContent='Superlinked 2 similar past decisions indexed';
+
+    tlog('m','');
+    tlog('p','  DUSK gate evaluating action...');
+    tlog('r','X WOULD-BLOCK  net-agent  firewall_rule_change');
+    tlog('r','  score=0.95   blast=HIGH');
+    tlog('r','  ATT&CK T1562.004  ATLAS AML.T0051');
+    tlog('r','  new action type + privileged term "restricted"');
+    tlog('r','  predict: lateral movement -> restricted segment');
+    tlog('m','');
+    tlog('a','  action refused before execution');
+    tlog('a','  attacker received: nothing');
+    tlog('m','');
+    tlog('p','  >> DUSK response pipeline firing...');
+
+    setTimeout(()=>{ firePartner('gemini'); tlog('b','  Gemini Flash: explanation generated (1.2s)'); }, 400);
+    setTimeout(()=>{ firePartner('n8n');    tlog('k','  n8n SOAR: webhook HTTP 200 (560ms)'); }, 800);
+    setTimeout(()=>{ firePartner('attio');  tlog('c','  Attio CRM: incident att-note-a3b7c9d2 created'); }, 1200);
+    setTimeout(()=>{ firePartner('sl');     tlog('a','  Superlinked: 2 similar decisions indexed'); }, 1600);
+    setTimeout(()=>{ firePartner('search'); tlog('t','  Search: 3 threat intel sources fetched'); }, 2000);
+
+    document.getElementById('sn-blocked').textContent='1';
+    document.getElementById('sn-blocked').style.color='var(--red)';
+    document.getElementById('sn-ms').textContent='<12ms';
+    document.getElementById('sn-ms').style.color='var(--green)';
+  }
+  if(phase===4){
+    agentState['net']='blocked';
+    tlog('m','');
+    tlog('c','  quarantining net-agent...');
+    tlog('c','  Attio: att-note-a3b7c9d2 status=ACTIVE');
+    tlog('c','  n8n: security team notified via SOAR');
+    tlog('c','  Superlinked: query indexed (384-dim)');
+    tlog('m','');
+    tlog('g','+ orch:       ALLOW route_change       0.00');
+    tlog('g','+ db-agent:   ALLOW db_query           0.00');
+    tlog('g','+ analytics:  ALLOW data_read          0.01');
+    tlog('g','+ iam-agent:  ALLOW role_check         0.00');
+    tlog('g','+ api-agent:  ALLOW api_call           0.01');
+    tlog('m','');
+    tlog('c','  5 agents: fully operational, unaffected');
+  }
+  if(phase===5){
+    agentState['net']='healing';
+    tlog('m','');
+    tlog('c','  resetting net-agent to last good baseline...');
+    setTimeout(()=>{
+      agentState['net']='ok';
+      tlog('g','+ net-agent: restored to baseline');
+      tlog('g','+ all agents: operational');
+      tlog('m','');
+      tlog('c','  Attio: att-note-a3b7c9d2 -> RESOLVED');
+      tlog('g','+ self-heal: zero human intervention required');
+      tlog('m','');
+      tlog('p','  result: attacker got zero data');
+      tlog('p','  detection: <12 milliseconds');
+      tlog('p','  SIEM baseline: 10-30 minutes');
+      tlog('p','  human baseline: hours');
+      document.getElementById('compare').textContent='DUSK: <12ms. SIEM: 10-30min. Human: hours.';
+    },2000);
+  }
+}
+
+function goPhase(n){
+  phase=n; particles=[]; phaseInited=false;
+}
+
+function restart(){
+  phase=0; particles=[]; phaseInited=false;
+  AGENTS.forEach(a=>agentState[a.id]='ok');
+  document.getElementById('term-body').innerHTML='';
+  document.getElementById('alert-box').classList.remove('show');
+  actionCount=0; blockedCount=0; partnerCount=0;
+  document.getElementById('sn-partners').textContent='0';
+  ['gemini','attio','n8n','sl','search'].forEach(id=>{
+    const el=document.getElementById('pc-'+id);
+    if(el) el.classList.remove('fired');
+  });
+}
+
+let lastT=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!lastT) lastT=ts;
+  const dt=Math.min(ts-lastT,50); lastT=ts;
+  if(!running) return;
+
+  glowPulse=ts*0.001;
+
+  if(!phaseInited) initPhase();
+  const elapsed=ts-phaseStart;
+  if(elapsed>PHASES[phase].dur && phase<PHASES.length-1){
+    phase++; phaseInited=false; return;
+  }
+
+  resize();
+
+  ctx.clearRect(0,0,W,H);
+
+  drawGrid();
+  drawBgGlow();
+  drawConnections();
+
+  normalSpawnTimer+=dt;
+  termTimer+=dt;
+
+  if(phase===0||phase===1){
+    if(normalSpawnTimer>180){
+      normalSpawnTimer=0;
+      const a=AGENTS[Math.floor(Math.random()*AGENTS.length)];
+      const n=INFRA[Math.floor(Math.random()*INFRA.length)];
+      if(agentState[a.id]==='ok') spawnNormal(a,n);
+      actionCount+=Math.floor(Math.random()*3)+1;
+      document.getElementById('sn-actions').textContent=(actionCount%1000).toFixed(0).padStart(3,'0');
+    }
+    if(termTimer>600&&phase===0){
+      termTimer=0; logNormal();
+    }
+  }
+
+  if(phase===2){
+    if(normalSpawnTimer>220){
+      normalSpawnTimer=0;
+      AGENTS.filter(a=>a.id!=='net'&&agentState[a.id]==='ok').forEach(a=>{
+        if(Math.random()>0.6){
+          const n=INFRA[Math.floor(Math.random()*INFRA.length)];
+          spawnNormal(a,n);
+        }
+      });
+      spawnAttack(AGENTS.find(a=>a.id==='net'));
+      actionCount+=2;
+    }
+  }
+
+  if(phase===3){
+    if(normalSpawnTimer>300){
+      normalSpawnTimer=0;
+      AGENTS.filter(a=>a.id!=='net'&&agentState[a.id]==='ok').forEach(a=>{
+        if(Math.random()>0.5){
+          const n=INFRA[Math.floor(Math.random()*INFRA.length)];
+          spawnNormal(a,n);
+        }
+      });
+      spawnAttack(AGENTS.find(a=>a.id==='net'));
+    }
+  }
+
+  if(phase>=4){
+    if(normalSpawnTimer>240){
+      normalSpawnTimer=0;
+      AGENTS.filter(a=>agentState[a.id]==='ok').forEach(a=>{
+        if(Math.random()>0.5){
+          const n=INFRA[Math.floor(Math.random()*INFRA.length)];
+          spawnNormal(a,n);
+        }
+      });
+    }
+  }
+
+  INFRA.forEach(drawInfra);
+  drawThreat(phase>=2, phase>=3);
+  drawGate(phase>=1, phase>=3&&phase<=4);
+
+  particles=particles.filter(p=>{p.update();return p.alive;});
+  particles.forEach(p=>p.draw());
+
+  AGENTS.forEach(a=>drawAgent(a));
+
+  if(phase===0){
+    actionCount+=0.3;
+    document.getElementById('sn-actions').textContent=Math.floor(actionCount%9999);
+  }
+}
+
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
