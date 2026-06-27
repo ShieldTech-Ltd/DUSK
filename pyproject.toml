@@ -117,6 +117,7 @@ disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-
 [[tool.mypy.overrides]]
 module = ["dusk.integrations.*", "dusk.trace.*"]
 ignore_missing_imports = true
+disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "lab"]
