@@ -29,6 +29,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -39,6 +45,10 @@ dev = [
     "pip-audit>=2.7.0",
     "pre-commit>=3.7.0",
     "types-PyYAML>=6.0",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
 ]
 
 [project.urls]
