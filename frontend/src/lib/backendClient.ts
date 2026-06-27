@@ -1,30 +1,27 @@
 /**
  * Trace × DUSK Backend API Client
  *
- * All functions use NEXT_PUBLIC_BACKEND_API_URL when set and fall back to
- * mock data when the backend is unavailable — so the demo always works.
+ * Calls the Next.js API routes at /api/... (same server when no BASE_URL is set)
+ * or an external backend when NEXT_PUBLIC_BACKEND_API_URL is configured.
  *
- * API shapes match the real DUSK backend schemas:
- *   - GateVerdict: verdict (ALLOW|WOULD-BLOCK|BLOCK), score, mitre_attack,
- *     mitre_atlas, blast_radius, predicted_next, reasons
- *   - DetectionAlert: detection, source, mitre, stage, confidence, reason,
- *     prediction  (written to dusk-alerts.json by AlertResponder)
- *   - n8n webhook payload: { verdict, analysis: { agent_id, score, ... } }
- *   - Tavily enrichment: enrich_alert(agent_id, action_type, mitre_id)
+ * The API route handlers contain all mock/live decision logic — this client
+ * is always thin: just HTTP, types, and error handling.
  *
- * SECURITY: never put real secrets here. Use environment variables only.
+ * SECURITY: never put real secrets here. All secrets live server-side.
  */
 
-import { mockCustomers, type Customer } from '@/data/mockCustomers'
-import { mockIssues, type SecurityIssue } from '@/data/mockIssues'
-import { mockExecutionPlans, type ExecutionPlan } from '@/data/mockExecutionPlans'
-import { initialAuditTrail, type AuditEvent } from '@/data/mockAuditTrail'
+// Re-export types from mock data files so existing component imports stay unchanged
+export type { Customer } from '@/data/mockCustomers'
+export type { SecurityIssue, GateIssue, DetectionIssue } from '@/data/mockIssues'
+export type { ExecutionPlan } from '@/data/mockExecutionPlans'
+export type { AuditEvent } from '@/data/mockAuditTrail'
 
 const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL ?? ''
-const isMockMode = !BASE_URL
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  // Relative URL when BASE_URL is empty → calls Next.js API routes on the same server
+  const url = BASE_URL ? `${BASE_URL}${path}` : path
+  const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
@@ -32,123 +29,162 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ── Customer discovery ────────────────────────────────────────────────────────
+// ── Health ────────────────────────────────────────────────────────────────────
 
-export async function getCustomerLeads(): Promise<Customer[]> {
-  if (isMockMode) return mockCustomers
-  return apiFetch<Customer[]>('/api/customers/leads')
+export async function getHealth(): Promise<{
+  service: string
+  status: string
+  mode: string
+}> {
+  return apiFetch('/api/trace/health')
 }
 
-export async function createAttioOpportunity(
-  customerId: string
-): Promise<{ success: boolean; attio_record_id?: string; message: string }> {
-  if (isMockMode) {
-    return {
-      success: true,
-      attio_record_id: `attio_${customerId}_${Date.now()}`,
-      message: 'Demo mode: Attio company and opportunity payload generated.',
-    }
-  }
-  return apiFetch('/api/crm/attio/opportunity', {
+export async function getIntegrationStatus(): Promise<{
+  attio: string
+  tavily: string
+  n8n: string
+  superlinked: string
+  mubit: string
+  gemini: string
+  aikido: string
+}> {
+  return apiFetch('/api/trace/integration-status')
+}
+
+// ── Customer discovery ────────────────────────────────────────────────────────
+
+import type { Customer } from '@/data/mockCustomers'
+
+export async function getCustomerLeads(): Promise<Customer[]> {
+  return apiFetch<Customer[]>('/api/customers/discover')
+}
+
+export async function discoverCustomers(query?: string): Promise<Customer[]> {
+  return apiFetch<Customer[]>('/api/customers/discover', {
     method: 'POST',
-    body: JSON.stringify({ customer_id: customerId }),
+    body: JSON.stringify({ query }),
   })
 }
 
-// ── DUSK gate verdicts and detection alerts ───────────────────────────────────
+export async function createAttioOpportunity(
+  leadId: string
+): Promise<{ success: boolean; attio_record_id?: string; message: string }> {
+  return apiFetch('/api/customers/create-opportunity', {
+    method: 'POST',
+    body: JSON.stringify({ lead_id: leadId }),
+  })
+}
+
+export async function createOpportunity(
+  leadId: string
+): Promise<{ success: boolean; attio_record_id?: string; message: string }> {
+  return createAttioOpportunity(leadId)
+}
+
+// ── Security issues ───────────────────────────────────────────────────────────
+
+import type { SecurityIssue } from '@/data/mockIssues'
 
 export async function getSecurityIssues(): Promise<SecurityIssue[]> {
-  if (isMockMode) return mockIssues
-  // Real backend: GET /api/security/issues returns merged gate verdicts + alerts
   return apiFetch<SecurityIssue[]>('/api/security/issues')
 }
 
 export async function getSecurityIssueDetail(issueId: string): Promise<SecurityIssue> {
-  if (isMockMode) {
-    const issue = mockIssues.find((i) => i.id === issueId)
-    if (!issue) throw new Error(`Issue ${issueId} not found`)
-    return issue
-  }
   return apiFetch<SecurityIssue>(`/api/security/issues/${issueId}`)
 }
 
-/**
- * Fetch raw DUSK gate verdicts from the real backend.
- * Schema: GateVerdict.to_dict() — { verdict, agent_id, action_type, target,
- * score, reasons, mitre_attack, mitre_atlas, blast_radius, predicted_next }
- */
 export async function getDuskGateVerdicts(): Promise<SecurityIssue[]> {
-  if (isMockMode) return mockIssues.filter((i) => i.type === 'gate')
-  return apiFetch<SecurityIssue[]>('/api/security/gate/verdicts')
+  const issues = await getSecurityIssues()
+  return issues.filter(i => i.type === 'gate')
 }
 
-/**
- * Fetch DUSK network detection alerts from dusk-alerts.json via the API.
- * Schema: AlertResponder._persist() — { timestamp, detection, source, mitre,
- * stage, confidence, reason, prediction }
- */
 export async function getDuskAlerts(): Promise<SecurityIssue[]> {
-  if (isMockMode) return mockIssues.filter((i) => i.type === 'detection')
-  return apiFetch<SecurityIssue[]>('/api/security/alerts')
+  const issues = await getSecurityIssues()
+  return issues.filter(i => i.type === 'detection')
 }
 
 // ── Tavily threat enrichment ──────────────────────────────────────────────────
 
 export interface TavilyEnrichment {
   query: string
+  summary?: string
   results: { title: string; url: string; content: string }[]
   sources: string[]
 }
 
-/**
- * Calls the DUSK Tavily enrichment backend which wraps TavilyClient.search().
- * Backend function: enrich_alert(agent_id, action_type, mitre_id)
- * Query pattern: "{mitre_id} {action_type} threat actor technique 2026"
- */
 export async function getTavilyEnrichment(
   agentId: string,
   actionType: string,
   mitreId: string
 ): Promise<TavilyEnrichment> {
-  if (isMockMode) {
-    const query = `${mitreId} ${actionType} threat actor technique 2026`
-    return {
-      query,
-      results: [
-        {
-          title: `${mitreId} — MITRE ATT&CK Technique Analysis`,
-          url: `https://attack.mitre.org/techniques/${mitreId.split(' ')[0].replace('.', '/')}/`,
-          content: `Threat actors use ${actionType} to ${mitreId.toLowerCase()}. Commonly observed in APT campaigns targeting AI agent infrastructure.`,
-        },
-        {
-          title: `${actionType} threat intel — 2026 threat landscape`,
-          url: `https://www.crowdstrike.com/adversary-intelligence/${actionType}/`,
-          content: `Recent campaigns by threat actors targeting agent ${agentId} workflow types via ${actionType}. Observed blast radius: high.`,
-        },
-      ],
-      sources: [
-        `https://attack.mitre.org/techniques/${mitreId.split(' ')[0].replace('.', '/')}/`,
-        `https://www.crowdstrike.com/adversary-intelligence/`,
-      ],
-    }
-  }
-  return apiFetch<TavilyEnrichment>('/api/security/enrich', {
+  const result = await apiFetch<{
+    query: string
+    summary?: string
+    sources: { title: string; url: string; snippet: string }[]
+    enrichment?: { query: string; summary?: string; sources: { title: string; url: string; snippet: string }[] }
+  }>('/api/integrations/tavily/research', {
     method: 'POST',
     body: JSON.stringify({ agent_id: agentId, action_type: actionType, mitre_id: mitreId }),
   })
+
+  const data = result.enrichment ?? result
+  return {
+    query: data.query,
+    summary: data.summary,
+    results: (data.sources ?? []).map(s => ({
+      title: s.title,
+      url: s.url,
+      content: s.snippet,
+    })),
+    sources: (data.sources ?? []).map(s => s.url),
+  }
 }
 
 // ── Fix planning ──────────────────────────────────────────────────────────────
 
+import type { ExecutionPlan } from '@/data/mockExecutionPlans'
+
 export async function generateSecurityPlan(issueId: string): Promise<ExecutionPlan> {
-  if (isMockMode) {
-    const plan = mockExecutionPlans[issueId]
-    if (!plan) throw new Error(`No plan for issue ${issueId}`)
-    return plan
-  }
   return apiFetch<ExecutionPlan>('/api/security/plan', {
     method: 'POST',
     body: JSON.stringify({ issue_id: issueId }),
+  })
+}
+
+// ── Approval flow ─────────────────────────────────────────────────────────────
+
+export async function requestApproval(payload: {
+  issue_id: string
+  execution_id?: string
+  requested_by?: string
+  notes?: string
+}): Promise<{
+  approval_id: string
+  issue_id: string
+  decision: string | null
+  created_at: string
+}> {
+  return apiFetch('/api/security/approvals', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function submitApprovalDecision(
+  approvalId: string,
+  payload: {
+    decision: 'approved' | 'rejected' | 'needs_more_info'
+    approved_by?: string
+    notes?: string
+  }
+): Promise<{
+  approval_id: string
+  decision: string
+  decided_at: string
+}> {
+  return apiFetch(`/api/security/approvals/${approvalId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   })
 }
 
@@ -156,64 +192,39 @@ export async function generateSecurityPlan(issueId: string): Promise<ExecutionPl
 
 export interface FixPayload {
   issue_id: string
-  approved_by: string
-  resources: string[]
-  action_plan: string
+  plan_id?: string
+  approved_by?: string
+  resources?: string[]
+  action_plan?: string
   dusk_action?: string
 }
 
 export interface FixResult {
   execution_id: string
-  status: 'fixed' | 'pending' | 'failed' | 'needs_manual_review'
+  status: 'fixed' | 'planned' | 'failed' | 'needs_manual_review'
   message: string
   logs: string[]
+  risk_after_fix?: string
 }
 
 export async function executeSecurityFix(payload: FixPayload): Promise<FixResult> {
-  if (isMockMode) {
-    const issue = mockIssues.find((i) => i.id === payload.issue_id)
-    const plan = mockExecutionPlans[payload.issue_id]
-    const duskAction = plan?.dusk_action ?? 'enforce_block'
-    return {
-      execution_id: `exec_${payload.issue_id}_${Date.now()}`,
-      status: 'fixed',
-      message: `DUSK action '${duskAction}' applied successfully`,
-      logs: [
-        `DUSK gate policy updated for ${issue?.type === 'gate' ? (issue as {agent_id: string}).agent_id : 'detected host'}`,
-        duskAction === 'add_to_baseline'
-          ? 'Agent baseline updated with legitimate action pattern'
-          : duskAction === 'rotate_credentials'
-          ? 'Agent credentials rotated and previous credentials revoked'
-          : duskAction === 'isolate_agent'
-          ? 'Agent/host isolated from further network connections'
-          : 'Hard block policy enforced for agent/action pair',
-        `Tavily threat intel query triggered for ${plan?.tavily_enrichment_query ?? 'MITRE technique'}`,
-        ...(plan?.n8n_soar_trigger
-          ? ['n8n SOAR workflow triggered — DUSK alert sent to incident tracker']
-          : []),
-        'Attio customer security record updated',
-        'Audit event written to dusk-alerts.json',
-      ],
-    }
-  }
   return apiFetch<FixResult>('/api/security/fix', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
+export async function getExecutionStatus(executionId: string): Promise<FixResult> {
+  return apiFetch<FixResult>(`/api/security/executions/${executionId}`)
+}
+
 // ── n8n SOAR integration ──────────────────────────────────────────────────────
 
-/**
- * Triggers the real DUSK n8n SOAR workflow.
- * Payload schema from demo/n8n_workflow.json:
- *   POST <N8N_WEBHOOK_URL>/webhook/dusk-alert
- *   Body: { verdict, analysis: { agent_id, score, mitre_attack, blast_radius } }
- */
 export async function triggerN8nWorkflow(payload: {
   customer_id?: string
   workflow?: string
   verdict?: string
+  workflow_type?: string
   analysis?: {
     agent_id: string
     score: number
@@ -221,52 +232,39 @@ export async function triggerN8nWorkflow(payload: {
     blast_radius: string
   }
 }): Promise<{ success: boolean; execution_id?: string; message: string }> {
-  if (isMockMode) {
-    return {
-      success: true,
-      execution_id: `n8n_exec_${Date.now()}`,
-      message: payload.verdict
-        ? `Demo mode: DUSK alert (${payload.verdict}) sent to n8n SOAR — SOAR incident would be opened.`
-        : 'Demo mode: n8n follow-up workflow triggered.',
-    }
-  }
-
-  const n8nUrl = process.env.N8N_WEBHOOK_URL
-  if (n8nUrl) {
-    // Call real n8n webhook directly (server-side only in production)
-    const res = await fetch(`${n8nUrl}/webhook/dusk-alert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const data = (await res.json()) as { received?: boolean; agent_id?: string }
-    return {
-      success: data.received === true,
-      message: `n8n acknowledged: agent ${data.agent_id}`,
-    }
-  }
-
-  return apiFetch('/api/workflows/n8n/trigger', {
+  const result = await apiFetch<{
+    integration_status: string
+    status: string
+    message: string
+    payload?: { workflow_run_id?: string }
+  }>('/api/integrations/n8n/trigger', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  return {
+    success: result.integration_status === 'live' || result.status.includes('triggered'),
+    execution_id: (result.payload as { workflow_run_id?: string } | undefined)?.workflow_run_id,
+    message: result.message,
+  }
 }
 
 // ── Audit trail ───────────────────────────────────────────────────────────────
 
+import type { AuditEvent } from '@/data/mockAuditTrail'
+
 export async function writeAuditEvent(
   payload: Omit<AuditEvent, 'id' | 'timestamp'>
 ): Promise<{ success: boolean; audit_id: string }> {
-  if (isMockMode) return { success: true, audit_id: `audit_${Date.now()}` }
-  return apiFetch('/api/security/audit', {
+  const result = await apiFetch<AuditEvent>('/api/security/audit', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  return { success: true, audit_id: result.id }
 }
 
-export async function getAuditTrail(): Promise<AuditEvent[]> {
-  if (isMockMode) return initialAuditTrail
-  return apiFetch<AuditEvent[]>('/api/security/audit')
+export async function getAuditTrail(issueId?: string): Promise<AuditEvent[]> {
+  const qs = issueId ? `?issue_id=${issueId}` : ''
+  return apiFetch<AuditEvent[]>(`/api/security/audit${qs}`)
 }
 
 // ── Deployment ────────────────────────────────────────────────────────────────
@@ -293,46 +291,46 @@ export interface DeploymentPackage {
   approval_required: boolean
   manager_email: string
   status: string
+  generated_config?: {
+    monitoring_mode: string
+    approval_required: boolean
+    allowed_actions: string[]
+    blocked_actions: string[]
+  }
+  connector_instructions?: string[]
 }
 
 export async function prepareDeployment(config: DeploymentConfig): Promise<DeploymentPackage> {
-  if (isMockMode) {
-    return {
-      deployment_id: `deploy_${Date.now()}`,
-      company: config.company,
-      mode: config.deployment_mode,
-      required_permissions: [
-        'read_agent_workflow',
-        'read_api_schema',
-        'read_database_schema',
-        'create_policy_hook',
-        'dusk_gate_integration',
-      ],
-      blocked_actions: config.blocked_actions.length
-        ? config.blocked_actions
-        : ['firewall_rule_change_unapproved', 'role_assignment_unapproved', 'route_change_unapproved'],
-      approval_required: true,
-      manager_email: config.approval_manager_email || 'manager@example.com',
-      status: 'ready_for_manager_approval',
-    }
-  }
   return apiFetch<DeploymentPackage>('/api/deployment/prepare', {
     method: 'POST',
-    body: JSON.stringify(config),
+    body: JSON.stringify({
+      ...config,
+      manager_email: config.approval_manager_email,
+    }),
   })
 }
 
 export async function registerDeployment(
   deploymentId: string
 ): Promise<{ success: boolean; message: string }> {
-  if (isMockMode) {
-    return {
-      success: true,
-      message: 'Demo mode: DUSK gate connector registered. Agent actions will be evaluated against the baseline in shadow monitoring mode.',
-    }
-  }
-  return apiFetch('/api/deployment/register', {
+  const result = await apiFetch<DeploymentPackage>('/api/deployment/register', {
     method: 'POST',
     body: JSON.stringify({ deployment_id: deploymentId }),
+  })
+  return {
+    success: result.status === 'registered',
+    message: `Deployment ${deploymentId} registered successfully.`,
+  }
+}
+
+// ── Sponsor integrations ──────────────────────────────────────────────────────
+
+export async function syncAttio(payload: {
+  object_type: 'company' | 'opportunity' | 'execution' | 'deployment'
+  [key: string]: unknown
+}): Promise<{ integration_status: string; message: string }> {
+  return apiFetch('/api/integrations/attio/sync', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   })
 }
