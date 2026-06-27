@@ -25,6 +25,7 @@ def decision():
 
 # ── model serialisation ──────────────────────────────────────────────────────
 
+
 def test_to_dict_round_trip(decision):
     d = TraceDecision.from_dict(decision.to_dict())
     assert d.agent_id == decision.agent_id
@@ -53,6 +54,7 @@ def test_risk_level_boundaries():
 
 # ── recorder stores and retrieves ───────────────────────────────────────────
 
+
 def test_record_returns_same_object(decision):
     assert recorder.record(decision) is decision
 
@@ -75,6 +77,7 @@ def test_clear_empties_store(decision):
 
 # ── ordering ─────────────────────────────────────────────────────────────────
 
+
 def test_decisions_ordered_newest_first():
     first = TraceDecision(agent_id="a", action="route_change", score=10, reasoning="first")
     second = TraceDecision(agent_id="a", action="port_change", score=20, reasoning="second")
@@ -86,6 +89,7 @@ def test_decisions_ordered_newest_first():
 
 
 # ── replay ───────────────────────────────────────────────────────────────────
+
 
 def test_replay_increments_count(decision):
     recorder.record(decision)
@@ -100,19 +104,23 @@ def test_replay_raises_on_missing():
 
 # ── similar decision IDs ─────────────────────────────────────────────────────
 
+
 def test_similar_decision_ids_attach():
     for i in range(5):
-        recorder.record(TraceDecision(
-            agent_id="netops-agent",
-            action="firewall_rule_change",
-            score=80 + i,
-            reasoning="Opens restricted segment to all traffic",
-        ))
+        recorder.record(
+            TraceDecision(
+                agent_id="netops-agent",
+                action="firewall_rule_change",
+                score=80 + i,
+                reasoning="Opens restricted segment to all traffic",
+            )
+        )
     last = recorder.all_decisions()[0]
     assert isinstance(last.similar_decision_ids, list)
 
 
 # ── required by hackathon plan ───────────────────────────────────────────────
+
 
 def test_tavily_enrichment_stored(decision):
     """Confirm tavily_enrichment field round-trips through to_dict."""

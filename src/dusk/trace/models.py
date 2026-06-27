@@ -77,9 +77,7 @@ class TraceDecision:
         d.raw_prompt_snippet = str(data.get("raw_prompt_snippet", ""))
         tavily_raw = data.get("tavily_enrichment", [])
         if isinstance(tavily_raw, list):
-            d.tavily_enrichment = [
-                x for x in tavily_raw if isinstance(x, dict)
-            ]
+            d.tavily_enrichment = [x for x in tavily_raw if isinstance(x, dict)]
         similar_raw = data.get("similar_decision_ids", [])
         if isinstance(similar_raw, list):
             d.similar_decision_ids = [str(x) for x in similar_raw]
