@@ -206,7 +206,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <div class="status-bar" id="status"></div>
 
 <script>
-const API = 'http://localhost:5000';
+const API = window.location.origin;
 let running = false;
 
 function setStatus(msg) {
