@@ -117,5 +117,34 @@ class Baseline:
         """The sorted list of agents the baseline has profiles for."""
         return sorted(self._profiles)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise the baseline so it can be persisted and reloaded."""
+        return {
+            agent_id: {
+                "action_types": sorted(p.action_types),
+                "target_classes": sorted(p.target_classes),
+                "tokens": sorted(p.tokens),
+                "change_values": sorted(p.change_values),
+                "count": p.count,
+            }
+            for agent_id, p in self._profiles.items()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Baseline:
+        """Rebuild a baseline from a previously serialised dict."""
+        baseline = cls()
+        for agent_id, raw in data.items():
+            if not isinstance(raw, dict):
+                continue
+            p = AgentProfile(agent_id=agent_id)
+            p.action_types = set(raw.get("action_types") or [])
+            p.target_classes = set(raw.get("target_classes") or [])
+            p.tokens = set(raw.get("tokens") or [])
+            p.change_values = set(raw.get("change_values") or [])
+            p.count = int(raw.get("count", 0))
+            baseline._profiles[agent_id] = p  # noqa: SLF001
+        return baseline
+
     def __len__(self) -> int:
         return len(self._profiles)

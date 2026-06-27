@@ -395,3 +395,25 @@ Built during Tech: Europe London AI Hackathon, June 2026.
 
 - DUSK detection engine + Tavily/n8n integrations: Backend team (`feat/hackathon-tavily-n8n-aikido`)
 - Trace execution layer + frontend: `feat/xiao`
+
+---
+
+## References
+
+- [Anthropic Frontier Red Team: Mapping AI-enabled cyber threats](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) — 832 threat actors analysed; autonomous killchain orchestration identified as highest-risk AI threat with no existing MITRE taxonomy
+- [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) — the case for behavior-level controls on agents
+- [MITRE ATT&CK](https://attack.mitre.org/) — enterprise and network techniques
+- [MITRE ATLAS](https://atlas.mitre.org/) — adversarial threats to AI systems
+- [Superlinked](https://superlinked.com/) — vector embedding infrastructure compatible with DUSK v1.5 baseline
+- [Tavily](https://tavily.com/) — real-time web search API used in the live demo and n8n integration
+- [n8n](https://n8n.io/) — AI agent workflow orchestration used in the integration demo
+- [Mubit](https://mubit.ai/) — agent execution memory explored as a baseline source for per-agent behaviour
+- [Aikido Security](https://aikido.dev/) — runtime security scanning integrated into DUSK CI
+- Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
+- Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
+
+---
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) for details.
