@@ -29,6 +29,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "tavily-python>=0.3",
+    "google-generativeai>=0.8",
+    "urllib3>=2.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -39,6 +48,13 @@ dev = [
     "pip-audit>=2.7.0",
     "pre-commit>=3.7.0",
     "types-PyYAML>=6.0",
+    "flask>=3.0",
+    "flask-cors>=4.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "tavily-python>=0.3",
+    "google-generativeai>=0.8",
+    "urllib3>=2.0",
 ]
 
 [project.urls]
@@ -89,6 +105,19 @@ disallow_any_generics = true
 module = ["scapy.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
+
+# Flask 3.x route decorators produce [type-var] in mypy 2.1+ and
+# [untyped-decorator] in older mypy. API deps (flask, requests, dotenv)
+# are optional extras so ignore import errors here too.
+[[tool.mypy.overrides]]
+module = ["dusk.api"]
+ignore_missing_imports = true
+disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
+
+[[tool.mypy.overrides]]
+module = ["dusk.integrations.*", "dusk.trace.*"]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "lab"]

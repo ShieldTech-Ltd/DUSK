@@ -27,6 +27,9 @@ tests/fixtures/*.pcap
 tests/fixtures/*.jsonl
 tests/fixtures/*.json
 
+# Secrets
+.env
+
 # Editors / OS
 .idea/
 .vscode/
