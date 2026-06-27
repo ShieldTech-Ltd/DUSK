@@ -18,24 +18,25 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from dusk.trace import recorder
 from dusk.trace.models import TraceDecision
 from dusk.trace.n8n_client import fire_webhook
-from dusk.trace import recorder
 
 logger = logging.getLogger("dusk.trace.api")
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(application: FastAPI):  # noqa: ANN001
+async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ANN001
     """Seed the in-memory store with demo decisions on startup."""
     if not recorder.all_decisions():
         _seed_demo_decisions()
@@ -156,7 +157,10 @@ _DEMO_AUDIT_TRAIL: list[dict[str, Any]] = [
         "timestamp": time.time() - 3600,
         "event_type": "issue_detected",
         "actor": "DUSK gate",
-        "description": "DUSK gate WOULD-BLOCK: sales-agent-v2 attempted firewall_rule_change on prod-firewall-rule-42 (score 0.85, blast_radius high)",
+        "description": (
+            "DUSK gate WOULD-BLOCK: sales-agent-v2 attempted firewall_rule_change"
+            " on prod-firewall-rule-42 (score 0.85, blast_radius high)"
+        ),
         "issue_id": "gate_001",
         "metadata": {"verdict": "WOULD-BLOCK", "score": "0.85", "blast_radius": "high"},
     },
@@ -165,7 +169,10 @@ _DEMO_AUDIT_TRAIL: list[dict[str, Any]] = [
         "timestamp": time.time() - 1800,
         "event_type": "issue_detected",
         "actor": "DUSK gate",
-        "description": "DUSK gate BLOCK: finance-bot-01 attempted role_assignment to admin-role/owner (score 0.95)",
+        "description": (
+            "DUSK gate BLOCK: finance-bot-01 attempted role_assignment"
+            " to admin-role/owner (score 0.95)"
+        ),
         "issue_id": "gate_002",
         "metadata": {"verdict": "BLOCK", "score": "0.95", "blast_radius": "high"},
     },
@@ -213,28 +220,28 @@ class TavilyRequest(BaseModel):
 
 
 class N8nRequest(BaseModel):
-    verdict: Optional[str] = None
-    workflow_type: Optional[str] = None
-    customer_id: Optional[str] = None
-    workflow: Optional[str] = None
-    analysis: Optional[dict[str, Any]] = None
+    verdict: str | None = None
+    workflow_type: str | None = None
+    customer_id: str | None = None
+    workflow: str | None = None
+    analysis: dict[str, Any] | None = None
 
 
 class FixRequest(BaseModel):
     issue_id: str
-    dusk_action: Optional[str] = None
-    approved_by: Optional[str] = None
-    resources: Optional[list[str]] = None
-    action_plan: Optional[str] = None
-    plan_id: Optional[str] = None
+    dusk_action: str | None = None
+    approved_by: str | None = None
+    resources: list[str] | None = None
+    action_plan: str | None = None
+    plan_id: str | None = None
 
 
 class AuditEventRequest(BaseModel):
     event_type: str
     description: str
     actor: str = "system"
-    issue_id: Optional[str] = None
-    metadata: Optional[dict[str, Any]] = None
+    issue_id: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -313,7 +320,11 @@ def tavily_enrichment(body: TavilyRequest) -> dict[str, Any]:
                 "query": enrichment.query,
                 "summary": enrichment.results[0].get("content", "") if enrichment.results else "",
                 "sources": [
-                    {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": str(r.get("content", ""))[:200]}
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": str(r.get("content", ""))[:200],
+                    }
                     for r in enrichment.results
                 ],
             }
@@ -327,18 +338,25 @@ def tavily_enrichment(body: TavilyRequest) -> dict[str, Any]:
         "query": query,
         "summary": (
             "Demo: Multiple threat actors exploit this technique against AI agent deployments. "
-            "Key indicators include anomalous API calls, unusual timing patterns, and unexpected scope escalation."
+            "Key indicators include anomalous API calls, unusual timing patterns, "
+            "and unexpected scope escalation."
         ),
         "sources": [
             {
                 "title": f"MITRE ATT&CK: {body.mitre_id}",
                 "url": f"https://attack.mitre.org/techniques/{body.mitre_id.split()[0]}/",
-                "snippet": f"Technique {body.mitre_id} — commonly used in post-compromise lateral movement.",
+                "snippet": (
+                    f"Technique {body.mitre_id} — commonly used in"
+                    " post-compromise lateral movement."
+                ),
             },
             {
                 "title": "MITRE ATLAS: AML.T0051 LLM Prompt Injection",
                 "url": "https://atlas.mitre.org/techniques/AML.T0051",
-                "snippet": "LLM Prompt Injection remains the top attack vector for AI agents with external tool access.",
+                "snippet": (
+                    "LLM Prompt Injection remains the top attack vector for AI agents"
+                    " with external tool access."
+                ),
             },
         ],
     }
@@ -352,7 +370,11 @@ def tavily_research(body: TavilyRequest) -> dict[str, Any]:
         "integration_status": result["mode"],
         "status": "enrichment_complete",
         "message": f"Tavily enrichment for {body.agent_id} ({body.mitre_id})",
-        "payload": {"agent_id": body.agent_id, "action_type": body.action_type, "mitre_id": body.mitre_id},
+        "payload": {
+            "agent_id": body.agent_id,
+            "action_type": body.action_type,
+            "mitre_id": body.mitre_id,
+        },
         "enrichment": {
             "query": result["query"],
             "summary": result.get("summary", ""),
@@ -423,8 +445,8 @@ def security_fix(body: FixRequest) -> dict[str, Any]:
     action_logs: dict[str, list[str]] = {
         "enforce_block": [
             f"[DUSK] Fetching gate policy for issue {body.issue_id}",
-            f"[DUSK] Applying enforce_block — agent action pair blocked",
-            f"[DUSK] Gate policy updated — future actions of this type will be hard-blocked",
+            "[DUSK] Applying enforce_block — agent action pair blocked",
+            "[DUSK] Gate policy updated — future actions of this type will be hard-blocked",
         ],
         "rotate_credentials": [
             f"[DUSK] Initiating credential rotation for issue {body.issue_id}",
@@ -470,7 +492,7 @@ def security_fix(body: FixRequest) -> dict[str, Any]:
 
 
 @app.get("/api/security/audit")
-def get_audit(issue_id: Optional[str] = None) -> list[dict[str, Any]]:
+def get_audit(issue_id: str | None = None) -> list[dict[str, Any]]:
     if issue_id:
         return [e for e in _in_memory_audit if e.get("issue_id") == issue_id]
     return list(reversed(_in_memory_audit))
@@ -542,7 +564,9 @@ def _decision_to_gate_issue(d: TraceDecision) -> dict[str, Any]:
         "mitre_attack": mitre,
         "mitre_atlas": "AML.T0051 LLM Prompt Injection",
         "blast_radius": blast,
-        "predicted_next": f"After {action_type}, watch for lateral movement or privilege escalation.",
+        "predicted_next": (
+            f"After {action_type}, watch for lateral movement or privilege escalation."
+        ),
         "timestamp": d.timestamp,
         "status": "open",
     }
@@ -554,7 +578,7 @@ def _raw_alert_to_detection_issue(raw: dict[str, Any], idx: int) -> dict[str, An
         "id": raw.get("id", f"alert_{idx:03d}"),
         "type": "detection",
         "detection": str(raw.get("detection", "unknown")),
-        "source_ip": str(raw.get("source", raw.get("source_ip", "0.0.0.0"))),
+        "source_ip": str(raw.get("source", raw.get("source_ip", "unknown"))),
         "mitre": str(raw.get("mitre", "T1046")),
         "stage": str(raw.get("stage", "Reconnaissance")),
         "confidence": float(str(raw.get("confidence", 0.8))),

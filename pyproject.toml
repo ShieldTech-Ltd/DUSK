@@ -117,9 +117,18 @@ ignore_missing_imports = true
 disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
 
 [[tool.mypy.overrides]]
-module = ["dusk.integrations.*", "dusk.trace.*"]
+module = ["dusk.integrations.*"]
 ignore_missing_imports = true
 disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
+
+# dusk.trace.api uses FastAPI (optional extra) which is not present during CI typecheck.
+# Suppress cascading decorator and return-type errors that stem from missing stubs.
+[[tool.mypy.overrides]]
+module = ["dusk.trace.*"]
+ignore_missing_imports = true
+disable_error_code = ["import-untyped", "import-not-found", "attr-defined",
+                      "untyped-decorator", "no-untyped-def", "no-any-return",
+                      "unused-ignore"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "lab"]
