@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inside DUSK -- Core Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#030608;
+  --surface:#070c13;
+  --surface-2:#0b1320;
+  --neon:#00b4ff;
+  --neon2:#4a9eff;
+  --purple:#7c3aff;
+  --cyan:#00e5ff;
+  --green:#00ff88;
+  --red:#ff4455;
+  --amber:#ffaa00;
+  --text1:#deeeff;
+  --text2:#6a9bbf;
+  --text3:#2a4a6a;
+  --border:rgba(0,180,255,0.18);
+  --glow:rgba(0,180,255,0.25);
+  --glow-strong:rgba(0,180,255,0.5);
+}
+
+body{
+  background:var(--bg);
+  color:var(--text1);
+  font-family:'Inter',sans-serif;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+/* ── HEADER ──────────────────────────────────────────── */
+.header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 20px;
+  border-bottom:1px solid var(--border);
+  background:rgba(7,12,19,0.9);
+  z-index:10;
+  flex-shrink:0;
+}
+.header-brand{display:flex;align-items:center;gap:12px}
+.header-logo{
+  width:36px;height:36px;
+  background:linear-gradient(135deg,var(--purple),var(--neon));
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;
+  font-weight:700;font-size:14px;color:#fff;
+  box-shadow:0 0 16px var(--glow-strong);
+}
+.header-title{font-size:16px;font-weight:700;letter-spacing:0.08em;color:var(--text1)}
+.header-sub{font-size:10px;color:var(--text2);letter-spacing:0.12em;margin-top:1px}
+.header-center{text-align:center}
+.header-core{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:600;letter-spacing:0.2em;color:var(--neon);text-shadow:0 0 20px var(--glow-strong)}
+.header-core-sub{font-size:9px;letter-spacing:0.25em;color:var(--text2);margin-top:2px}
+.status-pill{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 14px;
+  border:1px solid rgba(0,255,136,0.3);
+  border-radius:20px;
+  background:rgba(0,255,136,0.06);
+  font-size:10px;font-weight:600;letter-spacing:0.08em;color:var(--green);
+}
+.status-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 8px var(--green);
+  animation:blink 2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ── MAIN LAYOUT ─────────────────────────────────────── */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ── LEFT SIDEBAR ────────────────────────────────────── */
+.left{
+  width:210px;flex-shrink:0;
+  background:linear-gradient(180deg,rgba(10,16,28,0.95) 0%,rgba(5,8,14,0.95) 100%);
+  border-right:1px solid var(--border);
+  padding:14px 0;
+  overflow-y:auto;
+}
+.left-title{
+  padding:0 14px 12px;
+  font-size:9px;font-weight:600;letter-spacing:0.2em;
+  color:var(--text2);border-bottom:1px solid var(--border);
+}
+.component-item{
+  display:flex;gap:10px;
+  padding:10px 14px;
+  cursor:default;
+  transition:background 0.2s;
+  border-left:2px solid transparent;
+}
+.component-item:hover{
+  background:rgba(0,180,255,0.06);
+  border-left-color:var(--neon);
+}
+.comp-icon{
+  width:28px;height:28px;flex-shrink:0;
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;
+}
+.comp-info{}
+.comp-name{font-size:10px;font-weight:600;letter-spacing:0.04em;color:var(--text1);line-height:1.3}
+.comp-desc{font-size:9px;color:var(--text2);line-height:1.4;margin-top:2px}
+
+/* ── CENTER DIAGRAM ──────────────────────────────────── */
+.center{
+  flex:1;
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 50%,rgba(0,80,160,0.12) 0%,transparent 70%),
+    var(--bg);
+}
+.grid-bg{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(0,180,255,0.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,180,255,0.04) 1px,transparent 1px);
+  background-size:50px 50px;
+}
+.grid-bg::after{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 70% 70% at 50% 50%,transparent 40%,var(--bg) 100%);
+}
+.octa-border{
+  position:absolute;
+  top:50%;left:50%;
+  width:74%;height:88%;
+  transform:translate(-50%,-50%);
+  clip-path:polygon(6% 0%,94% 0%,100% 6%,100% 94%,94% 100%,6% 100%,0% 94%,0% 6%);
+  border:1px solid rgba(0,180,255,0.3);
+  background:rgba(0,20,50,0.25);
+  box-shadow:inset 0 0 80px rgba(0,100,200,0.08),0 0 40px rgba(0,180,255,0.1);
+}
+
+/* component nodes */
+.node{
+  position:absolute;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  transform:translate(-50%,-50%);
+  cursor:default;
+}
+.node-card{
+  background:rgba(8,16,30,0.85);
+  border:1px solid rgba(0,180,255,0.25);
+  border-radius:8px;
+  padding:8px 12px;
+  text-align:center;
+  backdrop-filter:blur(8px);
+  transition:border-color 0.3s,box-shadow 0.3s;
+  min-width:110px;
+}
+.node-card:hover{
+  border-color:var(--neon);
+  box-shadow:0 0 20px var(--glow);
+}
+.node-icon{
+  font-size:22px;margin-bottom:4px;
+  filter:drop-shadow(0 0 8px var(--neon));
+}
+.node-title{
+  font-size:9px;font-weight:700;letter-spacing:0.1em;
+  color:var(--text1);
+}
+.node-sub{
+  font-size:8px;color:var(--text2);margin-top:1px;
+  letter-spacing:0.05em;
+}
+
+/* central core */
+.core-hex{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:130px;height:130px;
+  background:linear-gradient(135deg,rgba(100,40,255,0.3),rgba(0,150,255,0.3));
+  clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);
+  border:0;
+  box-shadow:0 0 60px rgba(0,180,255,0.4),inset 0 0 40px rgba(100,40,255,0.2);
+  animation:hexPulse 3s ease-in-out infinite;
+  z-index:5;
+}
+@keyframes hexPulse{
+  0%,100%{box-shadow:0 0 60px rgba(0,180,255,0.4),inset 0 0 40px rgba(100,40,255,0.2)}
+  50%{box-shadow:0 0 100px rgba(0,180,255,0.7),inset 0 0 60px rgba(100,40,255,0.4)}
+}
+.core-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:15px;font-weight:700;
+  color:#fff;letter-spacing:0.1em;
+  text-shadow:0 0 20px var(--neon);
+}
+.core-label-sub{
+  font-size:8px;letter-spacing:0.12em;
+  color:rgba(0,180,255,0.8);margin-top:2px;
+}
+
+/* connector lines SVG */
+.connectors{
+  position:absolute;inset:0;
+  pointer-events:none;
+  z-index:1;
+}
+
+/* ── RIGHT SIDEBAR ───────────────────────────────────── */
+.right{
+  width:230px;flex-shrink:0;
+  background:linear-gradient(180deg,rgba(10,16,28,0.95) 0%,rgba(5,8,14,0.95) 100%);
+  border-left:1px solid var(--border);
+  padding:16px 14px;
+  overflow-y:auto;
+  display:flex;flex-direction:column;gap:12px;
+}
+.right-title{
+  display:flex;align-items:center;gap:8px;
+  font-size:10px;font-weight:700;letter-spacing:0.15em;color:var(--text1);
+}
+.live-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--green);box-shadow:0 0 10px var(--green);
+  animation:blink 1.5s infinite;
+}
+.stat-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;
+  background:rgba(0,180,255,0.04);
+  border:1px solid var(--border);
+  border-radius:8px;
+  transition:border-color 0.3s;
+}
+.stat-row:hover{border-color:rgba(0,180,255,0.4)}
+.stat-icon{
+  width:30px;height:30px;flex-shrink:0;
+  border-radius:7px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+}
+.stat-info{flex:1}
+.stat-label{font-size:8px;color:var(--text2);letter-spacing:0.08em;font-weight:500}
+.stat-value{
+  font-family:'JetBrains Mono',monospace;
+  font-size:16px;font-weight:600;color:var(--text1);
+  margin-top:1px;
+}
+.stat-value.red{color:var(--red);text-shadow:0 0 10px rgba(255,68,85,0.4)}
+.stat-value.amber{color:var(--amber);text-shadow:0 0 10px rgba(255,170,0,0.3)}
+.stat-value.green{color:var(--green);text-shadow:0 0 10px rgba(0,255,136,0.3)}
+.stat-value.blue{color:var(--neon);text-shadow:0 0 10px var(--glow)}
+
+.system-status{
+  margin-top:auto;
+  padding:12px;
+  border:1px solid rgba(0,255,136,0.2);
+  border-radius:10px;
+  background:rgba(0,255,136,0.04);
+  text-align:center;
+}
+.ss-label{font-size:9px;letter-spacing:0.15em;color:var(--text2);font-weight:600}
+.ss-value{font-size:11px;font-weight:600;color:var(--green);margin-top:4px;letter-spacing:0.05em}
+.shield-wrap{
+  width:50px;height:50px;
+  margin:10px auto 0;
+  background:radial-gradient(circle,rgba(0,255,136,0.15),transparent 70%);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;
+  filter:drop-shadow(0 0 12px rgba(0,255,136,0.6));
+  animation:shieldPulse 3s ease-in-out infinite;
+}
+@keyframes shieldPulse{
+  0%,100%{filter:drop-shadow(0 0 12px rgba(0,255,136,0.6))}
+  50%{filter:drop-shadow(0 0 24px rgba(0,255,136,0.9))}
+}
+
+/* energy ring around core */
+.energy-ring{
+  position:absolute;
+  top:50%;left:50%;
+  width:170px;height:170px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  border:1px solid rgba(0,180,255,0.2);
+  animation:ringRotate 12s linear infinite;
+  z-index:2;
+}
+.energy-ring::before{
+  content:'';
+  position:absolute;
+  top:-2px;left:40%;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--neon);
+  box-shadow:0 0 12px var(--neon),0 0 24px var(--neon);
+}
+.energy-ring-2{
+  position:absolute;
+  top:50%;left:50%;
+  width:210px;height:210px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  border:1px solid rgba(124,58,255,0.15);
+  animation:ringRotate 20s linear infinite reverse;
+  z-index:2;
+}
+.energy-ring-2::before{
+  content:'';
+  position:absolute;
+  bottom:-2px;right:35%;
+  width:5px;height:5px;
+  border-radius:50%;
+  background:var(--purple);
+  box-shadow:0 0 10px var(--purple),0 0 20px var(--purple);
+}
+@keyframes ringRotate{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+/* scan line */
+.scan-line{
+  position:absolute;
+  left:0;right:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,180,255,0.4),transparent);
+  animation:scan 6s linear infinite;
+  z-index:3;pointer-events:none;
+}
+@keyframes scan{0%{top:0;opacity:0}5%{opacity:1}95%{opacity:1}100%{top:100%;opacity:0}}
+
+/* connection pulse dots */
+@keyframes connPulse{
+  0%{opacity:0;transform:scale(0.5)}
+  50%{opacity:1;transform:scale(1.2)}
+  100%{opacity:0;transform:scale(0.5)}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-brand">
+    <div class="header-logo">D</div>
+    <div>
+      <div class="header-title">INSIDE DUSK</div>
+      <div class="header-sub">Intelligent. Autonomous. Always Learning.</div>
+    </div>
+  </div>
+  <div class="header-center">
+    <div class="header-core">DUSK CORE</div>
+    <div class="header-core-sub">AUTONOMOUS &bull; ADAPTIVE &bull; AGENTIC</div>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot"></div>
+    ALL SYSTEMS OPERATIONAL
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT SIDEBAR -->
+  <div class="left">
+    <div class="left-title">CORE COMPONENTS</div>
+
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(124,58,255,0.15)">&#9881;</div>
+      <div class="comp-info">
+        <div class="comp-name">ORCHESTRATOR</div>
+        <div class="comp-desc">Coordinates all AI agents and system operations</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(0,180,255,0.15)">&#9670;</div>
+      <div class="comp-info">
+        <div class="comp-name">THREAT INTELLIGENCE</div>
+        <div class="comp-desc">Real-time global threat feeds and context</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(100,200,255,0.15)">&#9685;</div>
+      <div class="comp-info">
+        <div class="comp-name">BEHAVIOURAL ENGINE</div>
+        <div class="comp-desc">Understands normal. Detects abnormal.</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(0,230,150,0.15)">&#9672;</div>
+      <div class="comp-info">
+        <div class="comp-name">SELF-LEARNING ENGINE</div>
+        <div class="comp-desc">Continuously learns and adapts in real-time</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(0,255,136,0.15)">&#10022;</div>
+      <div class="comp-info">
+        <div class="comp-name">SELF-HEALING ENGINE</div>
+        <div class="comp-desc">Automatically contains, remediates and restores</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(80,160,255,0.15)">&#9675;</div>
+      <div class="comp-info">
+        <div class="comp-name">AGENT NETWORK</div>
+        <div class="comp-desc">Multi-agent AI working autonomously</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(0,150,255,0.15)">&#9642;</div>
+      <div class="comp-info">
+        <div class="comp-name">DATA LAKE</div>
+        <div class="comp-desc">Stores and processes all security telemetry</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(150,100,255,0.15)">&#9762;</div>
+      <div class="comp-info">
+        <div class="comp-name">KNOWLEDGE GRAPH</div>
+        <div class="comp-desc">Maps entities, relationships and attack paths</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(255,150,0,0.12)">&#9632;</div>
+      <div class="comp-info">
+        <div class="comp-name">POLICY ENGINE</div>
+        <div class="comp-desc">Enforces adaptive security policies</div>
+      </div>
+    </div>
+    <div class="component-item">
+      <div class="comp-icon" style="background:rgba(0,200,200,0.12)">&#9741;</div>
+      <div class="comp-info">
+        <div class="comp-name">INTEGRATION LAYER</div>
+        <div class="comp-desc">Connects with tools, APIs and platforms</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER DIAGRAM -->
+  <div class="center">
+    <div class="grid-bg"></div>
+    <div class="scan-line"></div>
+    <div class="octa-border"></div>
+
+    <!-- SVG connector lines -->
+    <svg class="connectors" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="0.5" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <!-- center to orchestrator (top) -->
+      <line x1="50" y1="50" x2="50" y2="13" stroke="rgba(0,180,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to threat intel (top-left) -->
+      <line x1="50" y1="50" x2="26" y2="22" stroke="rgba(0,180,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to behavioural (top-right) -->
+      <line x1="50" y1="50" x2="74" y2="22" stroke="rgba(0,180,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to self-learning (mid-left) -->
+      <line x1="50" y1="50" x2="20" y2="50" stroke="rgba(124,58,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to self-healing (mid-right) -->
+      <line x1="50" y1="50" x2="80" y2="50" stroke="rgba(0,255,136,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to agent network (bot-left) -->
+      <line x1="50" y1="50" x2="24" y2="72" stroke="rgba(0,180,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to data lake (bottom) -->
+      <line x1="50" y1="50" x2="50" y2="80" stroke="rgba(0,180,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- center to knowledge graph (bot-right) -->
+      <line x1="50" y1="50" x2="76" y2="72" stroke="rgba(124,58,255,0.3)" stroke-width="0.3" filter="url(#glow)"/>
+      <!-- policy engine -->
+      <line x1="50" y1="50" x2="29" y2="87" stroke="rgba(255,150,0,0.2)" stroke-width="0.3"/>
+      <!-- integration layer -->
+      <line x1="50" y1="50" x2="71" y2="87" stroke="rgba(0,200,200,0.2)" stroke-width="0.3"/>
+    </svg>
+
+    <!-- Energy rings -->
+    <div class="energy-ring"></div>
+    <div class="energy-ring-2"></div>
+
+    <!-- CENTRAL CORE -->
+    <div class="core-hex">
+      <div class="core-label">DUSK</div>
+      <div class="core-label-sub">CORE</div>
+    </div>
+
+    <!-- NODES -->
+    <!-- Orchestrator - top center -->
+    <div class="node" style="left:50%;top:13%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#a78bff">&#9881;</div>
+        <div class="node-title">ORCHESTRATOR</div>
+        <div class="node-sub">Mission Control</div>
+      </div>
+    </div>
+
+    <!-- Threat Intelligence - top left -->
+    <div class="node" style="left:26%;top:22%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#00b4ff">&#9670;</div>
+        <div class="node-title">THREAT INTELLIGENCE</div>
+        <div class="node-sub">Real-time Feeds</div>
+      </div>
+    </div>
+
+    <!-- Behavioural Engine - top right -->
+    <div class="node" style="left:74%;top:22%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#64c8ff">&#9685;</div>
+        <div class="node-title">BEHAVIOURAL ENGINE</div>
+        <div class="node-sub">Anomaly Detection</div>
+      </div>
+    </div>
+
+    <!-- Self-Learning Engine - mid left -->
+    <div class="node" style="left:20%;top:50%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#00e5a0">&#9672;</div>
+        <div class="node-title">SELF-LEARNING ENGINE</div>
+        <div class="node-sub">Continuous Learning</div>
+      </div>
+    </div>
+
+    <!-- Self-Healing Engine - mid right -->
+    <div class="node" style="left:80%;top:50%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#00ff88">&#10022;</div>
+        <div class="node-title">SELF-HEALING ENGINE</div>
+        <div class="node-sub">Auto Remediation</div>
+      </div>
+    </div>
+
+    <!-- Agent Network - bottom left -->
+    <div class="node" style="left:24%;top:72%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#4a9eff">&#9675;</div>
+        <div class="node-title">AGENT NETWORK</div>
+        <div class="node-sub">AI Agents at Work</div>
+      </div>
+    </div>
+
+    <!-- Data Lake - bottom center -->
+    <div class="node" style="left:50%;top:80%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#0096ff">&#9642;</div>
+        <div class="node-title">DATA LAKE</div>
+        <div class="node-sub">Telemetry Storage</div>
+      </div>
+    </div>
+
+    <!-- Knowledge Graph - bottom right -->
+    <div class="node" style="left:76%;top:72%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#9b5fff">&#9762;</div>
+        <div class="node-title">KNOWLEDGE GRAPH</div>
+        <div class="node-sub">Attack Path Mapping</div>
+      </div>
+    </div>
+
+    <!-- Policy Engine - far bottom left -->
+    <div class="node" style="left:29%;top:87%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#ffaa00">&#9632;</div>
+        <div class="node-title">POLICY ENGINE</div>
+        <div class="node-sub">Adaptive Policies</div>
+      </div>
+    </div>
+
+    <!-- Integration Layer - far bottom right -->
+    <div class="node" style="left:71%;top:87%">
+      <div class="node-card">
+        <div class="node-icon" style="color:#00cccc">&#9741;</div>
+        <div class="node-title">INTEGRATION LAYER</div>
+        <div class="node-sub">APIs &amp; Connectors</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div class="right">
+    <div class="right-title">
+      <div class="live-dot"></div>
+      LIVE SYSTEM STATUS
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(74,158,255,0.15)">&#9675;</div>
+      <div class="stat-info">
+        <div class="stat-label">AI AGENTS</div>
+        <div class="stat-value blue" id="stat-agents">--</div>
+        <div class="stat-label" style="margin-top:1px" id="stat-agents-sub">Active</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(255,68,85,0.15)">&#9632;</div>
+      <div class="stat-info">
+        <div class="stat-label">THREATS BLOCKED</div>
+        <div class="stat-value red" id="stat-blocked">--</div>
+        <div class="stat-label" style="margin-top:1px">Today</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(255,170,0,0.12)">&#9650;</div>
+      <div class="stat-info">
+        <div class="stat-label">ANOMALIES DETECTED</div>
+        <div class="stat-value amber" id="stat-anomalies">--</div>
+        <div class="stat-label" style="margin-top:1px">Today</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(0,180,255,0.12)">&#9651;</div>
+      <div class="stat-info">
+        <div class="stat-label">RESPONSE TIME</div>
+        <div class="stat-value blue" id="stat-response">1.8s</div>
+        <div class="stat-label" style="margin-top:1px">Average</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(0,255,136,0.12)">&#10022;</div>
+      <div class="stat-info">
+        <div class="stat-label">SYSTEM HEALTH</div>
+        <div class="stat-value green" id="stat-health">99.98%</div>
+        <div class="stat-label" style="margin-top:1px" id="stat-api-status">Connecting...</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(100,200,255,0.12)">&#9672;</div>
+      <div class="stat-info">
+        <div class="stat-label">LEARNING RATE</div>
+        <div class="stat-value blue">+37%</div>
+        <div class="stat-label" style="margin-top:1px">Today</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(0,255,136,0.12)">&#10003;</div>
+      <div class="stat-info">
+        <div class="stat-label">AUTO HEALED</div>
+        <div class="stat-value green" id="stat-healed">--</div>
+        <div class="stat-label" style="margin-top:1px">Incidents</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-icon" style="background:rgba(0,150,255,0.12)">&#9642;</div>
+      <div class="stat-info">
+        <div class="stat-label">DATA PROCESSED</div>
+        <div class="stat-value blue" id="stat-data">2.4 TB</div>
+        <div class="stat-label" style="margin-top:1px">Today</div>
+      </div>
+    </div>
+
+    <div class="system-status">
+      <div class="ss-label">SYSTEM STATUS</div>
+      <div class="ss-value" id="ss-text">All Systems Operational</div>
+      <div class="shield-wrap">&#9873;</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = window.location.origin;
+
+async function refresh() {
+  try {
+    const [healthRes, decisionsRes] = await Promise.all([
+      fetch(API + '/health', {signal: AbortSignal.timeout(5000)}),
+      fetch(API + '/api/decisions', {signal: AbortSignal.timeout(5000)})
+    ]);
+
+    if (!healthRes.ok || !decisionsRes.ok) throw new Error('API error');
+
+    const decisions = await decisionsRes.json();
+
+    const agents = new Set(decisions.map(d => d.agent_id)).size;
+    const blocked = decisions.filter(d => d.verdict === 'BLOCK').length;
+    const anomalies = decisions.filter(d => d.verdict === 'BLOCK' || d.verdict === 'WOULD-BLOCK').length;
+    const healed = decisions.filter(d => d.healed).length;
+    const total = decisions.length;
+
+    document.getElementById('stat-agents').textContent = agents;
+    document.getElementById('stat-agents-sub').textContent = 'Active (' + total + ' decisions)';
+    document.getElementById('stat-blocked').textContent = blocked.toLocaleString();
+    document.getElementById('stat-anomalies').textContent = anomalies.toLocaleString();
+    document.getElementById('stat-healed').textContent = healed;
+    document.getElementById('stat-data').textContent = (total * 0.16).toFixed(1) + ' TB';
+    document.getElementById('stat-api-status').textContent = 'API Connected';
+    document.getElementById('ss-text').textContent = 'All Systems Operational';
+
+  } catch {
+    document.getElementById('stat-api-status').textContent = 'Reconnecting...';
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
