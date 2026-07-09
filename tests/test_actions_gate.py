@@ -143,6 +143,44 @@ def test_agent_history_high_rerank_similarity_is_unchanged() -> None:
     assert not any("SIE rerank" in r for r in reranked.reasons)
 
 
+def test_sie_extract_flags_terms_missed_by_the_static_frozenset() -> None:
+    """A GLiNER-extracted term outside the hardcoded sensitive set adds a reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_extract", return_value=["superuser"]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score > baseline_only.score
+    assert any("SIE extract" in r and "superuser" in r for r in extracted.reasons)
+
+
+def test_sie_extract_terms_already_in_static_set_are_not_duplicated() -> None:
+    """A term the static frozenset already catches doesn't add a second reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("iam-agent", "role_assignment", "ra-self", role="owner")
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_extract", return_value=["owner"]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
+
+
+def test_sie_extract_unavailable_does_not_change_score() -> None:
+    """The default (no-SIE) case: sie_extract returns [] and nothing changes."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    result = analyse(baseline, action)
+    assert not any("SIE extract" in r for r in result.reasons)
+
+
 # --- verdict -----------------------------------------------------------------
 
 

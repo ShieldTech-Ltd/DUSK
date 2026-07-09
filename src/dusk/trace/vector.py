@@ -19,10 +19,16 @@ from dusk.trace.models import TraceDecision
 logger = logging.getLogger(__name__)
 
 #: Verified against the Superlinked model catalog (superlinked.com/models).
+#: "GLiNER" alone is a model family, not a catalog id -- gliner_multi-v2.1 is
+#: the multilingual, zero-shot, any-labels variant, the one that matches
+#: pulling arbitrary privileged-term labels with no training data.
 ENCODE_MODEL = os.getenv("SIE_ENCODE_MODEL", "BAAI/bge-m3")
 SCORE_MODEL = os.getenv("SIE_SCORE_MODEL", "BAAI/bge-reranker-v2-m3")
+EXTRACT_MODEL = os.getenv("SIE_EXTRACT_MODEL", "urchade/gliner_multi-v2.1")
 SIE_ENDPOINT = os.getenv("SIE_ENDPOINT", "http://sie:8080").rstrip("/")
 SIE_API_KEY = os.getenv("SIE_API_KEY") or None
+#: Default zero-shot labels for pulling privileged terms out of an action.
+DEFAULT_EXTRACT_LABELS = ["role", "privilege", "resource", "segment", "port"]
 
 
 @dataclass
@@ -90,6 +96,32 @@ def sie_score(query: str, candidates: list[str]) -> list[float] | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("SIE score failed: %s", exc)
         return None
+
+
+def sie_extract(text: str, labels: list[str] | None = None) -> list[str]:
+    """extract: pull entities / privileged terms from text via SIE's GLiNER model.
+
+    Returns an empty list when SIE is unavailable, never raises.
+    """
+    client = _sie_client()
+    if client is None:
+        return []
+    try:
+        from sie_sdk.types import Item  # type: ignore[import-not-found]
+
+        item_labels = labels or DEFAULT_EXTRACT_LABELS
+        result = client.extract(EXTRACT_MODEL, Item(text=text), labels=item_labels)
+        entities = (
+            result["entities"] if isinstance(result, dict) else getattr(result, "entities", None)
+        )
+        if not entities:
+            return []
+        return [
+            str(e["text"] if isinstance(e, dict) else e.text) for e in entities if e is not None
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SIE extract failed: %s", exc)
+        return []
 
 
 def _ngram_fallback(text: str, dims: int = 64) -> list[float]:

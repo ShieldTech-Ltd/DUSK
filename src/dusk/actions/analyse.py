@@ -22,7 +22,7 @@ from typing import Any
 
 from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
-from dusk.trace.vector import sie_score
+from dusk.trace.vector import sie_extract, sie_score
 
 logger = logging.getLogger("dusk.actions.analyse")
 
@@ -40,6 +40,10 @@ _W_SENSITIVE = 0.35
 _W_LOW_SEMANTIC_SIMILARITY = 0.2
 #: Rerank score below this is treated as "no close match".
 _SEMANTIC_SIMILARITY_FLOOR = 0.3
+#: Extra contribution when SIE's zero-shot extractor (GLiNER) surfaces a
+#: privileged term the static frozenset below doesn't already cover. Slightly
+#: below _W_SENSITIVE since it's a probabilistic match, not an exact one.
+_W_EXTRACTED_SENSITIVE = 0.3
 
 #: MITRE ATT&CK technique per normalised action type.
 _ATTCK: dict[str, str] = {
@@ -141,6 +145,19 @@ def _predicted_next(action: AgentAction) -> str:
     )
 
 
+def _extracted_sensitive_terms(features: dict[str, Any]) -> set[str]:
+    """Pull privileged terms from the action's target/change text via SIE extract.
+
+    Returns an empty set whenever SIE is not configured/reachable, so the
+    static frozenset checks are the only sensitivity signal in the default
+    (no-SIE) case.
+    """
+    text = " ".join(sorted(features["tokens"] | features["change_values"]))
+    if not text:
+        return set()
+    return {term.lower() for term in sie_extract(text)}
+
+
 def _semantic_novelty(
     action: AgentAction, agent_history: list[AgentAction]
 ) -> tuple[float, str | None]:
@@ -166,6 +183,30 @@ def _semantic_novelty(
             f"SIE rerank finds no close match in this agent's recorded history (best={best:.2f})",
         )
     return 0.0, None
+
+
+def _extra_sie_signals(
+    action: AgentAction, features: dict[str, Any], agent_history: list[AgentAction]
+) -> tuple[float, list[str]]:
+    """Optional SIE-backed signals: extracted privileged terms and rerank novelty.
+
+    Both are no-ops (contribute nothing) when SIE is not configured/reachable,
+    so the deterministic score above is unchanged in the default case.
+    """
+    extra_score = 0.0
+    reasons: list[str] = []
+
+    extracted = _extracted_sensitive_terms(features) - _SENSITIVE
+    if extracted:
+        extra_score += _W_EXTRACTED_SENSITIVE
+        reasons.append(f"SIE extract flags additional privileged terms {sorted(extracted)}")
+
+    novelty_score, novelty_reason = _semantic_novelty(action, agent_history)
+    if novelty_reason:
+        extra_score += novelty_score
+        reasons.append(novelty_reason)
+
+    return extra_score, reasons
 
 
 def analyse(
@@ -229,10 +270,9 @@ def analyse(
                 f"newly introduces sensitive or privileged terms {sorted(sensitive_new)}"
             )
 
-    extra_score, extra_reason = _semantic_novelty(action, agent_history or [])
-    if extra_reason:
-        score += extra_score
-        reasons.append(extra_reason)
+    extra_score, extra_reasons = _extra_sie_signals(action, features, agent_history or [])
+    score += extra_score
+    reasons.extend(extra_reasons)
 
     score = min(1.0, score)
     blast = _blast_radius(action, features)

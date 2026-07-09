@@ -115,6 +115,39 @@ def test_sie_score_returns_none_and_does_not_raise_on_sdk_error(monkeypatch) -> 
     assert vector.sie_score("query", ["a", "b"]) is None
 
 
+def test_sie_extract_returns_empty_when_sie_sdk_missing(monkeypatch) -> None:
+    monkeypatch.setattr(vector, "_sie_client", lambda: None)
+    assert vector.sie_extract("granted owner role") == []
+
+
+def test_sie_extract_returns_entity_texts_when_available(monkeypatch) -> None:
+    fake_client = MagicMock()
+    fake_client.extract.return_value = {
+        "entities": [
+            {"text": "administrator", "label": "role", "score": 0.9},
+            {"text": "0.0.0.0", "label": "resource", "score": 0.8},
+        ]
+    }
+    monkeypatch.setattr(vector, "_sie_client", lambda: fake_client)
+    _inject_fake_item_type(monkeypatch)
+
+    terms = vector.sie_extract("grant administrator on 0.0.0.0")
+
+    assert terms == ["administrator", "0.0.0.0"]
+    fake_client.extract.assert_called_once()
+    assert fake_client.extract.call_args[0][0] == vector.EXTRACT_MODEL
+    assert fake_client.extract.call_args[1]["labels"] == vector.DEFAULT_EXTRACT_LABELS
+
+
+def test_sie_extract_returns_empty_and_does_not_raise_on_sdk_error(monkeypatch) -> None:
+    fake_client = MagicMock()
+    fake_client.extract.side_effect = RuntimeError("connection refused")
+    monkeypatch.setattr(vector, "_sie_client", lambda: fake_client)
+    _inject_fake_item_type(monkeypatch)
+
+    assert vector.sie_extract("grant administrator") == []
+
+
 def test_find_similar_uses_sie_encode_when_available(monkeypatch) -> None:
     calls: list[str] = []
 
