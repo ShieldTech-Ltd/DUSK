@@ -46,7 +46,11 @@ def _sie_client(config: Config) -> Any | None:  # noqa: ANN401
         return None
     try:
         api_key = os.getenv("SIE_API_KEY") or None
-        return SIEClient(config.sie_endpoint.rstrip("/"), api_key=api_key)
+        return SIEClient(
+            config.sie_endpoint.rstrip("/"),
+            api_key=api_key,
+            timeout_s=config.sie_timeout_ms / 1000,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("SIE client construction failed: %s", exc)
         return None

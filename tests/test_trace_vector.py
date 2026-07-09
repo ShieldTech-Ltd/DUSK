@@ -80,6 +80,27 @@ def test_sie_client_returns_none_when_sie_sdk_not_installed(monkeypatch) -> None
     assert vector._sie_client(DEFAULT_CONFIG) is None
 
 
+def test_sie_client_passes_configured_timeout(monkeypatch) -> None:
+    """sie_timeout_ms must actually reach the SDK client, not just live in Config."""
+    captured: dict[str, object] = {}
+
+    class FakeSIEClient:
+        def __init__(self, base_url: str, **kwargs: object) -> None:
+            captured["base_url"] = base_url
+            captured.update(kwargs)
+
+    fake_sie_sdk = types.ModuleType("sie_sdk")
+    fake_sie_sdk.SIEClient = FakeSIEClient  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sie_sdk", fake_sie_sdk)
+
+    config = Config(sie_endpoint="http://sie:8080", sie_timeout_ms=5000)
+    client = vector._sie_client(config)
+
+    assert isinstance(client, FakeSIEClient)
+    assert captured["timeout_s"] == 5.0
+    assert captured["base_url"] == "http://sie:8080"
+
+
 def test_sie_score_returns_none_without_candidates() -> None:
     assert vector.sie_score("query", []) is None
 
