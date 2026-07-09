@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 #: Verified against the Superlinked model catalog (superlinked.com/models).
 ENCODE_MODEL = os.getenv("SIE_ENCODE_MODEL", "BAAI/bge-m3")
+SCORE_MODEL = os.getenv("SIE_SCORE_MODEL", "BAAI/bge-reranker-v2-m3")
 SIE_ENDPOINT = os.getenv("SIE_ENDPOINT", "http://sie:8080").rstrip("/")
 SIE_API_KEY = os.getenv("SIE_API_KEY") or None
 
@@ -60,6 +61,34 @@ def sie_encode(text: str) -> list[float] | None:
         return [float(v) for v in dense] if dense is not None else None
     except Exception as exc:  # noqa: BLE001
         logger.warning("SIE encode failed: %s", exc)
+        return None
+
+
+def sie_score(query: str, candidates: list[str]) -> list[float] | None:
+    """score: rerank candidates against query via SIE's cross-encoder.
+
+    Returns one score per candidate in the same order as ``candidates``
+    (never reordered), or None when SIE is unavailable or there are no
+    candidates to score.
+    """
+    if not candidates:
+        return None
+    client = _sie_client()
+    if client is None:
+        return None
+    try:
+        from sie_sdk.types import Item  # type: ignore[import-not-found]
+
+        query_item = Item(text=query)
+        candidate_items = [Item(text=text, id=str(i)) for i, text in enumerate(candidates)]
+        result = client.score(SCORE_MODEL, query_item, candidate_items)
+        entries = result["scores"] if isinstance(result, dict) else getattr(result, "scores", None)
+        if not entries:
+            return None
+        score_by_id = {str(e["item_id"]): float(e["score"]) for e in entries}
+        return [score_by_id.get(str(i), 0.0) for i in range(len(candidates))]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SIE score failed: %s", exc)
         return None
 
 
@@ -105,6 +134,15 @@ def find_similar(
             scored.append((sim, d))
 
     scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:top_k]
+
+    # Optional rerank pass over the shortlist for higher precision. Encode
+    # already ranked by cosine similarity; if SIE's cross-encoder is
+    # available, prefer its ranking of this same shortlist instead.
+    rerank = sie_score(query, [f"{d.agent_id} {d.action}" for _, d in top])
+    if rerank and len(rerank) == len(top):
+        reranked = sorted(zip(rerank, top, strict=True), key=lambda x: x[0], reverse=True)
+        top = [t for _, t in reranked]
 
     return [
         SimilarDecision(
@@ -115,5 +153,5 @@ def find_similar(
             verdict="BLOCK" if d.score >= 70 else "ALLOW",
             score=d.score,
         )
-        for sim, d in scored[:top_k]
+        for sim, d in top
     ]

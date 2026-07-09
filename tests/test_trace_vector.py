@@ -29,7 +29,10 @@ def _decisions() -> list[TraceDecision]:
 
 def _inject_fake_item_type(monkeypatch) -> None:
     fake_types = types.ModuleType("sie_sdk.types")
-    fake_types.Item = lambda text: {"text": text}  # type: ignore[attr-defined]
+    fake_types.Item = lambda text=None, id=None, **_kw: {  # type: ignore[attr-defined]  # noqa: A002
+        "text": text,
+        "id": id,
+    }
     monkeypatch.setitem(sys.modules, "sie_sdk.types", fake_types)
 
 
@@ -74,6 +77,44 @@ def test_sie_client_returns_none_when_sie_sdk_not_installed(monkeypatch) -> None
     assert vector._sie_client() is None
 
 
+def test_sie_score_returns_none_without_candidates() -> None:
+    assert vector.sie_score("query", []) is None
+
+
+def test_sie_score_returns_none_when_sie_sdk_missing(monkeypatch) -> None:
+    monkeypatch.setattr(vector, "_sie_client", lambda: None)
+    assert vector.sie_score("query", ["a", "b"]) is None
+
+
+def test_sie_score_preserves_input_order(monkeypatch) -> None:
+    fake_client = MagicMock()
+    # SDK returns entries out of input order (by rank); sie_score must map
+    # them back by item_id to the same order the candidates were given in.
+    fake_client.score.return_value = {
+        "scores": [
+            {"item_id": "1", "score": 0.9, "rank": 0},
+            {"item_id": "0", "score": 0.2, "rank": 1},
+        ]
+    }
+    monkeypatch.setattr(vector, "_sie_client", lambda: fake_client)
+    _inject_fake_item_type(monkeypatch)
+
+    scores = vector.sie_score("query", ["candidate-a", "candidate-b"])
+
+    assert scores == [0.2, 0.9]
+    fake_client.score.assert_called_once()
+    assert fake_client.score.call_args[0][0] == vector.SCORE_MODEL
+
+
+def test_sie_score_returns_none_and_does_not_raise_on_sdk_error(monkeypatch) -> None:
+    fake_client = MagicMock()
+    fake_client.score.side_effect = RuntimeError("connection refused")
+    monkeypatch.setattr(vector, "_sie_client", lambda: fake_client)
+    _inject_fake_item_type(monkeypatch)
+
+    assert vector.sie_score("query", ["a", "b"]) is None
+
+
 def test_find_similar_uses_sie_encode_when_available(monkeypatch) -> None:
     calls: list[str] = []
 
@@ -87,3 +128,23 @@ def test_find_similar_uses_sie_encode_when_available(monkeypatch) -> None:
     )
     assert calls
     assert all(isinstance(r, vector.SimilarDecision) for r in results)
+
+
+def test_find_similar_reranks_shortlist_with_sie_score(monkeypatch) -> None:
+    """The rerank pass can override the cosine-similarity order of the shortlist."""
+    decisions = [
+        TraceDecision(agent_id="netops-agent", action="a", score=10, reasoning="r"),
+        TraceDecision(agent_id="netops-agent", action="b", score=20, reasoning="r"),
+        TraceDecision(agent_id="netops-agent", action="c", score=30, reasoning="r"),
+    ]
+    monkeypatch.setattr(vector, "sie_encode", lambda text: [1.0, 0.0])
+
+    def fake_score(query: str, candidates: list[str]) -> list[float]:
+        # Same order as candidates: force the last one to the front.
+        return [0.1, 0.2, 0.9][: len(candidates)]
+
+    monkeypatch.setattr(vector, "sie_score", fake_score)
+
+    results = vector.find_similar("query-action", "netops-agent", decisions, top_k=3)
+
+    assert [r.action for r in results] == ["c", "b", "a"]

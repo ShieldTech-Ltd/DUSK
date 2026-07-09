@@ -22,6 +22,7 @@ from typing import Any
 
 from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
+from dusk.trace.vector import sie_score
 
 logger = logging.getLogger("dusk.actions.analyse")
 
@@ -32,6 +33,13 @@ _W_NEW_TOKENS = 0.2
 _W_NEW_CHANGE_VALUES = 0.25
 _W_UNKNOWN_AGENT = 0.5
 _W_SENSITIVE = 0.35
+#: Extra contribution when SIE's reranker finds no close match in the
+#: agent's raw history, even though the deterministic feature checks above
+#: found nothing new. Only fires when SIE is configured and reachable; the
+#: rule-based score above is unchanged otherwise.
+_W_LOW_SEMANTIC_SIMILARITY = 0.2
+#: Rerank score below this is treated as "no close match".
+_SEMANTIC_SIMILARITY_FLOOR = 0.3
 
 #: MITRE ATT&CK technique per normalised action type.
 _ATTCK: dict[str, str] = {
@@ -133,12 +141,47 @@ def _predicted_next(action: AgentAction) -> str:
     )
 
 
-def analyse(baseline: Baseline, action: AgentAction) -> AnalysisResult:
+def _semantic_novelty(
+    action: AgentAction, agent_history: list[AgentAction]
+) -> tuple[float, str | None]:
+    """Rerank ``action`` against the agent's raw history via SIE's cross-encoder.
+
+    Returns ``(0.0, None)`` whenever there is no history to compare against
+    or SIE is not configured/reachable, so the deterministic score above is
+    unchanged in the default (no-SIE) case.
+    """
+    if not agent_history:
+        return 0.0, None
+
+    query = f"{action.action_type} {action.target}"
+    candidates = [f"{a.action_type} {a.target}" for a in agent_history]
+    scores = sie_score(query, candidates)
+    if not scores:
+        return 0.0, None
+
+    best = max(scores)
+    if best < _SEMANTIC_SIMILARITY_FLOOR:
+        return (
+            _W_LOW_SEMANTIC_SIMILARITY,
+            f"SIE rerank finds no close match in this agent's recorded history (best={best:.2f})",
+        )
+    return 0.0, None
+
+
+def analyse(
+    baseline: Baseline,
+    action: AgentAction,
+    agent_history: list[AgentAction] | None = None,
+) -> AnalysisResult:
     """Score and explain ``action`` against ``baseline``.
 
     Args:
         baseline: The learned per-agent baseline.
         action: The action to evaluate.
+        agent_history: The agent's raw known-good actions, used for an
+            optional SIE-reranked semantic novelty check on top of the
+            deterministic feature checks below. Omit or pass an empty list
+            to skip this signal entirely.
 
     Returns:
         An :class:`AnalysisResult` with score, reasons, and mappings.
@@ -185,6 +228,11 @@ def analyse(baseline: Baseline, action: AgentAction) -> AnalysisResult:
             reasons.append(
                 f"newly introduces sensitive or privileged terms {sorted(sensitive_new)}"
             )
+
+    extra_score, extra_reason = _semantic_novelty(action, agent_history or [])
+    if extra_reason:
+        score += extra_score
+        reasons.append(extra_reason)
 
     score = min(1.0, score)
     blast = _blast_radius(action, features)

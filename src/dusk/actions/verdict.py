@@ -71,11 +71,13 @@ class ActionGate:
         self.config = config if config is not None else get_config()
         self.baseline = baseline if baseline is not None else Baseline()
         self.enforce = enforce
+        self._history: dict[str, list[AgentAction]] = {}
 
     def learn(self, actions: list[AgentAction]) -> None:
         """Fold known-good actions into the baseline."""
         for action in actions:
             self.baseline.observe(action)
+            self._history.setdefault(action.agent_id, []).append(action)
         logger.info(
             "gate baseline learned: %d agent(s) from %d action(s)",
             len(self.baseline),
@@ -84,7 +86,7 @@ class ActionGate:
 
     def evaluate(self, action: AgentAction) -> GateVerdict:
         """Analyse one action and render a verdict."""
-        result = analyse(self.baseline, action)
+        result = analyse(self.baseline, action, agent_history=self._history.get(action.agent_id))
         if result.score >= self.config.gate_block_threshold:
             verdict = BLOCK if self.enforce else WOULD_BLOCK
             logger.error(
