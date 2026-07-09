@@ -5,11 +5,15 @@ import os
 import threading
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import requests as req_lib
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+if TYPE_CHECKING:
+    from dusk.actions.verdict import ActionGate
 
 load_dotenv()
 
@@ -38,6 +42,93 @@ def _fire_n8n(payload: dict[str, object]) -> None:
         logger.info("n8n webhook fired for verdict=%s", payload.get("verdict"))
     except Exception as exc:
         logger.warning("n8n webhook failed: %s", exc)
+
+
+_gate_engine: ActionGate | None = None
+_gate_lock = threading.Lock()
+
+
+def _load_gate_engine() -> ActionGate:
+    from dusk.actions.ingest import ingest_file
+    from dusk.actions.verdict import ActionGate
+
+    baseline_path = os.getenv("DUSK_GATE_BASELINE_PATH", "")
+    baseline_source = os.getenv("DUSK_GATE_BASELINE_SOURCE", "generic")
+    enforce = os.getenv("DUSK_ENFORCE", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    gate_engine = ActionGate(enforce=enforce)
+    if baseline_path:
+        try:
+            known_good = ingest_file(baseline_path, baseline_source)
+            gate_engine.learn(known_good)
+        except (FileNotFoundError, ValueError) as exc:
+            logger.error("gate baseline could not be loaded from %s: %s", baseline_path, exc)
+    else:
+        logger.warning(
+            "DUSK_GATE_BASELINE_PATH not set; gate has no baseline, every agent is unknown"
+        )
+    return gate_engine
+
+
+def _get_gate_engine() -> ActionGate:
+    # Baseline is loaded once at process startup and never mutated by live
+    # traffic: folding incoming actions back into the baseline would let a
+    # sustained drip of benign-looking requests widen what counts as normal
+    # before the real payload lands.
+    global _gate_engine
+    if _gate_engine is None:
+        with _gate_lock:
+            if _gate_engine is None:
+                _gate_engine = _load_gate_engine()
+    return _gate_engine
+
+
+def reset_gate_engine() -> None:
+    """Clear the cached gate engine so the next request reloads it. Test-only hook."""
+    global _gate_engine
+    with _gate_lock:
+        _gate_engine = None
+
+
+@app.route("/v1/gate", methods=["POST"])
+def evaluate_gate_action() -> object:
+    """Evaluate a proposed agent action against the learned baseline.
+
+    Contract: contracts/gate.openapi.yaml.
+    """
+    from dusk.actions.event import AgentAction
+
+    raw = request.get_json(force=True, silent=True)
+    if not isinstance(raw, dict):
+        return jsonify({"error": "request body must be a JSON object"}), 400
+
+    try:
+        action = AgentAction.from_dict(raw)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    verdict = _get_gate_engine().evaluate(action)
+    analysis = verdict.analysis
+
+    response: dict[str, object] = {
+        "trace_id": uuid.uuid4().hex,
+        "verdict": verdict.verdict,
+        "score": round(analysis.score, 4),
+        "blast": analysis.blast_radius,
+        "mitre_attack": [analysis.mitre_attack] if analysis.mitre_attack else [],
+        "mitre_atlas": [analysis.mitre_atlas] if analysis.mitre_atlas else [],
+        "reasons": analysis.reasons,
+        "predicted_next": analysis.predicted_next,
+        "similar_decision_ids": [],
+    }
+    logger.info(
+        "gate verdict trace_id=%s agent=%s verdict=%s score=%.2f",
+        response["trace_id"],
+        action.agent_id,
+        verdict.verdict,
+        analysis.score,
+    )
+    return jsonify(response), 200
 
 
 @app.route("/health")
