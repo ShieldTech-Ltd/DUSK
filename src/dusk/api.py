@@ -26,6 +26,9 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+# A real AgentAction is a few hundred bytes; this bounds a public endpoint
+# against a trivially oversized request without constraining any real caller.
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

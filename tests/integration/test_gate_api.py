@@ -96,6 +96,12 @@ def test_gate_rejects_non_object_body(client) -> None:
     assert r.status_code == 400
 
 
+def test_gate_rejects_oversized_body(client) -> None:
+    oversized = "x" * (2 * 1024 * 1024)
+    r = client.post("/v1/gate", data=oversized, content_type="application/json")
+    assert r.status_code == 413
+
+
 def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) -> None:
     monkeypatch.delenv("DUSK_GATE_BASELINE_PATH", raising=False)
     api.reset_gate_engine()
