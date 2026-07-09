@@ -165,6 +165,7 @@ def health() -> object:
 
 
 if DEMO_INTEGRATIONS_ENABLED:
+
     @app.route("/api/alert", methods=["POST"])
     def receive_alert() -> object:
         data: dict[str, object] = request.json or {}
@@ -239,11 +240,9 @@ if DEMO_INTEGRATIONS_ENABLED:
 
         return jsonify(entry), 201
 
-
     @app.route("/api/decisions")
     def list_decisions() -> object:
         return jsonify(_decisions)
-
 
     @app.route("/api/decisions/<decision_id>")
     def get_decision(decision_id: str) -> object:
@@ -251,7 +250,6 @@ if DEMO_INTEGRATIONS_ENABLED:
             if d["id"] == decision_id:
                 return jsonify(d)
         return jsonify({"error": "not found"}), 404
-
 
     @app.route("/api/decisions/<decision_id>/heal", methods=["POST"])
     def heal_decision(decision_id: str) -> object:
@@ -274,7 +272,6 @@ if DEMO_INTEGRATIONS_ENABLED:
                     logger.warning("Attio heal update failed (non-fatal): %s", exc)
                 return jsonify(d)
         return jsonify({"error": "not found"}), 404
-
 
     @app.route("/attio/trigger", methods=["POST"])
     def attio_trigger() -> object:
@@ -306,7 +303,6 @@ if DEMO_INTEGRATIONS_ENABLED:
         threading.Thread(target=_background, daemon=True).start()
         return jsonify({"status": "research_started", "company": company}), 202
 
-
     @app.route("/research", methods=["POST"])
     def research_endpoint() -> object:
         raw = request.get_json(force=True, silent=True)
@@ -323,13 +319,11 @@ if DEMO_INTEGRATIONS_ENABLED:
             return jsonify({"error": str(exc)}), 500
         return jsonify(decision.to_dict()), 201
 
-
     @app.route("/research/decisions")
     def list_research_decisions() -> object:
         from dusk.recorder import all_decisions
 
         return jsonify([d.to_dict() for d in all_decisions()])
-
 
     @app.route("/research/decisions/<decision_id>")
     def get_research_decision(decision_id: str) -> object:
@@ -339,7 +333,6 @@ if DEMO_INTEGRATIONS_ENABLED:
             return jsonify(get_by_id(decision_id).to_dict())
         except KeyError:
             return jsonify({"error": "not found"}), 404
-
 
     @app.route("/research/decisions/<decision_id>/replay", methods=["POST"])
     def replay_research_decision(decision_id: str) -> object:
