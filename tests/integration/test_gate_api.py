@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -98,3 +99,44 @@ def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) ->
     r = client.post("/v1/gate", json=_action_payload())
     assert r.status_code == 200
     assert any("no established baseline" in reason for reason in r.get_json()["reasons"])
+
+
+def test_gate_allow_fires_decision_and_report_but_not_alert(client) -> None:
+    with (
+        patch("dusk.trace.n8n_client.fire_decision") as mock_decision,
+        patch("dusk.trace.n8n_client.fire_report") as mock_report,
+        patch("dusk.trace.n8n_client.fire_alert") as mock_alert,
+    ):
+        r = client.post("/v1/gate", json=_action_payload(port=443))
+
+    assert r.get_json()["verdict"] == "ALLOW"
+    mock_decision.assert_called_once()
+    mock_report.assert_called_once()
+    mock_alert.assert_not_called()
+
+
+def test_gate_refusal_fires_all_three_webhooks(client) -> None:
+    with (
+        patch("dusk.trace.n8n_client.fire_decision") as mock_decision,
+        patch("dusk.trace.n8n_client.fire_report") as mock_report,
+        patch("dusk.trace.n8n_client.fire_alert") as mock_alert,
+    ):
+        r = client.post(
+            "/v1/gate", json=_action_payload(agent_id="ghost-agent", target="fw-restricted")
+        )
+
+    assert r.get_json()["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    mock_decision.assert_called_once()
+    mock_report.assert_called_once()
+    mock_alert.assert_called_once()
+
+
+def test_gate_webhook_payload_includes_action_context(client) -> None:
+    with patch("dusk.trace.n8n_client.fire_decision") as mock_decision:
+        client.post("/v1/gate", json=_action_payload(port=443))
+
+    payload = mock_decision.call_args[0][0]
+    assert payload["agent_id"] == "netops-agent"
+    assert payload["action_type"] == "firewall_rule_change"
+    assert payload["target"] == "fw-corp-https"
+    assert set(CONTRACT_FIELDS) <= set(payload)

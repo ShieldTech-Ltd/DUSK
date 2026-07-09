@@ -128,6 +128,20 @@ def evaluate_gate_action() -> object:
         verdict.verdict,
         analysis.score,
     )
+
+    from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report
+
+    webhook_payload = {
+        **response,
+        "agent_id": action.agent_id,
+        "action_type": action.action_type,
+        "target": action.target,
+    }
+    fire_decision(webhook_payload)
+    fire_report(webhook_payload)
+    if verdict.refused:
+        fire_alert(webhook_payload)
+
     return jsonify(response), 200
 
 
