@@ -51,12 +51,12 @@ _gate_lock = threading.Lock()
 def _load_gate_engine() -> ActionGate:
     from dusk.actions.ingest import ingest_file
     from dusk.actions.verdict import ActionGate
+    from dusk.config import get_config
 
     baseline_path = os.getenv("DUSK_GATE_BASELINE_PATH", "")
     baseline_source = os.getenv("DUSK_GATE_BASELINE_SOURCE", "generic")
-    enforce = os.getenv("DUSK_ENFORCE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
-    gate_engine = ActionGate(enforce=enforce)
+    gate_engine = ActionGate(enforce=get_config().enforce)
     if baseline_path:
         try:
             known_good = ingest_file(baseline_path, baseline_source)

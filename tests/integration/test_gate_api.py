@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from dusk import api
+from dusk.config import reset_config
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 BASELINE_PATH = str(FIXTURES / "actions_normal.json")
@@ -30,8 +31,10 @@ def _reset_gate(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", BASELINE_PATH)
     monkeypatch.setenv("DUSK_GATE_BASELINE_SOURCE", "generic")
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
+    reset_config()
     api.reset_gate_engine()
     yield
+    reset_config()
     api.reset_gate_engine()
 
 
@@ -99,6 +102,16 @@ def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) ->
     r = client.post("/v1/gate", json=_action_payload())
     assert r.status_code == 200
     assert any("no established baseline" in reason for reason in r.get_json()["reasons"])
+
+
+def test_gate_enforce_mode_via_config_blocks_instead_of_would_block(client, monkeypatch) -> None:
+    monkeypatch.setenv("DUSK_ENFORCE", "true")
+    reset_config()
+    api.reset_gate_engine()
+    r = client.post(
+        "/v1/gate", json=_action_payload(agent_id="ghost-agent", target="fw-restricted")
+    )
+    assert r.get_json()["verdict"] == "BLOCK"
 
 
 def test_gate_allow_fires_decision_and_report_but_not_alert(client) -> None:

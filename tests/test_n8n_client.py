@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dusk.config import Config
 from dusk.trace import n8n_client
 
 
@@ -26,67 +27,71 @@ def _synchronous_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(n8n_client.threading, "Thread", _ImmediateThread)
 
 
-def _track_send_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, object]]]:
-    calls: list[tuple[str, dict[str, object]]] = []
+def _track_send_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, str, dict[str, object]]]:
+    calls: list[tuple[str, str, dict[str, object]]] = []
 
-    def _fake_send(env_var: str, payload: dict[str, object]) -> None:
-        calls.append((env_var, payload))
+    def _fake_send(url: str, label: str, payload: dict[str, object]) -> None:
+        calls.append((url, label, payload))
 
     monkeypatch.setattr(n8n_client, "_send", _fake_send)
     return calls
 
 
-def test_fire_decision_calls_send_with_correct_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fire_decision_reads_url_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _track_send_calls(monkeypatch)
-    n8n_client.fire_decision({"a": 1})
-    assert calls == [("N8N_DECISION_URL", {"a": 1})]
+    config = Config(n8n_decision_url="https://example.com/decision")
+    n8n_client.fire_decision({"a": 1}, config=config)
+    assert calls == [("https://example.com/decision", "decision", {"a": 1})]
 
 
-def test_fire_report_calls_send_with_correct_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fire_report_reads_url_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _track_send_calls(monkeypatch)
-    n8n_client.fire_report({"a": 1})
-    assert calls == [("N8N_REPORT_URL", {"a": 1})]
+    config = Config(n8n_report_url="https://example.com/report")
+    n8n_client.fire_report({"a": 1}, config=config)
+    assert calls == [("https://example.com/report", "report", {"a": 1})]
 
 
-def test_fire_alert_calls_send_with_correct_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fire_alert_reads_url_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _track_send_calls(monkeypatch)
-    n8n_client.fire_alert({"a": 1})
-    assert calls == [("N8N_ALERT_URL", {"a": 1})]
+    config = Config(n8n_alert_url="https://example.com/alert")
+    n8n_client.fire_alert({"a": 1}, config=config)
+    assert calls == [("https://example.com/alert", "alert", {"a": 1})]
 
 
-def test_fire_webhook_legacy_still_uses_original_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The pre-existing single webhook (used by src/dusk/recorder.py) is unaffected."""
+def test_fire_webhook_legacy_reads_url_from_env_not_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pre-existing single webhook (used by src/dusk/recorder.py) is unaffected by Config."""
     calls = _track_send_calls(monkeypatch)
+    monkeypatch.setenv("N8N_WEBHOOK_URL", "https://example.com/legacy")
     n8n_client.fire_webhook({"a": 1})
-    assert calls == [("N8N_WEBHOOK_URL", {"a": 1})]
+    assert calls == [("https://example.com/legacy", "legacy", {"a": 1})]
 
 
-def test_send_no_op_when_env_var_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("N8N_DECISION_URL", raising=False)
+def test_send_no_op_when_url_empty() -> None:
     with patch("urllib.request.urlopen") as mock_urlopen:
-        n8n_client._send("N8N_DECISION_URL", {"a": 1})
+        n8n_client._send("", "decision", {"a": 1})
     mock_urlopen.assert_not_called()
 
 
-def test_send_rejects_unsupported_scheme(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N8N_DECISION_URL", "ftp://example.com/hook")
+def test_send_rejects_unsupported_scheme() -> None:
     with patch("urllib.request.urlopen") as mock_urlopen:
-        n8n_client._send("N8N_DECISION_URL", {"a": 1})
+        n8n_client._send("ftp://example.com/hook", "decision", {"a": 1})
     mock_urlopen.assert_not_called()
 
 
-def test_send_posts_to_configured_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N8N_DECISION_URL", "https://example.com/hook")
+def test_send_posts_to_configured_url() -> None:
     mock_response = MagicMock()
     mock_response.status = 200
     mock_context = MagicMock()
     mock_context.__enter__.return_value = mock_response
     with patch("urllib.request.urlopen", return_value=mock_context) as mock_urlopen:
-        n8n_client._send("N8N_DECISION_URL", {"a": 1})
+        n8n_client._send("https://example.com/hook", "decision", {"a": 1})
     mock_urlopen.assert_called_once()
 
 
-def test_send_swallows_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N8N_DECISION_URL", "https://example.com/hook")
+def test_send_swallows_errors() -> None:
     with patch("urllib.request.urlopen", side_effect=RuntimeError("boom")):
-        n8n_client._send("N8N_DECISION_URL", {"a": 1})
+        n8n_client._send("https://example.com/hook", "decision", {"a": 1})

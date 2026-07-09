@@ -53,6 +53,22 @@ class Config:
             enforce mode).
         alert_log_path: Path the alert responder appends JSON entries to.
         log_level: Default logging level name (e.g. ``"WARNING"``).
+        enforce: When ``True``, the ``/v1/gate`` HTTP service renders BLOCK
+            for refused actions instead of WOULD-BLOCK. Watch mode (``False``)
+            is the default.
+        sie_endpoint: Base URL of the self-hosted SIE container the gate
+            calls for encode/score/extract. No API key is needed for a
+            self-hosted instance.
+        sie_encode_model: Catalog model id SIE uses for the encode primitive.
+        sie_score_model: Catalog model id SIE uses for the score (rerank)
+            primitive.
+        sie_extract_model: Catalog model id SIE uses for the extract
+            primitive.
+        sie_timeout_ms: Timeout in milliseconds for a single SIE call.
+        n8n_alert_url: n8n webhook fired only when a gate verdict is refused.
+        n8n_report_url: n8n webhook fired on every gate verdict.
+        n8n_decision_url: n8n webhook fired on every gate verdict, kept on
+            its own URL so automation and reporting can be routed separately.
     """
 
     sweep_threshold: int = 15
@@ -63,13 +79,23 @@ class Config:
     gate_block_threshold: float = 0.6
     alert_log_path: str = "dusk-alerts.json"
     log_level: str = "WARNING"
+    enforce: bool = False
+    sie_endpoint: str = "http://sie:8080"
+    sie_encode_model: str = "BAAI/bge-m3"
+    sie_score_model: str = "BAAI/bge-reranker-v2-m3"
+    sie_extract_model: str = "urchade/gliner_multi-v2.1"
+    sie_timeout_ms: int = 10000
+    n8n_alert_url: str = ""
+    n8n_report_url: str = ""
+    n8n_decision_url: str = ""
 
     def __post_init__(self) -> None:
         """Validate values after construction.
 
         Raises:
-            ConfigError: If any numeric threshold is non-positive or the log
-                level is not a recognised name.
+            ConfigError: If any numeric threshold is non-positive, the log
+                level is not a recognised name, or a configured URL is
+                non-empty but missing an http(s) scheme.
         """
         positive_numeric = (
             "sweep_threshold",
@@ -78,6 +104,7 @@ class Config:
             "boundary_port_threshold",
             "boundary_window_seconds",
             "gate_block_threshold",
+            "sie_timeout_ms",
         )
         for name in positive_numeric:
             value = getattr(self, name)
@@ -88,6 +115,15 @@ class Config:
             raise ConfigError(
                 f"Config value 'log_level' is not a valid level name: {self.log_level!r}"
             )
+
+        url_fields = ("sie_endpoint", "n8n_alert_url", "n8n_report_url", "n8n_decision_url")
+        for name in url_fields:
+            value = getattr(self, name)
+            if value and not value.startswith(("http://", "https://")):
+                raise ConfigError(
+                    f"Config value '{name}' must be empty or start with http:// or "
+                    f"https://, got {value!r}"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict view of the configuration."""

@@ -1,9 +1,14 @@
 """SIE-backed semantic similarity for past agent decisions.
 
-Calls the self-hosted Superlinked Inference Engine (SIE) encode primitive for
-real embeddings; falls back to a deterministic n-gram hash embedding so the
-example always works without SIE running. Point SIE_ENDPOINT at the local
-container (http://sie:8080); a self-hosted SIE needs no API key.
+Calls the self-hosted Superlinked Inference Engine (SIE) encode/score/extract
+primitives for real embeddings, reranking, and entity extraction; falls back
+to a deterministic n-gram hash embedding (and empty results for score/extract)
+so the example always works without SIE running. SIE settings come from the
+process-wide :class:`~dusk.config.Config` (``sie_endpoint``, ``sie_encode_model``,
+``sie_score_model``, ``sie_extract_model``), overridable via ``dusk.yaml`` or
+``DUSK_SIE_*`` env vars. ``SIE_API_KEY`` is read directly from the environment,
+not from Config, since it's a secret rather than an operational setting; a
+self-hosted SIE needs no key at all.
 """
 
 from __future__ import annotations
@@ -14,19 +19,11 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from dusk.config import Config, get_config
 from dusk.trace.models import TraceDecision
 
 logger = logging.getLogger(__name__)
 
-#: Verified against the Superlinked model catalog (superlinked.com/models).
-#: "GLiNER" alone is a model family, not a catalog id -- gliner_multi-v2.1 is
-#: the multilingual, zero-shot, any-labels variant, the one that matches
-#: pulling arbitrary privileged-term labels with no training data.
-ENCODE_MODEL = os.getenv("SIE_ENCODE_MODEL", "BAAI/bge-m3")
-SCORE_MODEL = os.getenv("SIE_SCORE_MODEL", "BAAI/bge-reranker-v2-m3")
-EXTRACT_MODEL = os.getenv("SIE_EXTRACT_MODEL", "urchade/gliner_multi-v2.1")
-SIE_ENDPOINT = os.getenv("SIE_ENDPOINT", "http://sie:8080").rstrip("/")
-SIE_API_KEY = os.getenv("SIE_API_KEY") or None
 #: Default zero-shot labels for pulling privileged terms out of an action.
 DEFAULT_EXTRACT_LABELS = ["role", "privilege", "resource", "segment", "port"]
 
@@ -41,28 +38,30 @@ class SimilarDecision:
     score: int
 
 
-def _sie_client() -> Any | None:  # noqa: ANN401
+def _sie_client(config: Config) -> Any | None:  # noqa: ANN401
     """Return a constructed SIEClient if the sie-sdk package is installed, else None."""
     try:
         from sie_sdk import SIEClient  # type: ignore[import-not-found]
     except ImportError:
         return None
     try:
-        return SIEClient(SIE_ENDPOINT, api_key=SIE_API_KEY)
+        api_key = os.getenv("SIE_API_KEY") or None
+        return SIEClient(config.sie_endpoint.rstrip("/"), api_key=api_key)
     except Exception as exc:  # noqa: BLE001
         logger.warning("SIE client construction failed: %s", exc)
         return None
 
 
-def sie_encode(text: str) -> list[float] | None:
+def sie_encode(text: str, config: Config | None = None) -> list[float] | None:
     """encode: text -> dense vector via SIE. Returns None to trigger the n-gram fallback."""
-    client = _sie_client()
+    cfg = config or get_config()
+    client = _sie_client(cfg)
     if client is None:
         return None
     try:
         from sie_sdk.types import Item  # type: ignore[import-not-found]
 
-        result = client.encode(ENCODE_MODEL, Item(text=text))
+        result = client.encode(cfg.sie_encode_model, Item(text=text))
         dense = result["dense"] if isinstance(result, dict) else getattr(result, "dense", None)
         return [float(v) for v in dense] if dense is not None else None
     except Exception as exc:  # noqa: BLE001
@@ -70,7 +69,9 @@ def sie_encode(text: str) -> list[float] | None:
         return None
 
 
-def sie_score(query: str, candidates: list[str]) -> list[float] | None:
+def sie_score(
+    query: str, candidates: list[str], config: Config | None = None
+) -> list[float] | None:
     """score: rerank candidates against query via SIE's cross-encoder.
 
     Returns one score per candidate in the same order as ``candidates``
@@ -79,7 +80,8 @@ def sie_score(query: str, candidates: list[str]) -> list[float] | None:
     """
     if not candidates:
         return None
-    client = _sie_client()
+    cfg = config or get_config()
+    client = _sie_client(cfg)
     if client is None:
         return None
     try:
@@ -87,7 +89,7 @@ def sie_score(query: str, candidates: list[str]) -> list[float] | None:
 
         query_item = Item(text=query)
         candidate_items = [Item(text=text, id=str(i)) for i, text in enumerate(candidates)]
-        result = client.score(SCORE_MODEL, query_item, candidate_items)
+        result = client.score(cfg.sie_score_model, query_item, candidate_items)
         entries = result["scores"] if isinstance(result, dict) else getattr(result, "scores", None)
         if not entries:
             return None
@@ -98,19 +100,22 @@ def sie_score(query: str, candidates: list[str]) -> list[float] | None:
         return None
 
 
-def sie_extract(text: str, labels: list[str] | None = None) -> list[str]:
+def sie_extract(
+    text: str, labels: list[str] | None = None, config: Config | None = None
+) -> list[str]:
     """extract: pull entities / privileged terms from text via SIE's GLiNER model.
 
     Returns an empty list when SIE is unavailable, never raises.
     """
-    client = _sie_client()
+    cfg = config or get_config()
+    client = _sie_client(cfg)
     if client is None:
         return []
     try:
         from sie_sdk.types import Item  # type: ignore[import-not-found]
 
         item_labels = labels or DEFAULT_EXTRACT_LABELS
-        result = client.extract(EXTRACT_MODEL, Item(text=text), labels=item_labels)
+        result = client.extract(cfg.sie_extract_model, Item(text=text), labels=item_labels)
         entities = (
             result["entities"] if isinstance(result, dict) else getattr(result, "entities", None)
         )
