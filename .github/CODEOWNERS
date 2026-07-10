@@ -2,5 +2,25 @@
 # Listed owners are requested for review automatically and, when branch
 # protection's "Require review from Code Owners" is on, must approve before
 # a PR can merge into a protected branch.
+#
+# TFT444 is repo owner: catch-all and repo governance stay owner-only.
+# ritiksah141 is co-owner, scoped to his lane (gate service, SIE, trace, packaging).
 
-* @TFT444
+# Repo governance and anything unmatched: owner only
+/.github/                      @TFT444
+/LICENSE                       @TFT444
+/scripts/                      @TFT444
+/docs/branch-protection.md     @TFT444
+*                               @TFT444
+
+# Ritik's lane -- gate service, SIE, trace, packaging
+/src/dusk/api.py                @TFT444 @ritiksah141
+/src/dusk/core/                 @TFT444 @ritiksah141
+/src/dusk/actions/baseline.py   @TFT444 @ritiksah141
+/src/dusk/actions/analyse.py    @TFT444 @ritiksah141
+/src/dusk/actions/verdict.py    @TFT444 @ritiksah141
+/src/dusk/trace/                @TFT444 @ritiksah141
+/src/dusk/config.py             @TFT444 @ritiksah141
+/docker-compose.yml             @TFT444 @ritiksah141
+/Dockerfile                     @TFT444 @ritiksah141
+/contracts/                     @TFT444 @ritiksah141
