@@ -59,6 +59,12 @@ def _action_payload(
     }
 
 
+def test_health(client) -> None:
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
+
+
 def test_gate_returns_contract_shaped_verdict(client) -> None:
     r = client.post("/v1/gate", json=_action_payload(port=443))
     assert r.status_code == 200
