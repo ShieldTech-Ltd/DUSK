@@ -60,16 +60,6 @@ def test_fire_alert_reads_url_from_config(monkeypatch: pytest.MonkeyPatch) -> No
     assert calls == [("https://example.com/alert", "alert", {"a": 1})]
 
 
-def test_fire_webhook_legacy_reads_url_from_env_not_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The pre-existing single webhook (used by src/dusk/recorder.py) is unaffected by Config."""
-    calls = _track_send_calls(monkeypatch)
-    monkeypatch.setenv("N8N_WEBHOOK_URL", "https://example.com/legacy")
-    n8n_client.fire_webhook({"a": 1})
-    assert calls == [("https://example.com/legacy", "legacy", {"a": 1})]
-
-
 def test_send_no_op_when_url_empty() -> None:
     with patch("urllib.request.urlopen") as mock_urlopen:
         n8n_client._send("", "decision", {"a": 1})

@@ -278,59 +278,16 @@ def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_jso
     sys.exit(1 if refused else 0)
 
 
-@main.command(help="Research a company and score it as a prospect.")
-@click.argument("company")
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit machine-readable JSON instead of formatted output.",
-)
-def research(company: str, as_json: bool) -> None:
-    """Fetch live intelligence on COMPANY and score it with Gemini Flash."""
-    from dusk.agent import research_company
-
-    try:
-        decision = research_company(company)
-    except Exception as exc:  # noqa: BLE001
-        _fail(str(exc), as_json=as_json)
-        return
-
-    if as_json:
-        click.echo(json.dumps(decision.to_dict(), indent=2))
-    else:
-        risk_colour = {"high": "red", "medium": "yellow", "low": "green"}[decision.risk_level.value]
-        verdict = "QUALIFIED" if decision.score >= 65 else "FLAGGED"
-        verdict_colour = "green" if verdict == "QUALIFIED" else "yellow"
-        console.print(
-            f"\n[bold {verdict_colour}]{verdict}[/bold {verdict_colour}]  "
-            f"[bold]{decision.subject}[/bold]  "
-            f"score=[bold {risk_colour}]{decision.score}/100[/bold {risk_colour}]  "
-            f"confidence={decision.confidence:.0%}"
-        )
-        console.print(f"  [dim]reasoning:[/dim] {decision.reasoning}")
-        if decision.risk_flags:
-            console.print(f"  [dim]risk flags:[/dim] {', '.join(decision.risk_flags)}")
-        console.print(
-            f"  [dim]latency:[/dim] tavily={decision.latency_tavily_ms}ms  "
-            f"gemini={decision.latency_gemini_ms}ms  "
-            f"[dim]id:[/dim] {decision.id}"
-        )
-
-    sys.exit(0)
-
-
-@main.command(help="Start the DUSK research API server.")
+@main.command(help="Start the DUSK gate service (/v1/gate over HTTP).")
 @click.option("--port", default=5000, show_default=True, help="Port to listen on.")
 def serve(port: int) -> None:
-    """Run the Flask API server."""
+    """Run the Flask gate service."""
     import os as _os
 
     _os.environ.setdefault("FLASK_PORT", str(port))
     from dusk.api import run
 
-    console.print(f"[bold]DUSK API[/bold] starting on port {port}")
+    console.print(f"[bold]DUSK gate[/bold] starting on port {port}")
     run()
 
 

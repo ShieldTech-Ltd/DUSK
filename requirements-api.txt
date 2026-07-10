@@ -1,12 +1,8 @@
-# Flask API server
+# Flask gate service
 flask
 flask-cors
-requests
 python-dotenv
 
-# Partner integrations
-tavily-python
-google-generativeai
 # mubit -- not on PyPI; install via hackathon access: pip install mubit
 
 # Aikido runtime security -- not on PyPI; install via aikido.dev
