@@ -69,3 +69,45 @@ docker compose down -v
 
 The `-v` also removes the `sie-hf-cache` volume, which is fine for a repeat
 test but means the next `up` re-downloads SIE's model weights.
+
+## R9: end-to-end verification (done, without Docker)
+
+Docker itself still hasn't been exercised in the environment that wrote this
+doc (still no daemon reachable there), but the full R9 path -- real
+`dusk-gate`, real `mock-prod`, real `agent-demo` -- was verified by running
+the three processes directly instead of through compose:
+
+```bash
+# terminal 1: the real gate, with a baseline loaded
+DUSK_GATE_BASELINE_PATH=tests/fixtures/actions_normal.json \
+FLASK_PORT=8001 python3 -m dusk.api
+
+# terminal 2: mock-prod
+MOCK_PROD_PORT=9001 python3 mock-prod/app.py
+
+# terminal 3: both scenarios against the real gate, not the T1 stub
+PYTHONPATH=agent-demo \
+DUSK_GATE_URL=http://127.0.0.1:8001/v1/gate \
+MOCK_PROD_URL=http://127.0.0.1:9001/apply \
+python3 agent-demo/run_scenario.py --scenario both
+```
+
+Confirmed:
+
+- Clean scenario: `verdict: ALLOW`, `applied: True`; `curl
+  http://127.0.0.1:9001/log` shows exactly the `route_change` on
+  `rt-corp-prod` applied.
+- Poisoned scenario in watch mode (default, `DUSK_ENFORCE` unset):
+  `verdict: WOULD-BLOCK`, `applied: False`, reasons correctly call out the
+  unseen `firewall_rule_change` action type, the `restricted` target token,
+  and the `0.0.0.0/0` sensitive value. `mock-prod`'s log still shows only
+  the one clean entry.
+- Poisoned scenario with `DUSK_ENFORCE=true` set on the gate process:
+  `verdict: BLOCK`, same reasons, still never reaches `mock-prod`.
+
+This satisfies R9's acceptance criteria (clean ALLOWed and applied; poisoned
+refused before `mock-prod` in enforce mode, `WOULD-BLOCK` logged in watch
+mode) independent of whether Docker itself has been exercised yet -- the
+compose file wires the same three services together on one network, so
+`docker compose up` bringing them up is a packaging concern layered on top
+of behavior already confirmed here.
