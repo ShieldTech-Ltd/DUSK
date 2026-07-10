@@ -32,10 +32,7 @@ dependencies = [
 api = [
     "flask>=3.0",
     "flask-cors>=4.0",
-    "requests>=2.31",
     "python-dotenv>=1.0",
-    "tavily-python>=0.3",
-    "google-generativeai>=0.8",
     "urllib3>=2.0",
 ]
 sie = [
@@ -53,10 +50,7 @@ dev = [
     "types-PyYAML>=6.0",
     "flask>=3.0",
     "flask-cors>=4.0",
-    "requests>=2.31",
     "python-dotenv>=1.0",
-    "tavily-python>=0.3",
-    "google-generativeai>=0.8",
     "urllib3>=2.0",
 ]
 
@@ -74,10 +68,8 @@ where = ["src"]
 testpaths = ["tests"]
 # Force UTF-8 for the test process so console capture never falls back to a
 # platform default like Windows cp1252, which cannot encode every character the
-# Rich alert panel may emit. DUSK_DEMO_INTEGRATIONS registers the Attio/Gemini/
-# research demo routes (off by default in production) so their existing tests
-# still exercise real routes rather than 404s.
-env = ["PYTHONIOENCODING=utf-8", "DUSK_DEMO_INTEGRATIONS=true"]
+# Rich alert panel may emit.
+env = ["PYTHONIOENCODING=utf-8"]
 
 [tool.ruff]
 target-version = "py311"
@@ -122,7 +114,7 @@ ignore_missing_imports = true
 disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
 
 [[tool.mypy.overrides]]
-module = ["dusk.integrations.*", "dusk.trace.*"]
+module = ["dusk.trace.*"]
 ignore_missing_imports = true
 disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
 
