@@ -35,7 +35,8 @@ _decisions: list[dict[str, object]] = [
         "score": 11,
         "verdict": "ALLOW",
         "mitre": "T1599",
-        "reasoning": "Routine BGP route update matching agent baseline. Change within expected maintenance window and target.",
+        "reasoning": "Routine BGP route update matching agent baseline. Change within "
+        "expected maintenance window and target.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -49,7 +50,8 @@ _decisions: list[dict[str, object]] = [
         "score": 8,
         "verdict": "ALLOW",
         "mitre": "T1571",
-        "reasoning": "Standard health-check port binding on staging environment. Matches agent baseline exactly.",
+        "reasoning": "Standard health-check port binding on staging environment. "
+        "Matches agent baseline exactly.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -63,7 +65,8 @@ _decisions: list[dict[str, object]] = [
         "score": 74,
         "verdict": "WOULD-BLOCK",
         "mitre": "T1098",
-        "reasoning": "Privilege escalation attempt to admin role on staging cluster. Agent has never performed role assignments in baseline.",
+        "reasoning": "Privilege escalation attempt to admin role on staging cluster. "
+        "Agent has never performed role assignments in baseline.",
         "risk_flags": ["privilege-escalation", "staging-cluster"],
         "blast_radius": "HIGH",
         "predicted_next": "credential_access",
@@ -77,7 +80,8 @@ _decisions: list[dict[str, object]] = [
         "score": 19,
         "verdict": "ALLOW",
         "mitre": "T1562.004",
-        "reasoning": "Scheduled firewall update for CI/CD pipeline. Matches pre-approved change ticket and agent baseline.",
+        "reasoning": "Scheduled firewall update for CI/CD pipeline. Matches pre-approved "
+        "change ticket and agent baseline.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -91,7 +95,8 @@ _decisions: list[dict[str, object]] = [
         "score": 82,
         "verdict": "WOULD-BLOCK",
         "mitre": "AML.T0051",
-        "reasoning": "Agent attempted to access restricted R&D network segment with no prior history of cross-segment actions. Prompt injection suspected.",
+        "reasoning": "Agent attempted to access restricted R&D network segment with no "
+        "prior history of cross-segment actions. Prompt injection suspected.",
         "risk_flags": ["cross-segment", "no-baseline", "prompt-injection-suspected"],
         "blast_radius": "HIGH",
         "predicted_next": "data_exfiltration",
@@ -105,7 +110,8 @@ _decisions: list[dict[str, object]] = [
         "score": 94,
         "verdict": "BLOCK",
         "mitre": "T1562.004",
-        "reasoning": "Agent modified outbound firewall rules to PCI-scoped segment outside maintenance window with no change ticket. Machine-paced systematic pattern detected.",
+        "reasoning": "Agent modified outbound firewall rules to PCI-scoped segment outside "
+        "maintenance window with no change ticket. Machine-paced systematic pattern detected.",
         "risk_flags": ["out-of-hours", "pci-scope", "no-baseline", "machine-paced"],
         "blast_radius": "CRITICAL",
         "predicted_next": "lateral_movement",
@@ -119,7 +125,8 @@ _decisions: list[dict[str, object]] = [
         "score": 14,
         "verdict": "ALLOW",
         "mitre": "T1599",
-        "reasoning": "Internal load balancer route update. Consistent with weekly maintenance baseline.",
+        "reasoning": "Internal load balancer route update. Consistent with weekly "
+        "maintenance baseline.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -133,7 +140,8 @@ _decisions: list[dict[str, object]] = [
         "score": 97,
         "verdict": "BLOCK",
         "mitre": "T1098",
-        "reasoning": "Second anomalous action by same agent within 9 minutes. Escalating privilege to global admin. Kill chain stage: Privilege Escalation. Agent quarantined.",
+        "reasoning": "Second anomalous action by same agent within 9 minutes. Escalating "
+        "privilege to global admin. Kill chain stage: Privilege Escalation. Agent quarantined.",
         "risk_flags": ["kill-chain-escalation", "repeat-offender", "global-admin"],
         "blast_radius": "CRITICAL",
         "predicted_next": "persistence",
@@ -149,7 +157,8 @@ _decisions: list[dict[str, object]] = [
         "score": 79,
         "verdict": "WOULD-BLOCK",
         "mitre": "T1098",
-        "reasoning": "Privilege escalation to admin role on production cluster. Agent has never performed role assignments in baseline; anomaly score exceeds watch threshold.",
+        "reasoning": "Privilege escalation to admin role on production cluster. Agent has "
+        "never performed role assignments in baseline; anomaly score exceeds watch threshold.",
         "risk_flags": ["privilege-escalation", "prod-cluster"],
         "blast_radius": "HIGH",
         "predicted_next": "credential_access",
@@ -177,7 +186,8 @@ _decisions: list[dict[str, object]] = [
         "score": 88,
         "verdict": "BLOCK",
         "mitre": "T1571",
-        "reasoning": "Non-standard port opened on production database host. Agent has zero history of port changes. Likely exfiltration channel preparation.",
+        "reasoning": "Non-standard port opened on production database host. Agent has zero "
+        "history of port changes. Likely exfiltration channel preparation.",
         "risk_flags": ["non-standard-port", "prod-db", "no-baseline"],
         "blast_radius": "CRITICAL",
         "predicted_next": "exfiltration",
@@ -193,7 +203,8 @@ _decisions: list[dict[str, object]] = [
         "score": 22,
         "verdict": "ALLOW",
         "mitre": "T1562.004",
-        "reasoning": "Firewall rule update within approved change window. Target matches monitoring agent baseline.",
+        "reasoning": "Firewall rule update within approved change window. Target matches "
+        "monitoring agent baseline.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -207,7 +218,8 @@ _decisions: list[dict[str, object]] = [
         "score": 71,
         "verdict": "WOULD-BLOCK",
         "mitre": "AML.T0051",
-        "reasoning": "Ops agent attempting lateral move into finance segment. No cross-segment activity in 90-day baseline. Flagged for human review.",
+        "reasoning": "Ops agent attempting lateral move into finance segment. No "
+        "cross-segment activity in 90-day baseline. Flagged for human review.",
         "risk_flags": ["lateral-movement", "finance-segment"],
         "blast_radius": "HIGH",
         "predicted_next": "lateral_movement",
@@ -221,7 +233,8 @@ _decisions: list[dict[str, object]] = [
         "score": 7,
         "verdict": "ALLOW",
         "mitre": "T1571",
-        "reasoning": "Standard deployment port assignment. Consistent with agent baseline and release schedule.",
+        "reasoning": "Standard deployment port assignment. Consistent with agent "
+        "baseline and release schedule.",
         "risk_flags": [],
         "blast_radius": "LOW",
         "predicted_next": "none",
@@ -235,7 +248,8 @@ _decisions: list[dict[str, object]] = [
         "score": 96,
         "verdict": "BLOCK",
         "mitre": "AML.T0051",
-        "reasoning": "Previously quarantined agent attempting re-entry into network via segment change. Behaviour matches post-heal persistence attempt. Blocked and escalated.",
+        "reasoning": "Previously quarantined agent attempting re-entry into network via "
+        "segment change. Behaviour matches post-heal persistence attempt. Blocked and escalated.",
         "risk_flags": ["post-heal-reinfection", "persistence-attempt", "escalated"],
         "blast_radius": "CRITICAL",
         "predicted_next": "persistence",
