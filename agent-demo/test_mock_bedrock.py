@@ -1,4 +1,4 @@
-"""Tests for MockBedrock (T4) -- keyless clean/poisoned scenarios."""
+"""Tests for MockBedrock -- keyless clean/poisoned scenarios."""
 
 from __future__ import annotations
 

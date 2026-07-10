@@ -1,8 +1,7 @@
 # Running the demo: clean vs. poisoned
 
-This is the "run the demo" section for `examples/agent-action-monitor/README.md`
-(Ritik's R11, #34) -- written standalone since that file doesn't exist yet, ready
-to fold in once it does.
+A detailed walkthrough of the two demo scenarios in
+`examples/agent-action-monitor/README.md`.
 
 Two scenarios, both keyless by default: an agent proposes a routine action, and
 DUSK lets it through; an agent gets hijacked into proposing something well

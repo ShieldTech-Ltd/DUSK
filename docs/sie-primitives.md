@@ -1,8 +1,8 @@
 # SIE primitives in the agent action gate
 
-Draft content for the eventual `examples/agent-action-monitor/` README (R11),
-shaped like `superlinked/sie`'s existing `stripe-link-fraud` example: a model
-lineup, where each primitive is actually used in this codebase, and an honest
+A reference for `examples/agent-action-monitor/README.md`, shaped like
+`superlinked/sie`'s existing `stripe-link-fraud` example: a model lineup,
+where each primitive is actually used in this codebase, and an honest
 account of what the deterministic core still does versus what SIE adds.
 
 ## Model lineup
@@ -55,8 +55,8 @@ hosted tester endpoint, both checks pass:
 - The full test suite (185 tests) passes unchanged with live SIE enabled,
   confirming nothing depends on the deterministic fallback path being taken.
 
-This is evidence for the sprint's own requirement that SIE be load-bearing
-("removing SIE degrades the result"), not just a claim.
+This is evidence that SIE is load-bearing here ("removing SIE degrades the
+result"), not just a claim.
 
 ## Known limits
 

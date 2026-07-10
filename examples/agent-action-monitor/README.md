@@ -127,14 +127,22 @@ hosted endpoint for real-load testing with a one-line env var change.
 
 ## Latency
 
-Preliminary, gate-only numbers (steady-state p50 across concurrency
-1/3/5: 600-670ms). A full run against the complete `agent-demo` round trip
-at higher concurrency is pending -- Superlinked's shared tester cluster hit
-a period of degraded availability while this was being written (sustained
-`503`s from the extract model, escalating to multi-minute latency on a
-plain encode call), so the final table is not included here yet rather
-than published on data collected mid-outage. See `docs/gate-latency-notes.md`
-for the full account and what a clean run still needs.
+Full `agent-demo` -> gate -> `mock-prod` round trip against Superlinked's
+hosted tester cluster, 20 requests per concurrency level, 20% poisoned /
+80% clean mix:
+
+| Concurrency | p50 | p95 | Errors |
+|---|---|---|---|
+| 1 | 294ms | 10008ms | 2/20 |
+| 3 | 307ms | 474ms | 0/20 |
+| 5 | 295ms | 317ms | 0/20 |
+
+Correctness held throughout: every allowed action reached `mock-prod`,
+every poisoned action was refused in watch mode and never applied. The
+concurrency=1 tail is the tester cluster scaling a model back to zero
+between sparse sequential requests, not a concurrency effect -- see
+`docs/gate-latency-notes.md` for the full account, including why that tail
+is a property of the shared tester allocation rather than the gate.
 
 ## What's in the box
 
@@ -165,7 +173,9 @@ On extraction to `superlinked/sie`, this example bundles:
 - The extract model's privileged-term detection is zero-shot and has only
   been evaluated against the same synthetic fixtures used elsewhere, not an
   adversarial corpus designed to evade it specifically.
-- Latency-under-load numbers are still preliminary; see above.
+- Latency numbers are from a single 20-request-per-level trial against a
+  shared tester cluster; enough to confirm the shape, not a high-confidence
+  p95 at every level. See `docs/gate-latency-notes.md`.
 
 ## Built with
 

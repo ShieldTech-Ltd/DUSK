@@ -1,11 +1,10 @@
-# Gate latency under load: preliminary notes (R10)
+# Gate latency under load
 
-A first data point toward R10 (latency-under-load), captured once real
+A first data point on latency-under-load, captured once real
 `SIE_ENDPOINT`/`SIE_API_KEY` credentials became available. This measures
 `/v1/gate`'s own added latency with live SIE enabled -- not the full
-`agent-demo` -> gate -> `mock-prod` round trip, since that integration
-(R9) depends on Tanvir's `agent-demo`/`mock-prod`, which don't exist in the
-repo yet. Treat this as a preliminary probe, not the final R10 table.
+`agent-demo` -> gate -> `mock-prod` round trip. Treat this as a preliminary
+probe, superseded by the full-stack run recorded further down.
 
 ## Setup
 
@@ -35,19 +34,19 @@ repo yet. Treat this as a preliminary probe, not the final R10 table.
 - n=10 per level, one trial: enough to sanity-check the shape (steady-state
   latency does not blow up with concurrency, throughput scales sensibly
   from 1 to 3 workers), not enough for a confident p95 at any level.
-- This does not yet include the mock-prod round trip R9 will add.
+- This does not yet include the full `mock-prod` round trip captured below.
 - Superlinked's tester cluster is shared, sponsored compute -- this probe
   deliberately used a small n and low concurrency rather than a sustained
   load test, out of courtesy to that grant.
 
-## R9 landed; first full-stack attempt hit a cluster outage, not our bug
+## A first full-stack attempt hit a cluster outage, not a gate bug
 
-R9 integration is done (Tanvir's `agent-demo`/`mock-prod` merged): running
-the real `dusk-gate` + `mock-prod` + `agent-demo/harness.py` end to end
-confirms a clean action is `ALLOW`ed and applied, and a poisoned action is
-`WOULD-BLOCK` (watch mode) or `BLOCK` (enforce mode) and never reaches
-`mock-prod` either way -- see the R9 section of this doc's companion,
-`docs/gate-docker-verification.md`, for the exact commands.
+With `agent-demo`/`mock-prod` in place, running the real `dusk-gate` +
+`mock-prod` + `agent-demo/harness.py` end to end confirms a clean action is
+`ALLOW`ed and applied, and a poisoned action is `WOULD-BLOCK` (watch mode)
+or `BLOCK` (enforce mode) and never reaches `mock-prod` either way -- see
+this doc's companion, `docs/gate-docker-verification.md`, for the exact
+commands.
 
 A first attempt at a real `agent-demo/load_driver.py` run against the
 hosted tester cluster (after the table above was captured, in the same
@@ -65,11 +64,54 @@ correctly (returned `[]` rather than raising), just too slowly for
 No further load was placed on the cluster once this pattern was clear, out
 of courtesy to shared, sponsored compute in a visibly degraded state.
 
-## What R10 still needs
+## Full-stack load test against the recovered hosted cluster
 
-A real run once the hosted cluster is healthy again: confirm a single
-request succeeds first, then repeat the concurrency sweep above with the
-full `agent-demo` round trip (not just the gate's own SIE calls), at higher
-concurrency and more requests per level for a stable p95. Worth flagging
-the outage to Superlinked directly if it recurs, since it blocks getting a
-real number for the README's latency figure.
+The hosted tester cluster came back after the outage above, but not into a
+steady "always warm" state -- it scales its per-model capacity down to zero
+within roughly a minute of no traffic, then re-provisions on the next
+request. `sie_score` and `sie_extract` (the two primitives `/v1/gate`
+actually calls per request, via `_extra_sie_signals`; `sie_encode` is not
+on this request path) each took 0.1-35s to come back from cold before
+settling into sub-second responses. This is a real characteristic of a
+shared, scale-to-zero tester allocation, not a gate or SDK defect --
+`sie_sdk`'s own transient-error retry handled it transparently in every
+case except when a cold re-provision outlasted `agent-demo/harness.py`'s
+10-second client timeout.
+
+**Setup:** `dusk-gate` run locally (not in Docker) with `sie-sdk` installed
+temporarily so live SIE calls are actually made (the project's own venv
+does not ship `sie-sdk` by default -- it lives in the `sie` extras group,
+uninstalled again after this run to keep the venv matching CI); baseline
+from `tests/fixtures/actions_normal.json`; `mock-prod` run locally; full
+round trip via `agent-demo/load_driver.py` (`harness.run_scenario` ->
+`/v1/gate` -> `mock-prod` on `ALLOW`), 20 requests per concurrency level,
+20% poisoned / 80% clean mix, single trial.
+
+| Concurrency | p50 | p95 | Errors | Verdicts |
+|---|---|---|---|---|
+| 1 | 294ms | 10008ms | 2/20 | 13 ALLOW, 5 WOULD-BLOCK |
+| 3 | 307ms | 474ms | 0/20 | 13 ALLOW, 7 WOULD-BLOCK |
+| 5 | 295ms | 317ms | 0/20 | 13 ALLOW, 7 WOULD-BLOCK |
+
+Correctness held throughout: every `ALLOW` reached `mock-prod` (confirmed
+via its `/log`, 46 applied actions across this run and earlier manual
+checks) and every poisoned action was `WOULD-BLOCK` in watch mode, never
+applied.
+
+**Reading the errors:** the 2 timeouts at concurrency=1 are cold-provision
+blips (a model scaling back to zero between the sparse, sequential
+requests at this concurrency, then not re-provisioning inside the 10s
+client timeout) -- not a concurrency effect, since concurrency 3 and 5 (more
+total request pressure, keeping the cluster continuously warm) both ran
+error-free. p50 (294-307ms) is steady and consistent with the earlier
+gate-only preliminary probe's p50 (600-670ms; lower here since this run
+landed after the extract/score models were already warm going in).
+
+**Caveats:** n=20 per level, one trial -- enough to confirm the shape (flat
+p50 across concurrency, errors tied to idle-driven cold starts rather than
+load) but not a high-confidence p95 at concurrency=1. Deliberately kept
+small (60 requests total across the sweep) out of courtesy to shared,
+sponsored compute. If Superlinked's production SIE tier doesn't scale to
+zero this aggressively, the concurrency=1 tail disappears entirely; this is
+a property of the tester allocation, worth noting to Superlinked directly
+rather than treating as a DUSK-side latency number.

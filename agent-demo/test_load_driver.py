@@ -1,4 +1,4 @@
-"""Tests for the load-scenario driver (T9)."""
+"""Tests for the load-scenario driver."""
 
 from __future__ import annotations
 

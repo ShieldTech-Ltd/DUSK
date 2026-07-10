@@ -1,4 +1,4 @@
-"""Tests for the agent harness (T6) -- the critical path.
+"""Tests for the agent harness -- the critical path.
 
 Runs against MockBedrock but mocks the HTTP calls to /v1/gate and
 mock-PROD, so these tests need no services running.

@@ -1,14 +1,14 @@
 # Verifying the gate service Docker stack
 
 `docker-compose.yml` and `Dockerfile` build the `/v1/gate` HTTP service and
-bring it up alongside a self-hosted SIE container and n8n. This has not been
-run against a live Docker daemon in the environment that built it (no daemon
-was reachable there), so run these steps once before treating R8 as verified.
+bring it up alongside a self-hosted SIE container, n8n, a dummy downstream
+target (`mock-prod`), and an agent harness (`agent-demo`). See the final
+section below for the real, full `docker compose up` run against a live
+daemon (all five services, keyless, two bugs found and fixed along the way).
 
 ## Build and start the core three services
 
-`mock-prod` and `agent-demo` are Tanvir's lane (T5/T6) and don't have build
-contexts yet, so bring the stack up by naming the services that do:
+To bring up just the gate, SIE, and n8n without the agent/downstream pieces:
 
 ```bash
 docker compose build dusk-gate
@@ -27,7 +27,7 @@ In a second terminal, once the stack is up:
 curl -s http://localhost:8000/health
 ```
 
-Expected: `{"status": "ok", "decisions": 0}`.
+Expected: `{"status": "ok"}`.
 
 ```bash
 curl -s -X POST http://localhost:8000/v1/gate \
@@ -70,12 +70,11 @@ docker compose down -v
 The `-v` also removes the `sie-hf-cache` volume, which is fine for a repeat
 test but means the next `up` re-downloads SIE's model weights.
 
-## R9: end-to-end verification (done, without Docker)
+## End-to-end verification without Docker
 
-Docker itself still hasn't been exercised in the environment that wrote this
-doc (still no daemon reachable there), but the full R9 path -- real
-`dusk-gate`, real `mock-prod`, real `agent-demo` -- was verified by running
-the three processes directly instead of through compose:
+Before a Docker daemon was available in the environment that wrote this doc,
+the full path -- real `dusk-gate`, real `mock-prod`, real `agent-demo` -- was
+verified by running the three processes directly instead of through compose:
 
 ```bash
 # terminal 1: the real gate, with a baseline loaded
@@ -85,7 +84,7 @@ FLASK_PORT=8001 python3 -m dusk.api
 # terminal 2: mock-prod
 MOCK_PROD_PORT=9001 python3 mock-prod/app.py
 
-# terminal 3: both scenarios against the real gate, not the T1 stub
+# terminal 3: both scenarios against the real gate, not the local stub
 PYTHONPATH=agent-demo \
 DUSK_GATE_URL=http://127.0.0.1:8001/v1/gate \
 MOCK_PROD_URL=http://127.0.0.1:9001/apply \
@@ -105,9 +104,46 @@ Confirmed:
 - Poisoned scenario with `DUSK_ENFORCE=true` set on the gate process:
   `verdict: BLOCK`, same reasons, still never reaches `mock-prod`.
 
-This satisfies R9's acceptance criteria (clean ALLOWed and applied; poisoned
+This satisfies the acceptance criteria (clean ALLOWed and applied; poisoned
 refused before `mock-prod` in enforce mode, `WOULD-BLOCK` logged in watch
 mode) independent of whether Docker itself has been exercised yet -- the
 compose file wires the same three services together on one network, so
 `docker compose up` bringing them up is a packaging concern layered on top
 of behavior already confirmed here.
+
+## `docker compose up` against a real daemon: two bugs found and fixed
+
+Once a Docker daemon was actually reachable, `docker compose up --build -d`
+surfaced two real issues neither prior pass (no daemon available) could
+catch:
+
+1. **`sie` image is amd64-only.** `ghcr.io/superlinked/sie-server:latest-cpu-default`
+   has no arm64 manifest, so it fails outright on Apple Silicon with
+   `no matching manifest for linux/arm64/v8`. Fixed by pinning
+   `platform: linux/amd64` on the `sie` service in `docker-compose.yml`. This
+   works on both: native on amd64 hosts (CI, most cloud infra), emulated via
+   Rosetta/QEMU on arm64 hosts (Apple Silicon) -- there is no separate arm64
+   image to add, since Superlinked does not publish one.
+2. **`agent-demo`'s image never installed `dusk` itself.** Its Dockerfile only
+   copied its own four files and its own `requirements.txt`; `harness.py`'s
+   `from dusk.actions.adapters.bedrock import BedrockAdapter` therefore failed
+   with `No module named 'dusk'` for both scenarios as soon as the container
+   actually ran, even though the container built and started cleanly (the
+   failure was inside the entrypoint, not the build). Fixed by changing
+   `agent-demo`'s build context to the repo root
+   (`context: ., dockerfile: agent-demo/Dockerfile`) and having its Dockerfile
+   install the local `dusk` package the same way the top-level `Dockerfile`
+   already does, before installing `agent-demo/requirements.txt`.
+
+After both fixes, `docker compose up --build -d` brings up all five services
+(`dusk-gate`, `sie`, `n8n`, `mock-prod`, `agent-demo`) and `agent-demo`'s
+entrypoint runs both scenarios for real over the compose network:
+
+- Clean: `verdict: ALLOW`, `applied: true`.
+- Poisoned: `verdict: WOULD-BLOCK`, `applied: false`, reasons cite the
+  unestablished baseline and the sensitive `0.0.0.0/0`/`restricted` terms.
+
+This is the first time the full stack has been verified via `docker compose
+up` itself rather than by running the same three processes directly, closing
+out the "keyless, `docker compose up` starts every service" item of the
+example's definition of done.

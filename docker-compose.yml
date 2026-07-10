@@ -1,8 +1,8 @@
 # DUSK agent-action-monitor -- self-contained example stack.
 # `docker compose up` runs the whole thing keyless, on an internal network,
 # with no external egress. Watch mode is the default; enforce is an explicit
-# switch (DUSK_ENFORCE). mock-prod and agent-demo (Tanvir's lane, T5/T6) are
-# both built out now -- see mock-prod/ and agent-demo/.
+# switch (DUSK_ENFORCE). See mock-prod/ and agent-demo/ for the downstream
+# target and the agent harness.
 
 services:
   dusk-gate:
@@ -27,6 +27,12 @@ services:
 
   sie:
     image: ghcr.io/superlinked/sie-server:latest-cpu-default
+    # Upstream image ships amd64 only (no arm64 manifest exists). Pinning
+    # amd64 explicitly keeps this working on both: native on amd64 hosts
+    # (Linux CI, most cloud infra), emulated via Rosetta/QEMU on arm64
+    # hosts (Apple Silicon) -- no separate arm64 path to add, since one
+    # doesn't exist upstream.
+    platform: linux/amd64
     volumes:
       - sie-hf-cache:/app/.cache/huggingface
     networks: [internal]
@@ -50,7 +56,8 @@ services:
 
   agent-demo:
     build:
-      context: ./agent-demo
+      context: .
+      dockerfile: agent-demo/Dockerfile
     environment:
       USE_REAL_BEDROCK: "false"
       DUSK_GATE_URL: "http://dusk-gate:8000/v1/gate"
