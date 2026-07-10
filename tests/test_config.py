@@ -21,6 +21,15 @@ def test_defaults() -> None:
     assert config.boundary_window_seconds == 30.0
     assert config.alert_log_path == "dusk-alerts.json"
     assert config.log_level == "WARNING"
+    assert config.enforce is False
+    assert config.sie_endpoint == "http://sie:8080"
+    assert config.sie_encode_model == "BAAI/bge-m3"
+    assert config.sie_score_model == "BAAI/bge-reranker-v2-m3"
+    assert config.sie_extract_model == "urchade/gliner_multi-v2.1"
+    assert config.sie_timeout_ms == 10000
+    assert config.n8n_alert_url == ""
+    assert config.n8n_report_url == ""
+    assert config.n8n_decision_url == ""
 
 
 def test_load_defaults_when_no_file(tmp_path: Path) -> None:
@@ -72,6 +81,41 @@ def test_invalid_log_level_raises() -> None:
     """An unrecognised log level name is rejected."""
     with pytest.raises(ConfigError):
         Config(log_level="NONSENSE")
+
+
+def test_invalid_sie_timeout_raises() -> None:
+    """A non-positive SIE timeout is rejected at construction."""
+    with pytest.raises(ConfigError):
+        Config(sie_timeout_ms=0)
+
+
+@pytest.mark.parametrize(
+    "field", ["sie_endpoint", "n8n_alert_url", "n8n_report_url", "n8n_decision_url"]
+)
+def test_invalid_url_scheme_raises(field: str) -> None:
+    """A configured URL without an http(s) scheme is rejected."""
+    with pytest.raises(ConfigError):
+        Config(**{field: "ftp://example.com"})
+
+
+def test_empty_n8n_urls_are_valid() -> None:
+    """An unset (empty) n8n URL is valid -- it just means that webhook is off."""
+    config = Config(n8n_alert_url="", n8n_report_url="", n8n_decision_url="")
+    assert config.n8n_alert_url == ""
+
+
+def test_enforce_env_override(_clean_env: None) -> None:
+    """DUSK_ENFORCE overrides the default, via the same mechanism as every other field."""
+    os.environ["DUSK_ENFORCE"] = "true"
+    config = load_config("nonexistent-dusk.yaml")
+    assert config.enforce is True
+
+
+def test_sie_endpoint_env_override(_clean_env: None) -> None:
+    """DUSK_SIE_ENDPOINT overrides the self-hosted default."""
+    os.environ["DUSK_SIE_ENDPOINT"] = "https://hosted-sie.example.com"
+    config = load_config("nonexistent-dusk.yaml")
+    assert config.sie_endpoint == "https://hosted-sie.example.com"
 
 
 def test_malformed_yaml_raises(tmp_path: Path) -> None:

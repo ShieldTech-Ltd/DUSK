@@ -35,3 +35,6 @@ tests/fixtures/*.json
 .idea/
 .vscode/
 .DS_Store
+
+# Private planning material, never committed
+files/

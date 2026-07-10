@@ -103,6 +103,84 @@ def test_unknown_agent_is_noted() -> None:
     assert any("no established baseline" in r for r in result.reasons)
 
 
+def test_agent_history_without_sie_does_not_change_score() -> None:
+    """Passing history with SIE unavailable is a no-op (the default, no-SIE case)."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    with_history = analyse(baseline, action, agent_history=_normal())
+    without_history = analyse(baseline, action)
+    assert with_history.score == without_history.score
+    assert with_history.reasons == without_history.reasons
+
+
+def test_agent_history_low_rerank_similarity_adds_reason() -> None:
+    """A low SIE rerank score adds a reason and raises the score, on top of rule-based checks."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.05, 0.05]):
+        reranked = analyse(baseline, action, agent_history=_normal()[:2])
+
+    assert reranked.score > baseline_only.score
+    assert any("SIE rerank" in r for r in reranked.reasons)
+
+
+def test_agent_history_high_rerank_similarity_is_unchanged() -> None:
+    """A confident rerank match does not add the low-similarity reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.9, 0.9]):
+        reranked = analyse(baseline, action, agent_history=_normal()[:2])
+
+    assert reranked.score == baseline_only.score
+    assert not any("SIE rerank" in r for r in reranked.reasons)
+
+
+def test_sie_extract_flags_terms_missed_by_the_static_frozenset() -> None:
+    """A GLiNER-extracted term outside the hardcoded sensitive set adds a reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_extract", return_value=["superuser"]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score > baseline_only.score
+    assert any("SIE extract" in r and "superuser" in r for r in extracted.reasons)
+
+
+def test_sie_extract_terms_already_in_static_set_are_not_duplicated() -> None:
+    """A term the static frozenset already catches doesn't add a second reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("iam-agent", "role_assignment", "ra-self", role="owner")
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_extract", return_value=["owner"]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
+
+
+def test_sie_extract_unavailable_does_not_change_score() -> None:
+    """The default (no-SIE) case: sie_extract returns [] and nothing changes."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    result = analyse(baseline, action)
+    assert not any("SIE extract" in r for r in result.reasons)
+
+
 # --- verdict -----------------------------------------------------------------
 
 
@@ -116,6 +194,29 @@ def test_gate_allows_routine_refuses_attacks() -> None:
         v = gate.evaluate(attack)
         assert v.verdict == WOULD_BLOCK
         assert v.refused is True
+
+
+def test_gate_learn_tracks_raw_history_per_agent() -> None:
+    """learn() keeps the raw actions ActionGate.evaluate() feeds into analyse()."""
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    netops_history = gate._history.get("netops-agent", [])
+    assert netops_history
+    assert all(a.agent_id == "netops-agent" for a in netops_history)
+
+
+def test_gate_evaluate_passes_history_to_sie_rerank() -> None:
+    """A gate evaluation surfaces the SIE rerank reason when the mocked score is low."""
+    from unittest.mock import patch
+
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.05] * 20):
+        verdict = gate.evaluate(action)
+
+    assert any("SIE rerank" in r for r in verdict.analysis.reasons)
 
 
 def test_enforce_mode_blocks() -> None:
