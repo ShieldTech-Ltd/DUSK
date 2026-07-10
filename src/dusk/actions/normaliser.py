@@ -13,6 +13,7 @@ from typing import Any
 
 from dusk.actions.adapters.azure import AzureAdapter
 from dusk.actions.adapters.base import AdapterError, SourceAdapter
+from dusk.actions.adapters.bedrock import BedrockAdapter
 from dusk.actions.adapters.generic import GenericAdapter
 from dusk.actions.event import AgentAction
 
@@ -22,6 +23,7 @@ logger = logging.getLogger("dusk.actions.normaliser")
 _REGISTRY: dict[str, SourceAdapter] = {
     GenericAdapter.source: GenericAdapter(),
     AzureAdapter.source: AzureAdapter(),
+    BedrockAdapter.source: BedrockAdapter(),
 }
 
 
