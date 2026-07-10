@@ -93,6 +93,8 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
 "lab/*" = ["S", "ANN"]
+"agent-demo/test_*.py" = ["S", "ANN"]
+"mock-prod/test_*.py" = ["S", "ANN"]
 
 [tool.mypy]
 python_version = "3.11"

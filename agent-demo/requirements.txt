@@ -1,0 +1,6 @@
+flask>=3.0
+requests>=2.31
+
+# Only required when USE_REAL_BEDROCK=true. Left uninstalled by default so
+# the demo image stays small and keyless (see bedrock_client.build_client).
+# boto3>=1.34
