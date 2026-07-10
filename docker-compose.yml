@@ -1,9 +1,8 @@
 # DUSK agent-action-monitor -- self-contained example stack.
-# `docker compose up dusk-gate sie n8n` runs the gate keyless, on an internal
-# network, with no external egress. Watch mode is the default; enforce is an
-# explicit switch (DUSK_ENFORCE). mock-prod and agent-demo are Tanvir's lane
-# (T5/T6); their build contexts don't exist until that work lands, so bring
-# up the stack by naming dusk-gate/sie/n8n explicitly until then (R9).
+# `docker compose up` runs the whole thing keyless, on an internal network,
+# with no external egress. Watch mode is the default; enforce is an explicit
+# switch (DUSK_ENFORCE). mock-prod and agent-demo (Tanvir's lane, T5/T6) are
+# both built out now -- see mock-prod/ and agent-demo/.
 
 services:
   dusk-gate:
@@ -43,8 +42,11 @@ services:
   mock-prod:
     build:
       context: ./mock-prod
+    environment:
+      MOCK_PROD_HOST: "0.0.0.0"
     networks: [internal]
-    # Tanvir's lane (T5): dummy controller/DB target actions hit on ALLOW.
+    ports: ["9000:9000"] # /apply, /log -- watch the applied-actions log from the host
+    # Dummy controller/DB target: actions hit /apply on ALLOW, never on BLOCK.
 
   agent-demo:
     build:
@@ -55,7 +57,7 @@ services:
       MOCK_PROD_URL: "http://mock-prod:9000/apply"
     depends_on: [dusk-gate, mock-prod]
     networks: [internal]
-    # Tanvir's lane (T2-T4, T6): mock-Bedrock by default, keyless.
+    # mock-Bedrock by default (keyless); USE_REAL_BEDROCK=true for real Bedrock.
 
 networks:
   internal:
