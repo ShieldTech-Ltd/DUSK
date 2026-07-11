@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +14,14 @@ from dusk.config import reset_config
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 BASELINE_PATH = str(FIXTURES / "actions_normal.json")
+
+LAB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "lab", "actions")
+sys.path.insert(0, os.path.abspath(LAB_DIR))
+
+import generate_actions  # noqa: E402
+
+if not Path(BASELINE_PATH).exists():
+    generate_actions.generate(str(FIXTURES))
 
 CONTRACT_FIELDS = {
     "trace_id",
