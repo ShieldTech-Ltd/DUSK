@@ -27,6 +27,7 @@ trace-decisions.json
 tests/fixtures/*.pcap
 tests/fixtures/*.jsonl
 tests/fixtures/*.json
+examples/agent-action-monitor/tests/fixtures/*.json
 
 # Secrets
 .env

@@ -278,19 +278,6 @@ def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_jso
     sys.exit(1 if refused else 0)
 
 
-@main.command(help="Start the DUSK gate service (/v1/gate over HTTP).")
-@click.option("--port", default=5000, show_default=True, help="Port to listen on.")
-def serve(port: int) -> None:
-    """Run the Flask gate service."""
-    import os as _os
-
-    _os.environ.setdefault("FLASK_PORT", str(port))
-    from dusk.api import run
-
-    console.print(f"[bold]DUSK gate[/bold] starting on port {port}")
-    run()
-
-
 def _fail(message: str, *, as_json: bool) -> None:
     """Report an input error and exit with code 2."""
     logger.critical("%s", message)
