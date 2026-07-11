@@ -59,8 +59,12 @@ def main() -> int:
             exit_code = 1
             continue
         _print_result(scenario, result)
-        if scenario == "poisoned" and result["applied"]:
-            # The one outcome the whole example exists to prevent.
+        if scenario == "poisoned" and result["verdict"] == "ALLOW":
+            # The gate failed to flag this at all -- the one outcome the
+            # whole example exists to prevent. WOULD-BLOCK reaching
+            # mock-PROD is not a failure: watch mode is meant to observe
+            # without disrupting, so "flagged but still applied" is the
+            # correct, documented default-mode outcome.
             exit_code = 1
 
     return exit_code

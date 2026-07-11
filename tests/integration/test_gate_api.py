@@ -33,9 +33,11 @@ def _reset_gate(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
     reset_config()
     api.reset_gate_engine()
+    api.reset_decision_history()
     yield
     reset_config()
     api.reset_gate_engine()
+    api.reset_decision_history()
 
 
 @pytest.fixture
@@ -110,6 +112,33 @@ def test_gate_rejects_oversized_body(client) -> None:
 
 def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) -> None:
     monkeypatch.delenv("DUSK_GATE_BASELINE_PATH", raising=False)
+    api.reset_gate_engine()
+    r = client.post("/v1/gate", json=_action_payload())
+    assert r.status_code == 200
+    assert any("no established baseline" in reason for reason in r.get_json()["reasons"])
+
+
+def test_health_reports_ok_when_baseline_not_configured(client, monkeypatch) -> None:
+    monkeypatch.delenv("DUSK_GATE_BASELINE_PATH", raising=False)
+    api.reset_gate_engine()
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
+
+
+def test_health_reports_degraded_when_baseline_path_is_broken(client, monkeypatch) -> None:
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", "/does/not/exist.json")
+    api.reset_gate_engine()
+    r = client.get("/health")
+    assert r.status_code == 503
+    body = r.get_json()
+    assert body["status"] == "degraded"
+    assert "baseline_error" in body
+
+
+def test_gate_still_serves_requests_when_baseline_is_broken(client, monkeypatch) -> None:
+    """/v1/gate degrades (every agent unknown) rather than refusing outright."""
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", "/does/not/exist.json")
     api.reset_gate_engine()
     r = client.post("/v1/gate", json=_action_payload())
     assert r.status_code == 200

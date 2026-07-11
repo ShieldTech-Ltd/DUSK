@@ -7,7 +7,9 @@ Ties the pipeline into one runnable flow:
       -> normalise into an AgentAction (BedrockAdapter.parse_tool_use)
       -> POST /v1/gate (DUSK_GATE_URL)
           -> ALLOW: call mock-PROD (MOCK_PROD_URL)
-          -> WOULD-BLOCK / BLOCK: stop, surface the reason
+          -> WOULD-BLOCK: log the reason, still call mock-PROD -- watch mode
+             is observational, not enforcing (see dusk.actions.verdict)
+          -> BLOCK: stop, surface the reason, mock-PROD never sees the action
 
 DUSK_GATE_URL defaults to a local stub gate for isolated testing; point it
 at the real dusk-gate service once both sides are ready to integrate.
@@ -37,8 +39,10 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
 
     Returns:
         A summary dict: ``{"verdict": ..., "action": {...}, "applied": bool}``.
-        ``applied`` is True only when the gate ALLOWed the action and
-        mock-PROD accepted it.
+        ``applied`` is True whenever mock-PROD was actually called and
+        accepted the action -- true for ALLOW, and also for WOULD-BLOCK,
+        since watch mode logs a verdict without stopping anything. Only a
+        real BLOCK (enforce mode) keeps the action from reaching mock-PROD.
 
     Raises:
         DuskBlockedError: Never raised directly -- callers that want an
@@ -71,7 +75,11 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     gate_resp.raise_for_status()
     verdict_payload = gate_resp.json()
 
-    if verdict_payload["verdict"] != "ALLOW":
+    # BLOCK (enforce mode) is the only verdict that actually stops the
+    # action. WOULD-BLOCK (watch mode, the default) is observational: it
+    # logs what an inline gate would have done without disrupting real
+    # traffic, so it still reaches mock-PROD, same as ALLOW.
+    if verdict_payload["verdict"] == "BLOCK":
         return {
             "verdict": verdict_payload["verdict"],
             "action": action.to_dict(),
@@ -86,6 +94,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     return {
         "verdict": verdict_payload["verdict"],
         "action": action.to_dict(),
+        "reasons": verdict_payload.get("reasons", []),
         "applied": True,
     }
 

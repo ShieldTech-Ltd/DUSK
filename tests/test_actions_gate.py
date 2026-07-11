@@ -22,6 +22,7 @@ from dusk.actions.normaliser import normalise_record  # noqa: E402
 from dusk.actions.verdict import ALLOW, BLOCK, WOULD_BLOCK, ActionGate  # noqa: E402
 from dusk.cli import main  # noqa: E402
 from dusk.config import Config  # noqa: E402
+from dusk.trace.vector import ExtractedTerm  # noqa: E402
 
 CONFIG = Config()
 _TS = datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
@@ -151,7 +152,8 @@ def test_sie_extract_flags_terms_missed_by_the_static_frozenset() -> None:
     action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
     baseline_only = analyse(baseline, action)
 
-    with patch("dusk.actions.analyse.sie_extract", return_value=["superuser"]):
+    term = ExtractedTerm(text="superuser", label="role", score=0.95)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
         extracted = analyse(baseline, action)
 
     assert extracted.score > baseline_only.score
@@ -166,10 +168,46 @@ def test_sie_extract_terms_already_in_static_set_are_not_duplicated() -> None:
     action = _action("iam-agent", "role_assignment", "ra-self", role="owner")
     baseline_only = analyse(baseline, action)
 
-    with patch("dusk.actions.analyse.sie_extract", return_value=["owner"]):
+    term = ExtractedTerm(text="owner", label="role", score=0.95)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
         extracted = analyse(baseline, action)
 
     assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
+
+
+def test_sie_extract_low_confidence_term_is_ignored() -> None:
+    """A GLiNER hit below the confidence floor is dropped, not counted as evidence."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    term = ExtractedTerm(text="superuser", label="role", score=0.2)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+
+
+def test_sie_extract_high_confidence_non_privileged_label_is_ignored() -> None:
+    """A confident but ordinary resource/port extraction is not privilege escalation."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    terms = [
+        ExtractedTerm(text="eth0", label="resource", score=0.95),
+        ExtractedTerm(text="8080", label="port", score=0.95),
+    ]
+    with patch("dusk.actions.analyse.sie_extract", return_value=terms):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
     assert not any("SIE extract" in r for r in extracted.reasons)
 
 
