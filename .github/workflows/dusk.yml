@@ -48,3 +48,71 @@ jobs:
         with: { python-version: "3.11" }
       - run: pip install -e ".[dev]"
       - run: pytest --cov=src/dusk --cov-fail-under=70 --cov-report=term-missing
+
+  # examples/agent-action-monitor/ is a fully separate, self-contained
+  # package (own pyproject.toml, src/dusk/, tests/) meant to be contributed
+  # upstream to superlinked/sie. Installed without the `sie` extra here --
+  # sie-sdk requires Python 3.12+ and the gate's deterministic fallback path
+  # is exactly what's meant to be exercised without it; a live SIE endpoint
+  # isn't available in CI regardless.
+  example-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: examples/agent-action-monitor }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install ruff
+      - run: ruff check src/ tests/ agent-demo/ mock-prod/ lab/
+      - run: ruff format --check src/ tests/ agent-demo/ mock-prod/ lab/
+
+  example-typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: examples/agent-action-monitor }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]"
+      - run: pip install -r agent-demo/requirements.txt -r mock-prod/requirements.txt
+      - run: >
+          mypy src/dusk/ agent-demo/bedrock_client.py agent-demo/mock_bedrock.py
+          agent-demo/harness.py agent-demo/load_driver.py agent-demo/run_scenario.py
+          agent-demo/stub_gate.py mock-prod/app.py --ignore-missing-imports
+
+  example-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: examples/agent-action-monitor }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python -m pip install --upgrade pip
+      - run: pip install bandit pip-audit
+      - run: bandit -r src/ agent-demo/ mock-prod/ -ll -x "*/test_*.py"
+      # Install in a scratch venv so pip-audit sees only this package's own
+      # declared dependencies, not the runner's ambient toolchain. `pip
+      # freeze` includes an `-e git+...` line for this editable install
+      # itself, which pip-audit can't resolve as a requirement -- drop it,
+      # third-party pinned versions are what's being audited here.
+      - run: |
+          python -m venv /tmp/audit-venv
+          /tmp/audit-venv/bin/pip install -q -e . -r agent-demo/requirements.txt -r mock-prod/requirements.txt
+          /tmp/audit-venv/bin/pip freeze | grep -v '^-e ' > /tmp/audit-requirements.txt
+          pip-audit -r /tmp/audit-requirements.txt
+
+  example-test:
+    needs: [example-lint, example-typecheck, example-security]
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: examples/agent-action-monitor }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]"
+      - run: pip install -r agent-demo/requirements.txt -r mock-prod/requirements.txt
+      - run: pytest
