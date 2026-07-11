@@ -11,13 +11,17 @@ disrupt a network. Enforce mode upgrades WOULD-BLOCK to BLOCK.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Any
+import uuid
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 from dusk.actions.analyse import AnalysisResult, analyse
-from dusk.actions.baseline import Baseline
+from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
 from dusk.config import Config, get_config
+
+if TYPE_CHECKING:
+    from dusk.actions.offense_memory import OffenseMemory
 
 logger = logging.getLogger("dusk.actions.verdict")
 
@@ -34,10 +38,14 @@ class GateVerdict:
     Attributes:
         verdict: One of ``ALLOW``, ``WOULD-BLOCK``, ``BLOCK``.
         analysis: The :class:`AnalysisResult` the verdict is based on.
+        trace_id: Unique id for this decision, generated once here so every
+            downstream consumer (the HTTP response, offense memory, n8n
+            webhooks) cites the same identifier for the same decision.
     """
 
     verdict: str
     analysis: AnalysisResult
+    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     @property
     def refused(self) -> bool:
@@ -46,7 +54,7 @@ class GateVerdict:
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serialisable representation of the verdict."""
-        return {"verdict": self.verdict, **self.analysis.to_dict()}
+        return {"trace_id": self.trace_id, "verdict": self.verdict, **self.analysis.to_dict()}
 
 
 class ActionGate:
@@ -57,6 +65,7 @@ class ActionGate:
         baseline: Baseline | None = None,
         config: Config | None = None,
         enforce: bool = False,
+        offense_memory: OffenseMemory | None = None,
     ) -> None:
         """Create the gate.
 
@@ -67,10 +76,15 @@ class ActionGate:
                 to the process-wide singleton.
             enforce: When ``True``, refused actions are BLOCK; otherwise they
                 are WOULD-BLOCK (watch mode).
+            offense_memory: Persisted per-agent record of past refusals, used
+                for the repeat-offense scoring signal. When ``None``, that
+                signal is skipped entirely -- every evaluation behaves as it
+                did before this store existed.
         """
         self.config = config if config is not None else get_config()
         self.baseline = baseline if baseline is not None else Baseline()
         self.enforce = enforce
+        self.offense_memory = offense_memory
         self._history: dict[str, list[AgentAction]] = {}
 
     def learn(self, actions: list[AgentAction]) -> None:
@@ -86,7 +100,16 @@ class ActionGate:
 
     def evaluate(self, action: AgentAction) -> GateVerdict:
         """Analyse one action and render a verdict."""
-        result = analyse(self.baseline, action, agent_history=self._history.get(action.agent_id))
+        offenses = (
+            self.offense_memory.offenses_for(action.agent_id) if self.offense_memory else None
+        )
+        result = analyse(
+            self.baseline,
+            action,
+            agent_history=self._history.get(action.agent_id),
+            offenses=offenses,
+            config=self.config,
+        )
         if result.score >= self.config.gate_block_threshold:
             verdict = BLOCK if self.enforce else WOULD_BLOCK
             logger.error(
@@ -103,7 +126,18 @@ class ActionGate:
             )
         else:
             verdict = ALLOW
-        return GateVerdict(verdict=verdict, analysis=result)
+        gate_verdict = GateVerdict(verdict=verdict, analysis=result)
+        if gate_verdict.refused and self.offense_memory is not None:
+            features = action_features(action)
+            self.offense_memory.record(
+                trace_id=gate_verdict.trace_id,
+                agent_id=action.agent_id,
+                action_type=action.action_type,
+                target_class=features["target_class"],
+                tokens=features["tokens"],
+                verdict=verdict,
+            )
+        return gate_verdict
 
     def evaluate_all(self, actions: list[AgentAction]) -> list[GateVerdict]:
         """Evaluate a sequence of actions in order."""

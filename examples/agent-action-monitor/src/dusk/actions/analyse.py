@@ -17,12 +17,18 @@ and the whole computation is deterministic.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
 from dusk.trace.vector import sie_extract, sie_score
+
+if TYPE_CHECKING:
+    from dusk.actions.offense_memory import OffenseRecord
+    from dusk.config import Config
 
 logger = logging.getLogger("dusk.actions.analyse")
 
@@ -219,10 +225,83 @@ def _extra_sie_signals(
     return extra_score, reasons
 
 
+def _offense_similarity(
+    action: AgentAction, features: dict[str, Any], offense: OffenseRecord
+) -> float:
+    """How closely ``action`` matches a single past offense, in ``0..1``.
+
+    Requires the same action type to count at all -- a firewall change
+    doesn't make a later role assignment suspicious just because both were
+    once blocked. Beyond that, target class and shared tokens each add
+    partial credit, so an exact repeat of the same target scores highest
+    while a same-type action against a related-but-different target still
+    contributes something.
+    """
+    if action.action_type != offense.action_type:
+        return 0.0
+    similarity = 0.5
+    if features["target_class"] and features["target_class"] == offense.target_class:
+        similarity += 0.3
+    if features["tokens"] & set(offense.tokens):
+        similarity += 0.2
+    return min(1.0, similarity)
+
+
+def _decay(offense: OffenseRecord, half_life_days: float) -> float:
+    """Exponential decay: 1.0 for a brand-new offense, 0.5 at one half-life, etc."""
+    age_days = max(0.0, (datetime.now(UTC) - offense.timestamp).total_seconds() / 86400)
+    return float(math.pow(0.5, age_days / half_life_days))
+
+
+def _repeat_offense_signal(
+    action: AgentAction,
+    features: dict[str, Any],
+    offenses: list[OffenseRecord] | None,
+    config: Config | None,
+) -> tuple[float, str | None]:
+    """Score how much ``action`` resembles this agent's own past refusals.
+
+    Takes the single best-matching prior offense rather than summing across
+    all of them, so an attacker cannot inflate the contribution by
+    triggering many weak matches -- only the strongest, most relevant prior
+    refusal counts, and its weight decays with age. Returns ``(0.0, None)``
+    when there is no meaningful match, so a clean-history agent is
+    completely unaffected by this signal.
+    """
+    if not offenses:
+        return 0.0, None
+
+    from dusk.config import get_config
+
+    cfg = config or get_config()
+    best_offense: OffenseRecord | None = None
+    best_weight = 0.0
+    for offense in offenses:
+        similarity = _offense_similarity(action, features, offense)
+        if similarity <= 0.0:
+            continue
+        weight = similarity * _decay(offense, cfg.repeat_offense_half_life_days)
+        if weight > best_weight:
+            best_weight = weight
+            best_offense = offense
+
+    if best_offense is None or best_weight <= 0.0:
+        return 0.0, None
+
+    contribution = min(cfg.repeat_offense_max_contribution, best_weight)
+    reason = (
+        f"resembles a prior {best_offense.verdict} action by this agent "
+        f"(trace {best_offense.trace_id}, {best_offense.timestamp.date().isoformat()})"
+    )
+    return contribution, reason
+
+
 def analyse(
     baseline: Baseline,
     action: AgentAction,
     agent_history: list[AgentAction] | None = None,
+    offenses: list[OffenseRecord] | None = None,
+    config: Config | None = None,
 ) -> AnalysisResult:
     """Score and explain ``action`` against ``baseline``.
 
@@ -233,6 +312,13 @@ def analyse(
             optional SIE-reranked semantic novelty check on top of the
             deterministic feature checks below. Omit or pass an empty list
             to skip this signal entirely.
+        offenses: The agent's past refused verdicts, used for the
+            repeat-offense signal. Omit or pass an empty list to skip this
+            signal entirely -- a clean-history agent is unaffected.
+        config: Configuration providing ``repeat_offense_max_contribution``
+            and ``repeat_offense_half_life_days``. Defaults to the
+            process-wide singleton; only consulted when ``offenses`` is
+            non-empty.
 
     Returns:
         An :class:`AnalysisResult` with score, reasons, and mappings.
@@ -283,6 +369,11 @@ def analyse(
     extra_score, extra_reasons = _extra_sie_signals(action, features, agent_history or [])
     score += extra_score
     reasons.extend(extra_reasons)
+
+    repeat_score, repeat_reason = _repeat_offense_signal(action, features, offenses, config)
+    if repeat_reason:
+        score += repeat_score
+        reasons.append(repeat_reason)
 
     score = min(1.0, score)
     blast = _blast_radius(action, features)

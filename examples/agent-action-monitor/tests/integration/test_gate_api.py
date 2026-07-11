@@ -37,10 +37,14 @@ CONTRACT_FIELDS = {
 
 
 @pytest.fixture(autouse=True)
-def _reset_gate(monkeypatch: pytest.MonkeyPatch):
+def _reset_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", BASELINE_PATH)
     monkeypatch.setenv("DUSK_GATE_BASELINE_SOURCE", "generic")
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
+    # Isolated per test by default so a refusal in one test never writes
+    # into the repo's working directory; test_offense_memory_persists_*
+    # overrides this explicitly to exercise the real default-path behaviour.
+    monkeypatch.setenv("DUSK_OFFENSE_MEMORY_PATH", str(tmp_path / "offense-memory.json"))
     reset_config()
     api.reset_gate_engine()
     api.reset_decision_history()
@@ -240,3 +244,36 @@ def test_recorded_decision_carries_the_real_verdict(client) -> None:
     stored = api._decision_history[-1][0]
     assert stored.verdict == body["verdict"]
     assert stored.verdict != ""
+
+
+def test_repeated_refused_action_scores_at_least_as_high_the_second_time(client) -> None:
+    """End-to-end repeat-offense signal through the live /v1/gate handler."""
+    payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
+    first = client.post("/v1/gate", json=payload).get_json()
+    second = client.post("/v1/gate", json=payload).get_json()
+
+    assert first["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert second["score"] >= first["score"]
+    assert any(first["trace_id"] in reason for reason in second["reasons"])
+
+
+def test_offense_memory_persists_across_a_simulated_restart(client, tmp_path, monkeypatch) -> None:
+    """The durability requirement: block an agent, restart the process, confirm
+    the next similar action still scores higher because of the earlier block."""
+    storage = tmp_path / "offense-memory.json"
+    monkeypatch.setenv("DUSK_OFFENSE_MEMORY_PATH", str(storage))
+    reset_config()
+    api.reset_gate_engine()
+
+    payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
+    before_restart = client.post("/v1/gate", json=payload).get_json()
+    assert before_restart["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert storage.exists()
+
+    # Simulate a process restart: drop the cached engine, force a fresh load
+    # from disk, exactly like a new process would.
+    api.reset_gate_engine()
+
+    after_restart = client.post("/v1/gate", json=payload).get_json()
+    assert after_restart["score"] >= before_restart["score"]
+    assert any(before_restart["trace_id"] in reason for reason in after_restart["reasons"])

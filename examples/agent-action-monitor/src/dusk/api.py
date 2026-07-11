@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-import uuid
 from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
@@ -41,6 +40,7 @@ _baseline_load_error: str | None = None
 
 def _load_gate_engine() -> ActionGate:
     from dusk.actions.ingest import ingest_file
+    from dusk.actions.offense_memory import OffenseMemory
     from dusk.actions.verdict import ActionGate
     from dusk.config import get_config
 
@@ -50,7 +50,9 @@ def _load_gate_engine() -> ActionGate:
     baseline_path = os.getenv("DUSK_GATE_BASELINE_PATH", "")
     baseline_source = os.getenv("DUSK_GATE_BASELINE_SOURCE", "generic")
 
-    gate_engine = ActionGate(enforce=get_config().enforce)
+    config = get_config()
+    offense_memory = OffenseMemory(storage_path=config.offense_memory_path or None)
+    gate_engine = ActionGate(config=config, enforce=config.enforce, offense_memory=offense_memory)
     if baseline_path:
         try:
             known_good = ingest_file(baseline_path, baseline_source)
@@ -162,7 +164,7 @@ def evaluate_gate_action() -> object:
     verdict = _get_gate_engine().evaluate(action)
     analysis = verdict.analysis
     action_text = f"{action.action_type} {action.target}"
-    trace_id = uuid.uuid4().hex
+    trace_id = verdict.trace_id
     similar_decision_ids = _find_similar_decisions(action.agent_id, action_text)
 
     response: dict[str, object] = {
