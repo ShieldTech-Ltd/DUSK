@@ -16,6 +16,7 @@ from dusk.actions.analyse import analyse  # noqa: E402
 from dusk.actions.baseline import Baseline, target_class  # noqa: E402
 from dusk.actions.event import AgentAction  # noqa: E402
 from dusk.actions.normaliser import normalise_record  # noqa: E402
+from dusk.actions.offense_memory import OffenseMemory, OffenseRecord  # noqa: E402
 from dusk.actions.verdict import ALLOW, BLOCK, WOULD_BLOCK, ActionGate  # noqa: E402
 from dusk.config import Config  # noqa: E402
 from dusk.trace.vector import ExtractedTerm  # noqa: E402
@@ -275,6 +276,129 @@ def test_sie_extract_unavailable_does_not_change_score() -> None:
     assert not any("SIE extract" in r for r in result.reasons)
 
 
+# --- repeat-offense signal -----------------------------------------------------
+
+
+def _offense(**overrides: object) -> OffenseRecord:
+    defaults: dict[str, object] = {
+        "trace_id": "trace-offense-1",
+        "agent_id": "netops-agent",
+        "action_type": "firewall_rule_change",
+        "target_class": "fw",
+        "tokens": ("fw", "restricted"),
+        "verdict": "BLOCK",
+        "timestamp": datetime.now(UTC),
+    }
+    defaults.update(overrides)
+    return OffenseRecord(**defaults)  # type: ignore[arg-type]
+
+
+def test_no_offenses_does_not_change_score() -> None:
+    """A clean-history agent is completely unaffected by the repeat-offense signal."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-restricted")
+    without = analyse(baseline, action)
+    with_empty = analyse(baseline, action, offenses=[])
+    assert without.score == with_empty.score
+    assert without.reasons == with_empty.reasons
+
+
+def test_matching_offense_raises_score_and_cites_trace_id() -> None:
+    """A same-type, same-target-class repeat past offense adds score and names the prior trace."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-restricted")
+    baseline_only = analyse(baseline, action)
+    offense = _offense(trace_id="trace-xyz")
+
+    with_offense = analyse(baseline, action, offenses=[offense], config=CONFIG)
+
+    assert with_offense.score > baseline_only.score
+    assert any("trace-xyz" in r for r in with_offense.reasons)
+
+
+def test_different_action_type_offense_does_not_match() -> None:
+    """An offense for a different action type must not contribute -- type match is required."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "role_assignment", "ra-self", role="owner")
+    baseline_only = analyse(baseline, action)
+    offense = _offense(action_type="firewall_rule_change")
+
+    with_offense = analyse(baseline, action, offenses=[offense], config=CONFIG)
+
+    assert with_offense.score == baseline_only.score
+
+
+def test_repeat_offense_contribution_is_capped() -> None:
+    """The signal alone cannot exceed repeat_offense_max_contribution, however strong the match."""
+    config = Config(repeat_offense_max_contribution=0.05)
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-restricted")
+    baseline_only = analyse(baseline, action)
+    offense = _offense()
+
+    with_offense = analyse(baseline, action, offenses=[offense], config=config)
+
+    assert with_offense.score - baseline_only.score <= 0.05 + 1e-9
+
+
+def test_old_offense_contributes_less_than_a_recent_one() -> None:
+    """Decay: an offense from long ago must weigh less than one from moments ago."""
+    from datetime import timedelta
+
+    config = Config(repeat_offense_half_life_days=10.0)
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-restricted")
+
+    recent = analyse(
+        baseline, action, offenses=[_offense(timestamp=datetime.now(UTC))], config=config
+    )
+    old = analyse(
+        baseline,
+        action,
+        offenses=[_offense(timestamp=datetime.now(UTC) - timedelta(days=100))],
+        config=config,
+    )
+
+    assert recent.score > old.score
+
+
+def test_multiple_offenses_use_the_single_best_match_not_the_sum() -> None:
+    """Anti-gaming: flooding with many weak matches must not out-score one strong match."""
+    config = Config(repeat_offense_max_contribution=1.0)
+    baseline = Baseline.learn(_normal())
+    # A known action/target for this agent, so the deterministic checks below
+    # contribute 0 and only the repeat-offense signal moves the score --
+    # otherwise both cases would saturate at the 1.0 clamp and be indistinguishable.
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+
+    single_strong = analyse(
+        baseline,
+        action,
+        offenses=[_offense(target_class="fw", tokens=("fw", "corp", "https"))],
+        config=config,
+    )
+    many_weak = analyse(
+        baseline,
+        action,
+        offenses=[_offense(target_class="seg", tokens=("seg",)) for _ in range(20)],
+        config=config,
+    )
+
+    # The weak matches don't even share a target class or token, so they
+    # contribute nothing at all -- confirming there is no additive stacking.
+    assert many_weak.score < single_strong.score
+
+
+def test_offense_reason_names_the_verdict_and_date() -> None:
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-restricted")
+    offense = _offense(verdict="WOULD-BLOCK")
+
+    result = analyse(baseline, action, offenses=[offense], config=CONFIG)
+
+    assert any("WOULD-BLOCK" in r for r in result.reasons)
+
+
 # --- verdict -----------------------------------------------------------------
 
 
@@ -325,6 +449,68 @@ def test_empty_baseline_evaluation_does_not_crash() -> None:
     gate = ActionGate(config=CONFIG)
     verdict = gate.evaluate(_action("a", "route_change", "rt-1"))
     assert verdict.verdict in (ALLOW, WOULD_BLOCK)
+
+
+# --- offense memory wiring -----------------------------------------------------
+
+
+def test_gate_without_offense_memory_behaves_as_before() -> None:
+    """No offense_memory passed -- the repeat-offense signal is a complete no-op."""
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    attack = _attacks()[0]
+    first = gate.evaluate(attack)
+    second = gate.evaluate(attack)
+    assert first.analysis.score == second.analysis.score
+
+
+def test_refused_verdict_is_recorded_in_offense_memory() -> None:
+    memory = OffenseMemory(storage_path=None)
+    gate = ActionGate(config=CONFIG, offense_memory=memory)
+    gate.learn(_normal())
+    attack = _attacks()[0]
+
+    verdict = gate.evaluate(attack)
+
+    offenses = memory.offenses_for(attack.agent_id)
+    assert len(offenses) == 1
+    assert offenses[0].trace_id == verdict.trace_id
+    assert offenses[0].verdict == verdict.verdict
+
+
+def test_allowed_verdict_is_not_recorded_in_offense_memory() -> None:
+    memory = OffenseMemory(storage_path=None)
+    gate = ActionGate(config=CONFIG, offense_memory=memory)
+    gate.learn(_normal())
+
+    for action in _normal():
+        verdict = gate.evaluate(action)
+        assert verdict.verdict == ALLOW
+
+    assert all(memory.offenses_for(a.agent_id) == [] for a in _normal())
+
+
+def test_repeated_attack_scores_higher_the_second_time() -> None:
+    """The end-to-end point of this feature: a repeat offender is judged more harshly."""
+    memory = OffenseMemory(storage_path=None)
+    gate = ActionGate(config=CONFIG, offense_memory=memory)
+    gate.learn(_normal())
+    attack = _attacks()[0]
+
+    first = gate.evaluate(attack)
+    second = gate.evaluate(attack)
+
+    assert second.analysis.score >= first.analysis.score
+    assert any(first.trace_id in r for r in second.analysis.reasons)
+
+
+def test_gate_verdict_trace_id_is_unique_per_evaluation() -> None:
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    first = gate.evaluate(action)
+    second = gate.evaluate(action)
+    assert first.trace_id != second.trace_id
 
 
 # --- labelled benchmark ------------------------------------------------------

@@ -20,8 +20,10 @@ services:
       DUSK_N8N_ALERT_URL: "http://n8n:5678/webhook/dusk-alert"
       DUSK_N8N_REPORT_URL: "http://n8n:5678/webhook/dusk-report"
       DUSK_N8N_DECISION_URL: "http://n8n:5678/webhook/dusk-decision"
+      DUSK_OFFENSE_MEMORY_PATH: "/app/state/dusk-offense-memory.json"
     volumes:
       - ./sample-data:/app/sample-data:ro
+      - offense-memory:/app/state
     depends_on:
       sie: { condition: service_healthy }
       n8n: { condition: service_healthy }
@@ -75,3 +77,4 @@ networks:
 
 volumes:
   sie-hf-cache:
+  offense-memory:

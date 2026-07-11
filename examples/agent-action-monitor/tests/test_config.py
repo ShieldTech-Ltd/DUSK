@@ -30,6 +30,10 @@ def test_defaults() -> None:
     assert config.n8n_alert_url == ""
     assert config.n8n_report_url == ""
     assert config.n8n_decision_url == ""
+    assert config.n8n_max_workers == 8
+    assert config.offense_memory_path == "dusk-offense-memory.json"
+    assert config.repeat_offense_max_contribution == 0.3
+    assert config.repeat_offense_half_life_days == 30.0
 
 
 def test_load_defaults_when_no_file(tmp_path: Path) -> None:

@@ -72,6 +72,18 @@ class Config:
         n8n_max_workers: Size of the bounded thread pool webhook firing uses,
             so a sustained burst of refused verdicts can't spawn unbounded
             OS threads.
+        offense_memory_path: File the gate persists its repeat-offense
+            memory to, so it survives a service restart. Empty disables
+            persistence (the signal still scores within one process
+            lifetime, from an in-memory-only store).
+        repeat_offense_max_contribution: Upper bound on how much the
+            repeat-offense signal alone can add to an anomaly score, so it
+            is one input among several rather than something that alone can
+            force a BLOCK on an otherwise benign action.
+        repeat_offense_half_life_days: Time, in days, after which a past
+            offense's contribution to the repeat-offense signal is halved.
+            Models the intuition that an agent blocked once six months ago
+            is not the same risk as one blocked five minutes ago.
     """
 
     sweep_threshold: int = 15
@@ -92,6 +104,9 @@ class Config:
     n8n_report_url: str = ""
     n8n_decision_url: str = ""
     n8n_max_workers: int = 8
+    offense_memory_path: str = "dusk-offense-memory.json"
+    repeat_offense_max_contribution: float = 0.3
+    repeat_offense_half_life_days: float = 30.0
 
     def __post_init__(self) -> None:
         """Validate values after construction.
@@ -110,6 +125,8 @@ class Config:
             "gate_block_threshold",
             "sie_timeout_ms",
             "n8n_max_workers",
+            "repeat_offense_max_contribution",
+            "repeat_offense_half_life_days",
         )
         for name in positive_numeric:
             value = getattr(self, name)
