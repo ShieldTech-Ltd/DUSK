@@ -3,13 +3,11 @@
 Watching agent behaviour for what most tooling quietly misses, with
 Superlinked surfacing the anomalies.
 
-> This README describes the example as it will look once extracted to its
-> own directory in `superlinked/sie`. Right now it lives inside the main
-> [DUSK](https://github.com/TFT444/DUSK) repo, and the paths below
-> (`docker-compose.yml`, `Dockerfile`, `agent-demo/`, `mock-prod/`,
-> `contracts/`, `src/dusk/`) currently sit at that repo's root rather than
-> alongside this file -- see "What's in the box" below for exactly what
-> moves where on extraction.
+> This directory is self-contained: its own `pyproject.toml`, `src/dusk/`,
+> `tests/`, and Docker/compose stack, independent of the main
+> [DUSK](https://github.com/TFT444/DUSK) repo it's developed alongside. It's
+> ready to be contributed as an example to `superlinked/sie` -- see "What's
+> in the box" below for exactly what's bundled.
 
 ## What this shows
 
@@ -28,7 +26,9 @@ Two scenarios, both keyless by default:
 - **Poisoned**: the agent's response is hijacked (a smuggled instruction in
   its context) into proposing an action well outside its own baseline --
   opening a firewall rule to `0.0.0.0/0` in a restricted segment. The gate
-  refuses it before it ever reaches the downstream target. The agent's
+  flags it as anomalous immediately; in enforce mode it refuses the action
+  before it ever reaches the downstream target (watch mode logs the same
+  flag but lets it through -- see "What you'll see" below). The agent's
   credentials were real the whole time; only its behaviour gave the hijack
   away.
 
@@ -44,11 +44,16 @@ target (`mock-prod`), and the agent harness (`agent-demo`) -- all on one
 internal network, no external egress beyond `sie`'s one-time model-weight
 download, no API keys required.
 
-The first `up` cold-starts three CPU models in `sie` (encode, score,
-extract) and needs real memory headroom to do it quickly -- allocate at
-least 8 GB to Docker Desktop. Under 4 GB, each model's first request can
-take many minutes rather than SIE's usual 10-60s, since there isn't enough
-free memory to load them without swapping.
+The first `up` cold-starts up to three CPU models in `sie` (encode, score,
+extract) on demand, not necessarily all at once -- each gate request only
+provisions the primitives it actually calls. Every SIE call is bounded to a
+short provisioning timeout (1.5s): a cold or at-capacity model falls back
+to the deterministic path in about a second rather than blocking the gate,
+so a slow or memory-constrained first `sie` startup degrades individual
+request latency, it doesn't hang them. Allocate at least 8 GB to Docker
+Desktop for `sie` to load its models promptly in the background; under
+that, model loading itself takes longer (competing for memory), but
+`/v1/gate` keeps responding throughout.
 
 Without Docker, run the pieces directly:
 
@@ -116,13 +121,24 @@ external service involved. Watch them land in the executions list at
 
 ## Sample data
 
-`sample-data/baseline.json` (15 known-good actions across three agents) and
+`sample-data/baseline.json` (15 known-good actions across three agents,
+already mounted into `dusk-gate` at `DUSK_GATE_BASELINE_PATH`) and
 `sample-data/check-mixed.json` (that same baseline plus 3 out-of-pattern
-actions) let you exercise the gate directly, independent of the agent
-harness:
+actions) let you exercise the gate directly with `docker compose up`
+running, independent of the agent harness:
 
 ```bash
-dusk gate --baseline sample-data/baseline.json --check sample-data/check-mixed.json --json
+python -c "
+import json, urllib.request
+for action in json.load(open('sample-data/check-mixed.json')):
+    req = urllib.request.Request(
+        'http://localhost:8000/v1/gate',
+        data=json.dumps(action).encode(),
+        headers={'Content-Type': 'application/json'},
+    )
+    verdict = json.load(urllib.request.urlopen(req))
+    print(action['target'], '->', verdict['verdict'])
+"
 ```
 
 This is the same fixture data used in DUSK's own test suite (a labelled
@@ -175,16 +191,19 @@ hosted tester cluster, 20 requests per concurrency level, 20% poisoned /
 | 3 | 307ms | 474ms | 0/20 |
 | 5 | 295ms | 317ms | 0/20 |
 
-Correctness held throughout: every allowed action reached `mock-prod`,
-every poisoned action was refused in watch mode and never applied. The
-concurrency=1 tail is the tester cluster scaling a model back to zero
-between sparse sequential requests, not a concurrency effect -- see
+Correctness held throughout: every allowed action reached `mock-prod`, and
+every poisoned action was correctly flagged `WOULD-BLOCK` (this run used
+watch mode, so flagged actions still reached `mock-prod` -- see "What
+you'll see" above for the watch-vs-enforce distinction). The concurrency=1
+tail is the tester cluster scaling a model back to zero between sparse
+sequential requests, not a concurrency effect -- see
 `docs/gate-latency-notes.md` for the full account, including why that tail
 is a property of the shared tester allocation rather than the gate.
 
 ## What's in the box
 
-On extraction to `superlinked/sie`, this example bundles:
+This directory is self-contained, ready to contribute as an example to
+`superlinked/sie`:
 
 - `Dockerfile`, `docker-compose.yml` -- the gate service, self-hosted SIE,
   n8n, mock-prod, and agent-demo, wired together on one internal network

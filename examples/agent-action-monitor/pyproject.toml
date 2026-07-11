@@ -31,13 +31,14 @@ dev = [
     "mypy>=1.10.0",
     "bandit[toml]>=1.7.8",
     "types-PyYAML>=6.0",
+    "requests>=2.31", # agent-demo/harness.py's HTTP calls to the gate and mock-prod
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "agent-demo", "mock-prod"]
 env = ["PYTHONIOENCODING=utf-8"]
 
 [tool.ruff]
