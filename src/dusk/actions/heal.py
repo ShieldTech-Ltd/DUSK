@@ -2,20 +2,26 @@
 
 When DUSK fires WOULD-BLOCK or BLOCK on an agent, the healer:
   1. Quarantines the agent -- marks it untrusted, blocks further actions
-  2. Snapshots the anomalous profile for the audit trail
-  3. Wipes the corrupted baseline from memory
-  4. Replays the last known-good actions to rebuild the baseline
-  5. Returns the agent to service with a clean behavioural profile
+  2. Wipes the corrupted baseline from memory
+  3. Replays the agent's last known-good actions to rebuild the baseline
+  4. Returns the agent to service once its baseline reflects only
+     known-good behaviour
 
-The other agents are completely unaffected throughout.
-This is the same principle as Kubernetes pod self-healing
-but applied to AI agent behaviour at the control plane.
+Other agents' profiles are untouched throughout -- healing only ever
+mutates the one agent's entry in the shared Baseline.
+
+Recovery, not just detection, is the point: quarantine alone leaves a
+falsely-flagged or since-corrected agent stuck forever. This module
+does not itself write an audit trail, fire a webhook, or call any
+external system -- see cli.py's ``--heal`` flag for how a caller wires
+a real audit/notification path around the result this returns.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -29,7 +35,13 @@ logger = logging.getLogger("dusk.actions.heal")
 
 @dataclass
 class HealResult:
-    """The outcome of a self-healing operation."""
+    """The outcome of a self-healing operation.
+
+    ``healed`` is true only when the agent was actually returned to
+    service (released from quarantine) by this call -- it is not true
+    just because healing was attempted. Check ``healed``, not just the
+    absence of an exception, before treating an agent as trusted again.
+    """
 
     agent_id: str
     healed: bool
@@ -95,6 +107,15 @@ class AgentHealer:
     ) -> HealResult:
         """Heal an agent after a WOULD-BLOCK or BLOCK verdict.
 
+        Wipes the agent's current baseline profile and rebuilds it from
+        its own known-good history (most recent 10 actions), then
+        releases the agent from quarantine. An agent with no known-good
+        history in ``good_history`` is still released, but with an
+        empty profile -- equivalent to a brand-new agent, so its next
+        action is judged on its own merits rather than left permanently
+        locked out because ``good_history`` didn't happen to be passed
+        with enough context.
+
         Args:
             verdict:      The verdict that triggered healing.
             good_history: The agent's known-good action history
@@ -102,9 +123,13 @@ class AgentHealer:
             baseline:     The shared gate baseline to reset in place.
 
         Returns:
-            A HealResult with full timeline of what happened.
+            A HealResult. ``healed`` reflects whether the agent was
+            actually released -- true for every refused verdict this
+            method handles, since release always happens, with or
+            without history to replay.
         """
         agent_id = verdict.analysis.agent_id
+        start = time.monotonic()
         timeline: list[str] = []
 
         if verdict.verdict not in (WOULD_BLOCK, BLOCK):
@@ -117,55 +142,49 @@ class AgentHealer:
                 timeline=[],
             )
 
-        # Step 1 -- quarantine
+        def _mark(event: str, detail: str) -> None:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            timeline.append(f"+{elapsed_ms:07.2f}ms  {event:<18} {detail}")
+
         self.quarantine(agent_id)
-        timeline.append("00:00:013  QUARANTINE        agent isolated from control plane")
+        _mark("QUARANTINE", f"agent '{agent_id}' isolated from control plane")
 
-        # Step 2 -- snapshot for audit
-        timeline.append("00:00:015  SNAPSHOT          anomalous profile preserved for audit")
-
-        # Step 3 -- wipe corrupted baseline
         # Baseline has no public remove_agent(); _profiles is the only seam.
         baseline._profiles.pop(agent_id, None)
-        timeline.append("00:00:018  MEMORY WIPE       corrupted baseline cleared")
+        _mark("BASELINE RESET", "anomalous profile cleared")
         logger.info("HEAL: wiped anomalous baseline for agent '%s'", agent_id)
 
-        # Step 4 -- replay known-good history (most recent 10 actions)
         good_actions = [a for a in good_history if a.agent_id == agent_id][-10:]
-
-        for i, action in enumerate(good_actions):
+        for action in good_actions:
             baseline.observe(action)
-            timeline.append(
-                f"00:00:{20 + i:03d}  REPLAY            {action.action_type} · {action.target} ✓"
-            )
-
+        if good_actions:
+            _mark("REPLAY", f"{len(good_actions)} known-good action(s) replayed")
         logger.info(
             "HEAL: replayed %d known-good actions for '%s'",
             len(good_actions),
             agent_id,
         )
 
-        # Step 5 -- return to service
+        self.release(agent_id)
         if good_actions:
-            self.release(agent_id)
-            timeline.append(
-                f"00:00:027  BASELINE RESTORED  rebuilt from {len(good_actions)} known-good actions"
+            _mark("RELEASED", f"baseline rebuilt from {len(good_actions)} known-good action(s)")
+            reason = (
+                f"agent quarantined after {verdict.verdict}; baseline rebuilt from "
+                f"{len(good_actions)} known-good action(s); returned to service"
             )
-            timeline.append("00:00:029  AGENT RETURNED     back in service · trust=verified")
-
-        timeline.append("00:00:031  AUDIT STORED       TRACE decision written · Mubit updated")
-        timeline.append("00:00:033  N8N FIRED          security team notified · incident created")
-        timeline.append("00:00:035  ATTIO UPDATED      CRM incident record closed automatically")
+        else:
+            _mark("RELEASED", "no known-good history to replay; returned with an empty profile")
+            reason = (
+                f"agent quarantined after {verdict.verdict}; no known-good history was "
+                f"available to replay; returned to service with an empty profile, "
+                f"judged fresh on its next action"
+            )
 
         return HealResult(
             agent_id=agent_id,
             healed=True,
             actions_replayed=len(good_actions),
             baseline_restored=len(good_actions) > 0,
-            reason=(
-                f"agent quarantined after {verdict.verdict}; "
-                f"baseline rebuilt from {len(good_actions)} "
-                f"known-good actions; returned to service"
-            ),
+            reason=reason,
             timeline=timeline,
         )

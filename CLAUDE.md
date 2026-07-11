@@ -147,6 +147,9 @@ dusk gate --baseline tests/fixtures/actions_normal.json \
 dusk gate --baseline tests/fixtures/actions_normal.json \
           --check    tests/fixtures/actions_mixed.json \
           --enforce --json
+dusk gate --baseline tests/fixtures/actions_normal.json \
+          --check    tests/fixtures/actions_mixed.json \
+          --heal                 # quarantine + rebuild the baseline for every refused agent
 
 dusk --version
 ```
