@@ -201,7 +201,7 @@ score: float       # 0..1 anomaly score
 reasons: list[str]
 mitre_attack: str  # e.g. T1562.004
 mitre_atlas: str   # e.g. AML.T0051
-blast_radius: str  # LOW | MEDIUM | HIGH | CRITICAL
+blast_radius: str  # low | medium | high
 predicted_next: str
 ```
 
@@ -232,7 +232,7 @@ analysis: AnalysisResult
 ```yaml
 log_level: WARNING
 alert_threshold: 3
-gate_block_threshold: 0.7   # score above this → WOULD-BLOCK
+gate_block_threshold: 0.6   # score above this → WOULD-BLOCK
 ```
 
 Default location: `./dusk.yaml` or `~/.config/dusk/dusk.yaml`.

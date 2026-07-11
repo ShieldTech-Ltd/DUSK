@@ -55,7 +55,11 @@ Desktop for `sie` to load its models promptly in the background; under
 that, model loading itself takes longer (competing for memory), but
 `/v1/gate` keeps responding throughout.
 
-Without Docker, run the pieces directly:
+Without Docker, run the pieces directly. The base install (`pip install -e .`)
+works on Python 3.11+; the `sie` extra (real SIE encode/score/extract, rather
+than the deterministic n-gram fallback) requires **Python 3.12+**, since
+`sie-sdk` itself does -- see the Dockerfile, which uses `python:3.12-slim` for
+exactly this reason:
 
 ```bash
 # terminal 1: the gate

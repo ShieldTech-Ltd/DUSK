@@ -1,7 +1,8 @@
 """n8n webhook client for DUSK alert notifications.
 
-Fires webhooks in a background daemon thread so they never block the Flask
-response. All failures are logged and swallowed.
+Fires webhooks on a bounded background thread pool so they never block the
+Flask response, and so a sustained burst of refused verdicts can't spawn an
+unbounded number of OS threads. All failures are logged and swallowed.
 
 The gate service fires three named webhooks per verdict. Each URL comes from
 the process-wide :class:`~dusk.config.Config` (``n8n_alert_url``,
@@ -20,31 +21,44 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 from dusk.config import Config, get_config
 
 logger = logging.getLogger(__name__)
 
+#: Sized once from the process-wide Config the first time a webhook fires;
+#: a per-call Config override (as tests pass) changes URLs, not pool size.
+_executor: ThreadPoolExecutor | None = None
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(
+            max_workers=get_config().n8n_max_workers, thread_name_prefix="n8n-webhook"
+        )
+    return _executor
+
 
 def fire_decision(payload: dict[str, object], config: Config | None = None) -> None:
-    """Fire the decision webhook in a daemon thread -- never blocks the caller."""
+    """Fire the decision webhook on the bounded pool -- never blocks the caller."""
     url = (config or get_config()).n8n_decision_url
-    threading.Thread(target=_send, args=(url, "decision", payload), daemon=True).start()
+    _get_executor().submit(_send, url, "decision", payload)
 
 
 def fire_report(payload: dict[str, object], config: Config | None = None) -> None:
-    """Fire the report webhook in a daemon thread -- never blocks the caller."""
+    """Fire the report webhook on the bounded pool -- never blocks the caller."""
     url = (config or get_config()).n8n_report_url
-    threading.Thread(target=_send, args=(url, "report", payload), daemon=True).start()
+    _get_executor().submit(_send, url, "report", payload)
 
 
 def fire_alert(payload: dict[str, object], config: Config | None = None) -> None:
-    """Fire the alert webhook in a daemon thread -- never blocks the caller."""
+    """Fire the alert webhook on the bounded pool -- never blocks the caller."""
     url = (config or get_config()).n8n_alert_url
-    threading.Thread(target=_send, args=(url, "alert", payload), daemon=True).start()
+    _get_executor().submit(_send, url, "alert", payload)
 
 
 def _send(url: str, label: str, payload: dict[str, object]) -> None:

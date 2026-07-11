@@ -55,6 +55,30 @@ def test_find_similar_falls_back_to_ngram_when_sie_sdk_missing(monkeypatch) -> N
         assert isinstance(r, vector.SimilarDecision)
 
 
+def test_stable_hash_is_deterministic_across_calls() -> None:
+    """_stable_hash must not depend on Python's per-process hash randomization.
+
+    A gate restart while running the no-SIE fallback path must not make
+    previously recorded embeddings incomparable to freshly computed ones.
+    """
+    assert vector._stable_hash("firewall_rule_change") == vector._stable_hash(
+        "firewall_rule_change"
+    )
+    assert vector._stable_hash("a") != vector._stable_hash("b")
+
+
+def test_stable_hash_does_not_use_builtin_hash() -> None:
+    """Guards against a regression back to Python's randomized hash()."""
+    token = "netops-agent"
+    assert vector._stable_hash(token) != hash(token) % (2**64)
+
+
+def test_ngram_fallback_is_deterministic_across_calls() -> None:
+    assert vector._ngram_fallback("firewall_rule_change fw-corp-https") == vector._ngram_fallback(
+        "firewall_rule_change fw-corp-https"
+    )
+
+
 def test_sie_encode_uses_sdk_dense_vector_when_available(monkeypatch) -> None:
     fake_client = MagicMock()
     fake_client.encode.return_value = {"dense": [1.0, 0.0, 0.0]}
