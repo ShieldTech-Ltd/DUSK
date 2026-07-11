@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(LAB_DIR))
 
 import generate_actions  # noqa: E402
 
+from dusk.actions import baseline as baseline_module  # noqa: E402
 from dusk.actions.analyse import analyse  # noqa: E402
 from dusk.actions.baseline import Baseline, target_class  # noqa: E402
 from dusk.actions.event import AgentAction  # noqa: E402
@@ -67,6 +68,43 @@ def test_target_class_groups_by_first_token() -> None:
     assert target_class("seg-corporate") == "seg"
 
 
+def test_change_values_flattens_nested_dicts() -> None:
+    """A value buried in a nested dict must not be invisible to scoring."""
+    change = {"before": None, "after": {"rules": {"cidr": "0.0.0.0/0", "port": 22}}}
+    values = baseline_module._change_values(change)
+    assert "0.0.0.0/0" in values
+    assert "22" in values
+
+
+def test_change_values_flattens_nested_lists() -> None:
+    """A value buried inside a list of dicts must not be invisible to scoring."""
+    change = {
+        "before": None,
+        "after": {"rules": [{"cidr": "10.0.0.0/8"}, {"cidr": "0.0.0.0/0", "port": 22}]},
+    }
+    values = baseline_module._change_values(change)
+    assert "0.0.0.0/0" in values
+    assert "10.0.0.0/8" in values
+    assert "22" in values
+
+
+def test_change_values_still_flattens_top_level() -> None:
+    """The original flat-dict behaviour is unchanged."""
+    change = {"before": None, "after": {"port": 443}}
+    assert baseline_module._change_values(change) == {"443"}
+
+
+def test_change_values_depth_is_bounded() -> None:
+    """An adversarially deep payload does not make flattening unbounded."""
+    nested: dict[str, object] = {"leaf": "0.0.0.0/0"}
+    for _ in range(20):
+        nested = {"wrapper": nested}
+    change = {"before": None, "after": nested}
+    # Should not raise (e.g. RecursionError) and should not necessarily find
+    # the deeply buried leaf, since depth is capped defensively.
+    baseline_module._change_values(change)
+
+
 # --- analyse -----------------------------------------------------------------
 
 
@@ -91,6 +129,29 @@ def test_privilege_escalation_is_flagged() -> None:
     """Granting a sensitive role is caught even when the verb is familiar."""
     baseline = Baseline.learn(_normal())
     result = analyse(baseline, _action("iam-agent", "role_assignment", "ra-self", role="owner"))
+    assert result.score >= CONFIG.gate_block_threshold
+    assert result.blast_radius == "high"
+    assert any("sensitive" in r for r in result.reasons)
+
+
+def test_nested_privilege_escalation_is_flagged() -> None:
+    """A sensitive value buried in a nested change payload is not invisible.
+
+    Same scenario as test_privilege_escalation_is_flagged, but the sensitive
+    value sits inside a nested structure -- realistic for a control-plane
+    payload shaped like {"after": {"rules": [{"role": "owner"}]}}. Before the
+    nested-flatten fix, this would score 0.0 and pass through silently.
+    """
+    baseline = Baseline.learn(_normal())
+    action = AgentAction(
+        agent_id="iam-agent",
+        timestamp=_TS,
+        action_type="role_assignment",
+        target="ra-self",
+        change={"before": None, "after": {"grants": [{"role": "owner", "scope": "global"}]}},
+        source="generic",
+    )
+    result = analyse(baseline, action)
     assert result.score >= CONFIG.gate_block_threshold
     assert result.blast_radius == "high"
     assert any("sensitive" in r for r in result.reasons)

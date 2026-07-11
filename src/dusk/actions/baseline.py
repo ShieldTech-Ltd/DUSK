@@ -40,15 +40,34 @@ def target_tokens(target: str) -> set[str]:
     return set(_TOKEN_RE.findall(target.lower()))
 
 
+def _flatten_scalars(payload: Any, values: set[str], *, _depth: int = 0) -> None:  # noqa: ANN401
+    """Collect every scalar leaf value from an arbitrarily nested dict/list.
+
+    A control-plane payload can bury a sensitive value inside a nested
+    structure, for example ``{"after": {"rules": [{"cidr": "0.0.0.0/0"}]}}``.
+    Only inspecting the top level of ``before``/``after`` would leave that
+    cidr invisible to both the novelty check and the sensitive-value match.
+    Depth is capped defensively -- a real control-plane payload doesn't nest
+    ten levels deep, and an adversarial one that tried to shouldn't be able
+    to make this scan unbounded.
+    """
+    if _depth > 10:
+        return
+    if isinstance(payload, dict):
+        for value in payload.values():
+            _flatten_scalars(value, values, _depth=_depth + 1)
+    elif isinstance(payload, list):
+        for value in payload:
+            _flatten_scalars(value, values, _depth=_depth + 1)
+    elif isinstance(payload, (str, int, float, bool)):
+        values.add(str(payload).lower())
+
+
 def _change_values(change: dict[str, Any]) -> set[str]:
-    """Flatten a change delta into a set of stringified scalar values."""
+    """Flatten a change delta into a set of stringified scalar values, at any nesting depth."""
     values: set[str] = set()
     for side in ("before", "after"):
-        payload = change.get(side)
-        if isinstance(payload, dict):
-            for value in payload.values():
-                if isinstance(value, (str, int, float, bool)):
-                    values.add(str(value).lower())
+        _flatten_scalars(change.get(side), values)
     return values
 
 
