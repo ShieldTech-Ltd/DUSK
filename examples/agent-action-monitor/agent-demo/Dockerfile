@@ -1,7 +1,8 @@
 # agent-demo: model -> extract action -> /v1/gate -> mock-PROD.
 # USE_REAL_BEDROCK=false (compose default) needs no AWS credentials.
-# Build context is the repo root (see docker-compose.yml) since harness.py
-# needs the dusk package (BedrockAdapter) installed alongside its own deps.
+# Build context is this example's own root (see docker-compose.yml) since
+# harness.py needs the dusk package (BedrockAdapter) installed alongside
+# its own deps.
 FROM python:3.11-slim
 
 WORKDIR /app

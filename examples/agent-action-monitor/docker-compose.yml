@@ -21,7 +21,7 @@ services:
       DUSK_N8N_REPORT_URL: "http://n8n:5678/webhook/dusk-report"
       DUSK_N8N_DECISION_URL: "http://n8n:5678/webhook/dusk-decision"
     volumes:
-      - ./examples/agent-action-monitor/sample-data:/app/sample-data:ro
+      - ./sample-data:/app/sample-data:ro
     depends_on:
       sie: { condition: service_healthy }
       n8n: { condition: service_healthy }

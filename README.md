@@ -175,10 +175,11 @@ SIEM rules fire on known-bad signatures. A behavioral baseline fires on anything
 
 ## Superlinked SIE gate service
 
-The agent action gate is also shipped as an HTTP service (`POST /v1/gate`), with [Superlinked SIE](https://github.com/superlinked/sie) wired in for behavioural similarity: `encode` (embedding an action against an agent's history), `score` (cross-encoder rerank), and `extract` (zero-shot privileged-term detection), each verified against a live hosted SIE cluster and each an additive signal on top of the deterministic core -- disabling SIE degrades detection quality, never breaks the gate.
+The agent action gate is also shipped as a self-contained HTTP service (`POST /v1/gate`) inside [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with [Superlinked SIE](https://github.com/superlinked/sie) wired in for behavioural similarity: `encode` (embedding an action against an agent's history), `score` (cross-encoder rerank), and `extract` (zero-shot privileged-term detection), each verified against a live hosted SIE cluster and each an additive signal on top of the deterministic core -- disabling SIE degrades detection quality, never breaks the gate.
 
 ```bash
-docker compose up dusk-gate sie n8n
+cd examples/agent-action-monitor
+docker compose up
 
 curl -X POST http://localhost:8000/v1/gate \
   -H "Content-Type: application/json" \
@@ -187,7 +188,7 @@ curl -X POST http://localhost:8000/v1/gate \
        "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
 ```
 
-The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), contributed as an example to [`superlinked/sie`](https://github.com/superlinked/sie).
+The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), its own directory with its own `pyproject.toml`, `src/dusk/`, and Docker/compose stack, contributed as an example to [`superlinked/sie`](https://github.com/superlinked/sie). This root repo does not run `/v1/gate` itself -- its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
 
 ---
 
@@ -298,9 +299,8 @@ All thresholds are configurable. Copy `dusk.yaml.example` to `dusk.yaml` in your
 
 ```text
 src/dusk/
-  cli.py                Command-line interface (Click)
+  cli.py                Command-line interface (Click): scan, watch, actions, gate
   config.py             Configuration: defaults, dusk.yaml, DUSK_* env vars
-  api.py                Flask gate service: /v1/gate, /health
   actions/
     event.py            AgentAction canonical event schema
     adapters/           Source-specific adapters (azure, bedrock, generic)
@@ -309,23 +309,24 @@ src/dusk/
     baseline.py         Per-agent behavioral baseline (learn, observe, profile)
     analyse.py          Anomaly scoring, blast radius, MITRE mapping, next-stage prediction
     verdict.py          ALLOW / WOULD-BLOCK / BLOCK rendering (ActionGate)
+    heal.py             AgentHealer: quarantine, baseline reset
   core/
     engine.py           Detection runner and verdict
     kill_chain.py       Kill-chain stage prediction
   detections/           One module per network behavioral detection
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
-  trace/                Superlinked SIE client, n8n webhooks, audit trail
-contracts/              Frozen /v1/gate OpenAPI contract
-agent-demo/             Bedrock-or-mock agent harness for examples/agent-action-monitor
-mock-prod/              Dummy downstream target for the same example
-examples/agent-action-monitor/  The Superlinked SIE example contribution
+  trace/                Superlinked SIE client (vector.py) + trace models, offline CLI path
+examples/agent-action-monitor/  Self-contained Superlinked SIE example -- own
+                                 pyproject.toml, src/dusk/ (gate + api.py + n8n
+                                 client), Docker/compose stack, agent-demo/,
+                                 mock-prod/, contracts/, n8n/. Not shared with
+                                 this repo's root; see its own README.
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
   scenarios/            pcap generators for network fixture data
 tests/                  Unit, edge-case, benchmark, and end-to-end tests
 docs/                   Architecture, threat model, and operational docs
-docker-compose.yml       dusk-gate + sie + n8n + mock-prod + agent-demo
 ```
 
 ---
@@ -360,7 +361,7 @@ CI runs on every push and pull request to `dev` and `main`. All gates must pass 
 | v1.2 -- Baseline | Per-agent behavioral baseline: action types, target classes, token vocabulary, change values | Landed |
 | v1.3 -- Analyse | Weighted anomaly scoring, MITRE ATT&CK + ATLAS mapping, blast radius, next-stage prediction | Landed |
 | v1.4 -- Verdict gate | ALLOW / WOULD-BLOCK / BLOCK with full reasoning. Watch mode by default; enforce mode on trust. | Landed |
-| v1.5 -- Gate service + SIE | `/v1/gate` HTTP endpoint over the gate; Superlinked SIE encode, score, and extract wired in as additive signals, validated against a live hosted cluster. Docker Compose stack in `docker-compose.yml`. | Landed |
+| v1.5 -- Gate service + SIE | `/v1/gate` HTTP endpoint over the gate; Superlinked SIE encode, score, and extract wired in as additive signals, validated against a live hosted cluster. Self-contained Docker Compose stack in `examples/agent-action-monitor/`. | Landed |
 
 ### In progress
 
