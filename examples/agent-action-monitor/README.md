@@ -9,6 +9,8 @@ Superlinked surfacing the anomalies.
 > ready to be contributed as an example to `superlinked/sie` -- see "What's
 > in the box" below for exactly what's bundled.
 
+![architecture](docs/architecture.svg)
+
 ## What this shows
 
 An AI agent proposes a control-plane action -- a firewall rule, a route
@@ -149,17 +151,26 @@ This is the same fixture data used in DUSK's own test suite (a labelled
 precision/recall benchmark asserts the gate catches every one of the 3
 attacks with zero false alarms on the 15 routine actions).
 
+## Model lineup
+
+| Stage | Model | Size | Role |
+|---|---|---|---|
+| Encode | `BAAI/bge-m3` | ~568M params, MIT | Embeds each verdict once, when it's recorded, and embeds each new action once, when it's checked -- similarity between the two powers `similar_decision_ids`. |
+| Score | `BAAI/bge-reranker-v2-m3` | ~568M params, Apache-2.0 | Reranks the encode-shortlisted history for `similar_decision_ids`, and separately reranks an agent's own baseline history to catch semantic novelty. |
+| Extract | `urchade/gliner_multi-v2.1` | ~289M params, Apache-2.0 | Zero-shot NER for privileged terms (role, privilege, resource, segment, port), weighted by the model's own confidence rather than a flat yes/no. |
+
+All three ship in SIE's `default` bundle on the self-hosted
+`sie-server:v0.4.1-cpu-default` image this example pins. Each is a
+`Config` field (`sie_encode_model` / `sie_score_model` /
+`sie_extract_model`), overridable via the matching `DUSK_SIE_*_MODEL` env
+var -- swappable without a code change, provided the replacement is
+available in your SIE deployment's catalog.
+
 ## SIE features used
 
 All three primitives run on the live `/v1/gate` request path, not just in
 a benchmark, and every signal they feed is additive-only, so disabling SIE
-degrades detection quality rather than breaking anything:
-
-| Model | Primitive | Role |
-|---|---|---|
-| `BAAI/bge-m3` | encode | Embeds each verdict once, when it's recorded, and embeds each new action once, when it's checked -- similarity between the two is what powers `similar_decision_ids`. |
-| `BAAI/bge-reranker-v2-m3` | score | Reranks the encode-shortlisted history for `similar_decision_ids`, and separately reranks an agent's own baseline history to catch semantic novelty a new action's exact wording wouldn't show. |
-| `urchade/gliner_multi-v2.1` | extract | Zero-shot extraction of privileged terms (role, privilege, resource, segment, port) from an action, weighted by the model's own confidence rather than treated as a flat yes/no. |
+degrades detection quality rather than breaking anything.
 
 `/v1/gate`'s response carries the result directly: `similar_decision_ids`
 is populated from a real per-agent decision history (embedded once at
@@ -209,7 +220,7 @@ is a property of the shared tester allocation rather than the gate.
 This directory is self-contained, ready to contribute as an example to
 `superlinked/sie`:
 
-- `Dockerfile`, `docker-compose.yml` -- the gate service, self-hosted SIE,
+- `Dockerfile`, `compose.yml` -- the gate service, self-hosted SIE,
   n8n, mock-prod, and agent-demo, wired together on one internal network
 - `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
   contract
@@ -224,6 +235,29 @@ This directory is self-contained, ready to contribute as an example to
   report/alert) baked in and active from container start; no manual
   workflow import, no external service in the workflow itself
 - `sample-data/` -- the baseline and mixed-check fixtures referenced above
+
+## Extend it
+
+- **Swap the baseline.** Point `DUSK_GATE_BASELINE_PATH` at your own
+  known-good action history instead of `sample-data/baseline.json`, or
+  select a different adapter (`azure`, `bedrock`, `generic`) with
+  `DUSK_GATE_BASELINE_SOURCE`. `gate_block_threshold` will need
+  re-tuning on your own labelled traffic, not just the synthetic
+  fixture bundled here.
+- **Try different models.** All three model IDs are `Config` fields,
+  overridable via `DUSK_SIE_*_MODEL` env vars (see "Model lineup" above)
+  -- no code change, provided the replacement is in your SIE catalog.
+- **Add a fourth signal.** The deterministic score and every SIE signal
+  compose additively in `analyse.py` -- a velocity check, a
+  device-fingerprint rule, or another `extract` pass over a different
+  field can be layered in the same way `_repeat_offense_signal` was.
+- **Make `similar_decision_ids` durable across replicas.** The per-agent
+  decision history in `api.py` is capped and in-process; swapping it for
+  a shared store keeps it consistent when the gate runs as more than one
+  instance.
+- **Route verdicts elsewhere.** The three n8n webhooks (decision/report/
+  alert) are plain HTTP POSTs -- point them at Slack, PagerDuty, or a
+  SIEM instead of, or alongside, n8n.
 
 ## Known limits
 
@@ -254,8 +288,16 @@ This directory is self-contained, ready to contribute as an example to
 
 ## Built with
 
-[Superlinked SIE](https://github.com/superlinked/sie), Flask, n8n. Models:
-`BAAI/bge-m3`, `BAAI/bge-reranker-v2-m3`, `urchade/gliner_multi-v2.1`.
+- [Superlinked SIE](https://github.com/superlinked/sie) (Apache-2.0): the
+  inference engine hosting all three primitives
+- [Flask](https://flask.palletsprojects.com/) and [n8n](https://n8n.io/):
+  the `/v1/gate` HTTP service and the decision/report/alert webhook
+  automation
+- [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (MIT): encode
+- [BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+  (Apache-2.0): score
+- [urchade/gliner_multi-v2.1](https://huggingface.co/urchade/gliner_multi-v2.1)
+  (Apache-2.0): extract
 
 ## Credits
 
