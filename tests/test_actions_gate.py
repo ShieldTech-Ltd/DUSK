@@ -397,6 +397,37 @@ def test_cli_gate_json(tmp_path: Path) -> None:
     assert payload["refused"] == 3
 
 
+def test_cli_gate_heal_reports_healed_agents(tmp_path: Path) -> None:
+    """`dusk gate --heal` quarantines and releases every refused agent."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(main, ["gate", "--baseline", normal, "--check", mixed, "--heal"])
+    assert result.exit_code == 1
+    assert "HEAL" in result.output
+    assert "returned to service" in result.output
+
+
+def test_cli_gate_heal_json_includes_heal_results(tmp_path: Path) -> None:
+    """`dusk gate --heal --json` includes a heal_results entry per refused agent."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(
+        main, ["gate", "--baseline", normal, "--check", mixed, "--heal", "--json"]
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert "heal_results" in payload
+    assert len(payload["heal_results"]) == payload["refused"]
+    for h in payload["heal_results"]:
+        assert h["healed"] is True
+
+
+def test_cli_gate_without_heal_omits_heal_results(tmp_path: Path) -> None:
+    """Without --heal, the JSON payload has no heal_results key at all."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(main, ["gate", "--baseline", normal, "--check", mixed, "--json"])
+    payload = json.loads(result.output)
+    assert "heal_results" not in payload
+
+
 def test_cli_gate_clean_baseline_exits_0(tmp_path: Path) -> None:
     """Checking the routine log against itself allows everything and exits 0."""
     normal, _ = _write_fixtures(tmp_path)

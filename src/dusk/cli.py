@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
@@ -22,6 +23,10 @@ from rich.console import Console
 from dusk import __version__
 from dusk.config import ConfigError, get_config
 from dusk.core.engine import VERDICT_ALERT, Engine
+
+if TYPE_CHECKING:
+    from dusk.actions.heal import HealResult
+    from dusk.actions.verdict import GateVerdict
 
 logger = logging.getLogger("dusk.cli")
 console = Console()
@@ -226,12 +231,31 @@ def actions(file_path: str, source: str, as_json: bool) -> None:
     default=False,
     help="Emit a machine-readable JSON report instead of formatted output.",
 )
-def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_json: bool) -> None:
+@click.option(
+    "--heal",
+    "heal_refused",
+    is_flag=True,
+    default=False,
+    help=(
+        "For each refused action, quarantine the agent and rebuild its "
+        "baseline from --baseline's known-good history for that agent, "
+        "then return it to service."
+    ),
+)
+def gate(
+    baseline_path: str,
+    check_path: str,
+    source: str,
+    enforce: bool,
+    as_json: bool,
+    heal_refused: bool,
+) -> None:
     """Learn a baseline, then render a verdict for each checked action.
 
     Exits ``1`` when any action is refused (WOULD-BLOCK or BLOCK), ``0`` when
     every action is allowed, and ``2`` on an input error.
     """
+    from dusk.actions.heal import AgentHealer
     from dusk.actions.ingest import ingest_file
     from dusk.actions.verdict import ActionGate
 
@@ -247,35 +271,68 @@ def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_jso
     verdicts = gate_engine.evaluate_all(to_check)
     refused = [v for v in verdicts if v.refused]
 
+    heal_results = []
+    if heal_refused:
+        healer = AgentHealer()
+        heal_results = [healer.heal(v, known_good, gate_engine.baseline) for v in refused]
+
     if as_json:
-        payload = {
-            "baseline": baseline_path,
-            "check": check_path,
-            "actions_evaluated": len(verdicts),
-            "refused": len(refused),
-            "results": [v.to_dict() for v in verdicts],
-        }
-        click.echo(json.dumps(payload, indent=2))
+        _print_gate_json(baseline_path, check_path, verdicts, refused, heal_results, heal_refused)
     else:
-        for v in verdicts:
-            a = v.analysis
-            colour = {"ALLOW": "green", "WOULD-BLOCK": "yellow", "BLOCK": "red"}[v.verdict]
-            console.print(
-                f"[bold {colour}]{v.verdict:<11}[/bold {colour}] "
-                f"{a.agent_id} {a.action_type} {a.target}  "
-                f"[dim]score={a.score:.2f} blast={a.blast_radius}[/dim]"
-            )
-            if v.refused:
-                console.print(f"            [dim]ATT&CK[/dim] {a.mitre_attack}")
-                console.print(f"            [dim]ATLAS[/dim]  {a.mitre_atlas}")
-                for reason in a.reasons:
-                    console.print(f"            [dim]reason[/dim] {reason}")
-                console.print(f"            [dim]next[/dim]   {a.predicted_next}")
-        console.print(
-            f"\n[bold]GATE[/bold] evaluated {len(verdicts)} action(s), refused {len(refused)}."
-        )
+        _print_gate_console(verdicts, refused, heal_results, heal_refused)
 
     sys.exit(1 if refused else 0)
+
+
+def _print_gate_json(
+    baseline_path: str,
+    check_path: str,
+    verdicts: list[GateVerdict],
+    refused: list[GateVerdict],
+    heal_results: list[HealResult],
+    heal_refused: bool,
+) -> None:
+    payload: dict[str, object] = {
+        "baseline": baseline_path,
+        "check": check_path,
+        "actions_evaluated": len(verdicts),
+        "refused": len(refused),
+        "results": [v.to_dict() for v in verdicts],
+    }
+    if heal_refused:
+        payload["heal_results"] = [h.to_dict() for h in heal_results]
+    click.echo(json.dumps(payload, indent=2))
+
+
+def _print_gate_console(
+    verdicts: list[GateVerdict],
+    refused: list[GateVerdict],
+    heal_results: list[HealResult],
+    heal_refused: bool,
+) -> None:
+    for v in verdicts:
+        a = v.analysis
+        colour = {"ALLOW": "green", "WOULD-BLOCK": "yellow", "BLOCK": "red"}[v.verdict]
+        console.print(
+            f"[bold {colour}]{v.verdict:<11}[/bold {colour}] "
+            f"{a.agent_id} {a.action_type} {a.target}  "
+            f"[dim]score={a.score:.2f} blast={a.blast_radius}[/dim]"
+        )
+        if v.refused:
+            console.print(f"            [dim]ATT&CK[/dim] {a.mitre_attack}")
+            console.print(f"            [dim]ATLAS[/dim]  {a.mitre_atlas}")
+            for reason in a.reasons:
+                console.print(f"            [dim]reason[/dim] {reason}")
+            console.print(f"            [dim]next[/dim]   {a.predicted_next}")
+    console.print(
+        f"\n[bold]GATE[/bold] evaluated {len(verdicts)} action(s), refused {len(refused)}."
+    )
+    if heal_refused:
+        for h in heal_results:
+            status = "green" if h.healed else "red"
+            console.print(f"\n[bold {status}]HEAL[/bold {status}] {h.agent_id}: {h.reason}")
+            for line in h.timeline:
+                console.print(f"            [dim]{line}[/dim]")
 
 
 def _fail(message: str, *, as_json: bool) -> None:
