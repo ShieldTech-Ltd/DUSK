@@ -72,7 +72,7 @@ class DuskBedrockClient:
 def build_real_client(region: str = "us-east-1") -> BedrockConverseClient:
     """Return a real boto3 bedrock-runtime client.
 
-    Requires AWS credentials and the boto3 extra to be installed. Only
+    Requires AWS credentials to be configured in the environment. Only
     called when USE_REAL_BEDROCK=true; the default keyless path uses
     MockBedrock instead (see mock_bedrock.py, wired in by the harness).
 
