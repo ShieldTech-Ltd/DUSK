@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -103,6 +104,16 @@ class OffenseMemory:
     Thread-safe: a single instance is shared across concurrent request
     threads in the live ``/v1/gate`` service, matching the locking
     convention :class:`~dusk.actions.heal.AgentHealer` already uses.
+
+    Disk writes run on a dedicated single-worker background thread so
+    ``record()``/``clear()`` never block the calling request thread on I/O,
+    matching the fire-and-forget convention :mod:`dusk.trace.n8n_client`
+    already uses for the same reason. A single worker keeps writes strictly
+    ordered without needing to coordinate between concurrent writers: each
+    write serialises whatever the in-memory state is at the moment it runs,
+    so a burst of records naturally coalesces into fewer writes than
+    records. ``ThreadPoolExecutor`` workers are non-daemon, so a clean
+    process exit still waits for the last scheduled write to finish.
     """
 
     def __init__(self, storage_path: str | None = None) -> None:
@@ -118,6 +129,15 @@ class OffenseMemory:
         self._by_agent: dict[str, _AgentOffenses] = {}
         if self._storage_path is not None:
             self._load(self._storage_path)
+        self._executor: ThreadPoolExecutor | None = None
+        self._last_write: Future[None] | None = None
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="offense-memory-writer"
+            )
+        return self._executor
 
     def _load(self, storage_path: Path) -> None:
         if not storage_path.exists():
@@ -157,12 +177,21 @@ class OffenseMemory:
         )
 
     def _persist(self) -> None:
+        """Serialise the current state and write it to disk.
+
+        Runs on the background writer thread, not the caller's thread. Only
+        holds the lock long enough to snapshot the in-memory state -- the
+        actual file write happens unlocked, so it can never block a
+        concurrent ``record()``/``offenses_for()`` call for an unrelated
+        agent while disk I/O is in flight.
+        """
         if self._storage_path is None:
             return
-        payload = {
-            agent_id: [r.to_dict() for r in offenses.records]
-            for agent_id, offenses in self._by_agent.items()
-        }
+        with self._lock:
+            payload = {
+                agent_id: [r.to_dict() for r in offenses.records]
+                for agent_id, offenses in self._by_agent.items()
+            }
         try:
             self._storage_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = self._storage_path.with_suffix(".tmp")
@@ -171,6 +200,24 @@ class OffenseMemory:
             tmp_path.replace(self._storage_path)
         except OSError as exc:
             logger.warning("Could not persist offense memory to %s: %s", self._storage_path, exc)
+
+    def _schedule_persist(self) -> None:
+        if self._storage_path is None:
+            return
+        self._last_write = self._get_executor().submit(self._persist)
+
+    def flush(self, timeout: float | None = None) -> None:
+        """Block until the most recently scheduled background write completes.
+
+        Writes run on a single-worker pool in submission order, so waiting
+        on the latest one guarantees every earlier write has already
+        finished too. Used by tests that need read-after-write consistency
+        (e.g. reloading a second instance from the same path immediately
+        after a record); production callers don't need this since the
+        executor's non-daemon workers already flush on clean process exit.
+        """
+        if self._last_write is not None:
+            self._last_write.result(timeout=timeout)
 
     def record(
         self,
@@ -196,7 +243,7 @@ class OffenseMemory:
             offenses.records.append(entry)
             if len(offenses.records) > _MAX_OFFENSES_PER_AGENT:
                 del offenses.records[: len(offenses.records) - _MAX_OFFENSES_PER_AGENT]
-            self._persist()
+        self._schedule_persist()
 
     def offenses_for(self, agent_id: str) -> list[OffenseRecord]:
         """Return the recorded offenses for one agent, oldest first."""
@@ -208,4 +255,4 @@ class OffenseMemory:
         """Wipe all recorded offenses. Test-only / operator reset hook."""
         with self._lock:
             self._by_agent.clear()
-            self._persist()
+        self._schedule_persist()

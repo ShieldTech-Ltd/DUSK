@@ -70,6 +70,7 @@ def test_persists_across_new_instances(tmp_path: Path) -> None:
     storage = tmp_path / "offenses.json"
     first = OffenseMemory(storage_path=str(storage))
     _record(first, trace_id="persisted-1")
+    first.flush()
 
     second = OffenseMemory(storage_path=str(storage))
     offenses = second.offenses_for("netops-agent")
@@ -114,11 +115,42 @@ def test_clear_wipes_all_agents(tmp_path: Path) -> None:
     _record(memory, agent_id="agent-b")
 
     memory.clear()
+    memory.flush()
 
     assert memory.offenses_for("agent-a") == []
     assert memory.offenses_for("agent-b") == []
     reloaded = OffenseMemory(storage_path=str(storage))
     assert reloaded.offenses_for("agent-a") == []
+
+
+def test_record_does_not_block_on_a_slow_disk_write(tmp_path: Path, monkeypatch) -> None:
+    """The point of the background writer: record() returns before the write lands,
+    even when the write itself is slow."""
+    import time
+
+    storage = tmp_path / "offenses.json"
+    original_replace = Path.replace
+
+    def slow_replace(self: Path, target: object) -> object:
+        time.sleep(0.2)
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", slow_replace)
+
+    memory = OffenseMemory(storage_path=str(storage))
+    start = time.monotonic()
+    _record(memory, trace_id="fast-return")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.2, "record() waited on the disk write instead of backgrounding it"
+    assert not storage.exists(), "write should still be in flight at this point"
+
+    memory.flush()
+    assert storage.exists()
+
+
+def test_flush_is_a_no_op_when_nothing_was_ever_written() -> None:
+    OffenseMemory(storage_path=None).flush()
 
 
 def test_offense_record_round_trips_through_to_dict_from_dict() -> None:

@@ -73,9 +73,14 @@ class Config:
             so a sustained burst of refused verdicts can't spawn unbounded
             OS threads.
         offense_memory_path: File the gate persists its repeat-offense
-            memory to, so it survives a service restart. Empty disables
-            persistence (the signal still scores within one process
-            lifetime, from an in-memory-only store).
+            memory to, so it survives a service restart. Empty (the
+            default) disables persistence -- the signal still scores within
+            one process lifetime, from an in-memory-only store, but nothing
+            is written to disk. Deliberately opt-in, matching the
+            ``n8n_*_url`` fields: an operator running the service outside
+            the Docker Compose stack (which sets this explicitly) shouldn't
+            get a file silently dropped into whatever the process's current
+            working directory happens to be.
         repeat_offense_max_contribution: Upper bound on how much the
             repeat-offense signal alone can add to an anomaly score, so it
             is one input among several rather than something that alone can
@@ -104,7 +109,7 @@ class Config:
     n8n_report_url: str = ""
     n8n_decision_url: str = ""
     n8n_max_workers: int = 8
-    offense_memory_path: str = "dusk-offense-memory.json"
+    offense_memory_path: str = ""
     repeat_offense_max_contribution: float = 0.3
     repeat_offense_half_life_days: float = 30.0
 

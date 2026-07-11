@@ -268,6 +268,8 @@ def test_offense_memory_persists_across_a_simulated_restart(client, tmp_path, mo
     payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
     before_restart = client.post("/v1/gate", json=payload).get_json()
     assert before_restart["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    # The write lands on a background thread; wait for it before asserting on disk.
+    api._get_gate_engine().offense_memory.flush()
     assert storage.exists()
 
     # Simulate a process restart: drop the cached engine, force a fresh load
