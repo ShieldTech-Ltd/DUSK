@@ -1,12 +1,13 @@
 # dusk-gate: the /v1/gate HTTP service (core gate + SIE client + trace + n8n).
-FROM python:3.11-slim
+# 3.12+ because sie-sdk requires it; the package's own >=3.11 floor is for installs without it.
+FROM python:3.12-slim
 
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
-RUN pip install --no-cache-dir -e ".[api]" \
+RUN pip install --no-cache-dir -e ".[api,sie]" \
     && useradd --create-home --uid 1000 dusk \
     && chown -R dusk:dusk /app
 

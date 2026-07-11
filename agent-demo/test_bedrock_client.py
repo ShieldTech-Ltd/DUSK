@@ -1,4 +1,4 @@
-"""Tests for DuskBedrockClient (T2) -- the model-call wrapper."""
+"""Tests for DuskBedrockClient -- the model-call wrapper."""
 
 from __future__ import annotations
 

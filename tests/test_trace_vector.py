@@ -6,6 +6,8 @@ import sys
 import types
 from unittest.mock import MagicMock
 
+import pytest
+
 from dusk.config import Config
 from dusk.trace import vector
 from dusk.trace.models import TraceDecision
@@ -125,7 +127,11 @@ def test_sie_score_preserves_input_order(monkeypatch) -> None:
 
     scores = vector.sie_score("query", ["candidate-a", "candidate-b"])
 
-    assert scores == [0.2, 0.9]
+    # Raw logits (0.2, 0.9) pass through sigmoid before returning, so the
+    # order is preserved but the values are calibrated probabilities.
+    assert scores is not None
+    assert scores == [pytest.approx(vector._sigmoid(0.2)), pytest.approx(vector._sigmoid(0.9))]
+    assert scores[0] < scores[1]
     fake_client.score.assert_called_once()
     assert fake_client.score.call_args[0][0] == DEFAULT_CONFIG.sie_score_model
 
@@ -157,7 +163,9 @@ def test_sie_extract_returns_entity_texts_when_available(monkeypatch) -> None:
 
     terms = vector.sie_extract("grant administrator on 0.0.0.0")
 
-    assert terms == ["administrator", "0.0.0.0"]
+    assert [t.text for t in terms] == ["administrator", "0.0.0.0"]
+    assert [t.label for t in terms] == ["role", "resource"]
+    assert [t.score for t in terms] == [0.9, 0.8]
     fake_client.extract.assert_called_once()
     assert fake_client.extract.call_args[0][0] == DEFAULT_CONFIG.sie_extract_model
     assert fake_client.extract.call_args[1]["labels"] == vector.DEFAULT_EXTRACT_LABELS
@@ -175,7 +183,7 @@ def test_sie_extract_returns_empty_and_does_not_raise_on_sdk_error(monkeypatch) 
 def test_find_similar_uses_sie_encode_when_available(monkeypatch) -> None:
     calls: list[str] = []
 
-    def fake_encode(text: str) -> list[float]:
+    def fake_encode(text: str, config: Config | None = None) -> list[float]:
         calls.append(text)
         return [1.0, 0.0] if "fw-corp-https" in text else [0.0, 1.0]
 
@@ -194,7 +202,7 @@ def test_find_similar_reranks_shortlist_with_sie_score(monkeypatch) -> None:
         TraceDecision(agent_id="netops-agent", action="b", score=20, reasoning="r"),
         TraceDecision(agent_id="netops-agent", action="c", score=30, reasoning="r"),
     ]
-    monkeypatch.setattr(vector, "sie_encode", lambda text: [1.0, 0.0])
+    monkeypatch.setattr(vector, "sie_encode", lambda text, config=None: [1.0, 0.0])
 
     def fake_score(query: str, candidates: list[str]) -> list[float]:
         # Same order as candidates: force the last one to the front.

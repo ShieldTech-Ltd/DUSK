@@ -1,4 +1,4 @@
-"""Tests for the local stub gate (T1) -- schema-shape only, no real analysis."""
+"""Tests for the local stub gate -- schema-shape only, no real analysis."""
 
 from __future__ import annotations
 

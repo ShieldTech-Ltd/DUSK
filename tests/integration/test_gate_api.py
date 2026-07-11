@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +14,14 @@ from dusk.config import reset_config
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 BASELINE_PATH = str(FIXTURES / "actions_normal.json")
+
+LAB_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "lab", "actions")
+sys.path.insert(0, os.path.abspath(LAB_DIR))
+
+import generate_actions  # noqa: E402
+
+if not Path(BASELINE_PATH).exists():
+    generate_actions.generate(str(FIXTURES))
 
 CONTRACT_FIELDS = {
     "trace_id",
@@ -33,9 +43,11 @@ def _reset_gate(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
     reset_config()
     api.reset_gate_engine()
+    api.reset_decision_history()
     yield
     reset_config()
     api.reset_gate_engine()
+    api.reset_decision_history()
 
 
 @pytest.fixture
@@ -57,6 +69,12 @@ def _action_payload(
         "source": "generic",
         "raw_ref": "evt-test-1",
     }
+
+
+def test_health(client) -> None:
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
 
 
 def test_gate_returns_contract_shaped_verdict(client) -> None:
@@ -104,6 +122,33 @@ def test_gate_rejects_oversized_body(client) -> None:
 
 def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) -> None:
     monkeypatch.delenv("DUSK_GATE_BASELINE_PATH", raising=False)
+    api.reset_gate_engine()
+    r = client.post("/v1/gate", json=_action_payload())
+    assert r.status_code == 200
+    assert any("no established baseline" in reason for reason in r.get_json()["reasons"])
+
+
+def test_health_reports_ok_when_baseline_not_configured(client, monkeypatch) -> None:
+    monkeypatch.delenv("DUSK_GATE_BASELINE_PATH", raising=False)
+    api.reset_gate_engine()
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
+
+
+def test_health_reports_degraded_when_baseline_path_is_broken(client, monkeypatch) -> None:
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", "/does/not/exist.json")
+    api.reset_gate_engine()
+    r = client.get("/health")
+    assert r.status_code == 503
+    body = r.get_json()
+    assert body["status"] == "degraded"
+    assert "baseline_error" in body
+
+
+def test_gate_still_serves_requests_when_baseline_is_broken(client, monkeypatch) -> None:
+    """/v1/gate degrades (every agent unknown) rather than refusing outright."""
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", "/does/not/exist.json")
     api.reset_gate_engine()
     r = client.post("/v1/gate", json=_action_payload())
     assert r.status_code == 200

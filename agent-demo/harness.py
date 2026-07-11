@@ -1,16 +1,18 @@
 """Agent harness: model -> extract action -> gate -> mock-PROD.
 
-Ties the pieces built in T1-T5 into one runnable flow:
+Ties the pipeline into one runnable flow:
 
     model (mock or real Bedrock)
       -> extract proposed toolUse (mock_bedrock.extract_tool_use)
       -> normalise into an AgentAction (BedrockAdapter.parse_tool_use)
       -> POST /v1/gate (DUSK_GATE_URL)
           -> ALLOW: call mock-PROD (MOCK_PROD_URL)
-          -> WOULD-BLOCK / BLOCK: stop, surface the reason
+          -> WOULD-BLOCK: log the reason, still call mock-PROD -- watch mode
+             is observational, not enforcing (see dusk.actions.verdict)
+          -> BLOCK: stop, surface the reason, mock-PROD never sees the action
 
-DUSK_GATE_URL defaults to the T1 stub; point it at the real dusk-gate
-service (T8) once both sides are ready to integrate.
+DUSK_GATE_URL defaults to a local stub gate for isolated testing; point it
+at the real dusk-gate service once both sides are ready to integrate.
 """
 
 from __future__ import annotations
@@ -37,15 +39,17 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
 
     Returns:
         A summary dict: ``{"verdict": ..., "action": {...}, "applied": bool}``.
-        ``applied`` is True only when the gate ALLOWed the action and
-        mock-PROD accepted it.
+        ``applied`` is True whenever mock-PROD was actually called and
+        accepted the action -- true for ALLOW, and also for WOULD-BLOCK,
+        since watch mode logs a verdict without stopping anything. Only a
+        real BLOCK (enforce mode) keeps the action from reaching mock-PROD.
 
     Raises:
-        DuskBlockedError: Never raised directly -- callers that want the
-            exception-based contract from T2 should catch the WOULD-BLOCK
-            / BLOCK verdict themselves via the returned dict. This
-            function returns rather than raises so a demo script can
-            print both outcomes without a try/except per scenario.
+        DuskBlockedError: Never raised directly -- callers that want an
+            exception-based contract should catch the WOULD-BLOCK / BLOCK
+            verdict themselves via the returned dict. This function returns
+            rather than raises so a demo script can print both outcomes
+            without a try/except per scenario.
     """
     use_real_bedrock = os.getenv("USE_REAL_BEDROCK", "false").lower() == "true"
     if use_real_bedrock:
@@ -71,7 +75,11 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     gate_resp.raise_for_status()
     verdict_payload = gate_resp.json()
 
-    if verdict_payload["verdict"] != "ALLOW":
+    # BLOCK (enforce mode) is the only verdict that actually stops the
+    # action. WOULD-BLOCK (watch mode, the default) is observational: it
+    # logs what an inline gate would have done without disrupting real
+    # traffic, so it still reaches mock-PROD, same as ALLOW.
+    if verdict_payload["verdict"] == "BLOCK":
         return {
             "verdict": verdict_payload["verdict"],
             "action": action.to_dict(),
@@ -86,6 +94,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     return {
         "verdict": verdict_payload["verdict"],
         "action": action.to_dict(),
+        "reasons": verdict_payload.get("reasons", []),
         "applied": True,
     }
 
@@ -93,9 +102,8 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
 def run_scenario_or_raise(agent_id: str, scenario: str) -> dict[str, Any]:
     """Like run_scenario, but raises DuskBlockedError on WOULD-BLOCK/BLOCK.
 
-    This is the T2-contract entry point: callers that want the
-    exception-based flow (raise on block, proceed on allow) use this
-    instead of inspecting the returned verdict themselves.
+    Callers that want an exception-based flow (raise on block, proceed on
+    allow) use this instead of inspecting the returned verdict themselves.
     """
     result = run_scenario(agent_id, scenario)
     if result["verdict"] not in ("ALLOW", "NO_ACTION"):

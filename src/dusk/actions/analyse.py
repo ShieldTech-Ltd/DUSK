@@ -38,12 +38,18 @@ _W_SENSITIVE = 0.35
 #: found nothing new. Only fires when SIE is configured and reachable; the
 #: rule-based score above is unchanged otherwise.
 _W_LOW_SEMANTIC_SIMILARITY = 0.2
-#: Rerank score below this is treated as "no close match".
+#: Rerank score below this is "no close match". sie_score() bounds the raw logit into [0, 1] via
+#: sigmoid, but this floor is a heuristic, not an empirically calibrated cutoff.
 _SEMANTIC_SIMILARITY_FLOOR = 0.3
 #: Extra contribution when SIE's zero-shot extractor (GLiNER) surfaces a
 #: privileged term the static frozenset below doesn't already cover. Slightly
 #: below _W_SENSITIVE since it's a probabilistic match, not an exact one.
 _W_EXTRACTED_SENSITIVE = 0.3
+#: Below this confidence, a zero-shot extraction is treated as noise, not evidence.
+_EXTRACT_CONFIDENCE_FLOOR = 0.5
+#: Only these GLiNER labels indicate privilege escalation; "resource"/"segment"/"port" (also in
+#: DEFAULT_EXTRACT_LABELS) are neutral descriptors and shouldn't add score on their own.
+_PRIVILEGED_LABELS = frozenset({"role", "privilege"})
 
 #: MITRE ATT&CK technique per normalised action type.
 _ATTCK: dict[str, str] = {
@@ -148,14 +154,18 @@ def _predicted_next(action: AgentAction) -> str:
 def _extracted_sensitive_terms(features: dict[str, Any]) -> set[str]:
     """Pull privileged terms from the action's target/change text via SIE extract.
 
-    Returns an empty set whenever SIE is not configured/reachable, so the
-    static frozenset checks are the only sensitivity signal in the default
-    (no-SIE) case.
+    Returns an empty set whenever SIE is not configured/reachable, or when
+    every extraction is low-confidence or labeled as a neutral descriptor
+    rather than role/privilege (see _EXTRACT_CONFIDENCE_FLOOR, _PRIVILEGED_LABELS).
     """
     text = " ".join(sorted(features["tokens"] | features["change_values"]))
     if not text:
         return set()
-    return {term.lower() for term in sie_extract(text)}
+    return {
+        term.text.lower()
+        for term in sie_extract(text)
+        if term.score >= _EXTRACT_CONFIDENCE_FLOOR and term.label.lower() in _PRIVILEGED_LABELS
+    }
 
 
 def _semantic_novelty(

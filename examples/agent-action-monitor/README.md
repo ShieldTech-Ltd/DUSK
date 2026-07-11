@@ -1,0 +1,239 @@
+# DUSK agent-action-monitor
+
+Watching agent behaviour for what most tooling quietly misses, with
+Superlinked surfacing the anomalies.
+
+> This README describes the example as it will look once extracted to its
+> own directory in `superlinked/sie`. Right now it lives inside the main
+> [DUSK](https://github.com/TFT444/DUSK) repo, and the paths below
+> (`docker-compose.yml`, `Dockerfile`, `agent-demo/`, `mock-prod/`,
+> `contracts/`, `src/dusk/`) currently sit at that repo's root rather than
+> alongside this file -- see "What's in the box" below for exactly what
+> moves where on extraction.
+
+## What this shows
+
+An AI agent proposes a control-plane action -- a firewall rule, a route
+change, a role grant. DUSK's gate judges that **proposed action** itself,
+not the prompt that led to it, against a per-agent behavioural baseline
+built from the agent's own history. A hijacked agent still has valid
+credentials, so anything that only checks "is this agent allowed to do
+this" waves it through. Only *"does this agent normally do this"* catches
+it -- and that's the question a credential check can't answer.
+
+Two scenarios, both keyless by default:
+
+- **Clean**: an agent proposes a routine action it makes every day. The
+  gate allows it, and it reaches the downstream target.
+- **Poisoned**: the agent's response is hijacked (a smuggled instruction in
+  its context) into proposing an action well outside its own baseline --
+  opening a firewall rule to `0.0.0.0/0` in a restricted segment. The gate
+  refuses it before it ever reaches the downstream target. The agent's
+  credentials were real the whole time; only its behaviour gave the hijack
+  away.
+
+## Run it locally
+
+```bash
+docker compose up
+```
+
+Brings up the gate service (`dusk-gate`, the real `/v1/gate` HTTP
+endpoint), a self-hosted SIE container (`sie`), `n8n`, a dummy downstream
+target (`mock-prod`), and the agent harness (`agent-demo`) -- all on one
+internal network, no external egress beyond `sie`'s one-time model-weight
+download, no API keys required.
+
+The first `up` cold-starts three CPU models in `sie` (encode, score,
+extract) and needs real memory headroom to do it quickly -- allocate at
+least 8 GB to Docker Desktop. Under 4 GB, each model's first request can
+take many minutes rather than SIE's usual 10-60s, since there isn't enough
+free memory to load them without swapping.
+
+Without Docker, run the pieces directly:
+
+```bash
+# terminal 1: the gate
+python -m dusk.api
+
+# terminal 2: the dummy downstream target
+python mock-prod/app.py
+
+# terminal 3: the scenarios
+python agent-demo/run_scenario.py
+```
+
+### What you'll see
+
+By default the gate runs in **watch mode** (`DUSK_ENFORCE=false`), which is
+observational: a poisoned action gets `WOULD-BLOCK` and the reason is
+logged, but the action still proceeds -- an inline gate that wrongly blocks
+a legitimate action can disrupt a network, so DUSK doesn't enforce until an
+operator has built confidence in the baseline.
+
+```
+=== clean ===
+verdict:  ALLOW
+applied:  True
+action:   { "agent_id": "netops-agent", "action_type": "route_change", "target": "rt-corp-prod", ... }
+
+=== poisoned ===
+verdict:  WOULD-BLOCK
+applied:  True
+reasons:  target introduces unseen terms ['restricted', 'segment'], change introduces unseen values ['0.0.0.0/0', 'allow'], newly introduces sensitive or privileged terms ['0.0.0.0/0', 'restricted']
+action:   { "agent_id": "netops-agent", "action_type": "firewall_rule_change", "target": "fw-corp-restricted-segment", ... }
+```
+
+Check the downstream target's log directly (`curl http://localhost:9000/log`)
+-- both actions are there in watch mode. The flagged reasons on the
+poisoned one are the signal: an operator watching this log sees exactly
+what an inline gate would have stopped, before ever trusting it to do so
+automatically.
+
+Set `DUSK_ENFORCE=true` on the `dusk-gate` service to switch to **enforce
+mode**, where `BLOCK` actually stops the action before it reaches
+`mock-prod`:
+
+```
+=== poisoned (enforce mode) ===
+verdict:  BLOCK
+applied:  False
+reasons:  target introduces unseen terms ['restricted', 'segment'], change introduces unseen values ['0.0.0.0/0', 'allow'], newly introduces sensitive or privileged terms ['0.0.0.0/0', 'restricted']
+```
+
+Now `mock-prod`'s log shows only the clean action -- that absence is the
+entire point of enforce mode, once watch mode has built enough confidence
+to turn it on.
+
+### n8n webhooks
+
+Every verdict fires `decision` and `report`; refused verdicts also fire
+`alert` (`src/dusk/trace/n8n_client.py`). The `n8n` container has these
+three webhooks active from startup (`n8n/dusk-webhooks.json`, baked into
+the image, not imported by hand) -- each just responds immediately, no
+external service involved. Watch them land in the executions list at
+`http://localhost:5678`.
+
+## Sample data
+
+`sample-data/baseline.json` (15 known-good actions across three agents) and
+`sample-data/check-mixed.json` (that same baseline plus 3 out-of-pattern
+actions) let you exercise the gate directly, independent of the agent
+harness:
+
+```bash
+dusk gate --baseline sample-data/baseline.json --check sample-data/check-mixed.json --json
+```
+
+This is the same fixture data used in DUSK's own test suite (a labelled
+precision/recall benchmark asserts the gate catches every one of the 3
+attacks with zero false alarms on the 15 routine actions).
+
+## SIE features used
+
+All three primitives run on the live `/v1/gate` request path, not just in
+a benchmark, and every signal they feed is additive-only, so disabling SIE
+degrades detection quality rather than breaking anything:
+
+| Model | Primitive | Role |
+|---|---|---|
+| `BAAI/bge-m3` | encode | Embeds each verdict once, when it's recorded, and embeds each new action once, when it's checked -- similarity between the two is what powers `similar_decision_ids`. |
+| `BAAI/bge-reranker-v2-m3` | score | Reranks the encode-shortlisted history for `similar_decision_ids`, and separately reranks an agent's own baseline history to catch semantic novelty a new action's exact wording wouldn't show. |
+| `urchade/gliner_multi-v2.1` | extract | Zero-shot extraction of privileged terms (role, privilege, resource, segment, port) from an action, weighted by the model's own confidence rather than treated as a flat yes/no. |
+
+`/v1/gate`'s response carries the result directly: `similar_decision_ids`
+is populated from a real per-agent decision history (embedded once at
+record time, capped at 200 entries so lookup cost stays O(1) regardless of
+how long the gate has been running -- see `src/dusk/api.py`), not
+hardcoded. This has also been validated against Superlinked's hosted SIE
+cluster directly, not just assumed: `sie_encode` returns a genuine
+1024-dimension `bge-m3` vector, precision/recall on the labelled fixture is
+unchanged with SIE live versus the deterministic-only baseline (1.0/1.0
+either way), and at least one attack's reasons carry a real SIE-sourced
+marker confirming the primitives are actually contributing a signal over
+the network. See `docs/sie-primitives.md` for exactly where each primitive
+is wired in.
+
+## Why SIE specifically
+
+The alternative to one SIE cluster serving all three primitives is three
+separate vendors (an embeddings API, a reranking API, an NER API), three
+sets of credentials, three failure modes. One self-hosted SIE container
+covers encode, score, and extract behind one client, with no API key
+needed for local development -- and the same client code points at a
+hosted endpoint for real-load testing with a one-line env var change.
+
+## Latency
+
+Full `agent-demo` -> gate -> `mock-prod` round trip against Superlinked's
+hosted tester cluster, 20 requests per concurrency level, 20% poisoned /
+80% clean mix:
+
+| Concurrency | p50 | p95 | Errors |
+|---|---|---|---|
+| 1 | 294ms | 10008ms | 2/20 |
+| 3 | 307ms | 474ms | 0/20 |
+| 5 | 295ms | 317ms | 0/20 |
+
+Correctness held throughout: every allowed action reached `mock-prod`,
+every poisoned action was refused in watch mode and never applied. The
+concurrency=1 tail is the tester cluster scaling a model back to zero
+between sparse sequential requests, not a concurrency effect -- see
+`docs/gate-latency-notes.md` for the full account, including why that tail
+is a property of the shared tester allocation rather than the gate.
+
+## What's in the box
+
+On extraction to `superlinked/sie`, this example bundles:
+
+- `Dockerfile`, `docker-compose.yml` -- the gate service, self-hosted SIE,
+  n8n, mock-prod, and agent-demo, wired together on one internal network
+- `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
+  contract
+- `src/dusk/` -- the gate itself: `actions/` (baseline, analyse, verdict),
+  `trace/` (SIE client, n8n webhooks), `config.py`, `api.py`. Only the
+  agent-action gate, not DUSK's separate network/packet-detection layer
+  (`sensor/`, `detections/`), which stays in the main DUSK repo
+- `agent-demo/` -- the Bedrock-or-mock agent harness, tool-call extraction,
+  load driver
+- `mock-prod/` -- the dummy downstream target
+- `n8n/` -- a custom n8n image with the three DUSK webhooks (decision/
+  report/alert) baked in and active from container start; no manual
+  workflow import, no external service in the workflow itself
+- `sample-data/` -- the baseline and mixed-check fixtures referenced above
+
+## Known limits
+
+- `/v1/gate` is unauthenticated with CORS open to all origins, and compose
+  publishes it on every host interface. That's appropriate for a local
+  example anyone can curl immediately -- it is not a production security
+  boundary. Put a real auth layer and network restriction in front of it
+  before exposing it beyond a trusted internal network.
+- If `DUSK_GATE_BASELINE_PATH` is set but the file fails to load, the gate
+  still serves requests -- every agent just reads as unknown, which is a
+  real degradation of what the gate actually catches, not just a startup
+  error. `/health` reports `{"status": "degraded", "baseline_error": ...}`
+  in this case; a real deployment should alert on that rather than only a
+  log line.
+- The baseline/attack fixtures are synthetic, not real production traffic.
+- The deterministic feature checks in DUSK's gate do the primary anomaly
+  scoring; SIE's three primitives are an enrichment layer on top of that,
+  not a replacement for it -- the gate's core detection logic is not
+  dependent on any AI model at runtime.
+- SIE's rerank pass only reorders a small shortlist of candidates already
+  retrieved by cosine similarity, not the full decision history.
+- The extract model's privileged-term detection is zero-shot and has only
+  been evaluated against the same synthetic fixtures used elsewhere, not an
+  adversarial corpus designed to evade it specifically.
+- Latency numbers are from a single 20-request-per-level trial against a
+  shared tester cluster; enough to confirm the shape, not a high-confidence
+  p95 at every level. See `docs/gate-latency-notes.md`.
+
+## Built with
+
+[Superlinked SIE](https://github.com/superlinked/sie), Flask, n8n. Models:
+`BAAI/bge-m3`, `BAAI/bge-reranker-v2-m3`, `urchade/gliner_multi-v2.1`.
+
+## Credits
+
+Built by Ritik Sah and Tanvir Farhad.

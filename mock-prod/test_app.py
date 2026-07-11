@@ -1,4 +1,4 @@
-"""Tests for the mock-prod dummy downstream target (T5)."""
+"""Tests for the mock-prod dummy downstream target."""
 
 from __future__ import annotations
 

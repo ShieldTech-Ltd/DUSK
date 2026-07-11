@@ -14,17 +14,12 @@ to a different workflow even though the payload is the same verdict record:
               workflow, kept on a separate URL from decision so the two
               concerns can be routed independently.
   alert    -- fires only when the verdict is refused (WOULD-BLOCK or BLOCK).
-
-N8N_WEBHOOK_URL is the older, single-webhook path kept for the existing
-company-research demo flow (src/dusk/recorder.py), read directly from the
-environment rather than Config, and is unrelated to the three above.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import urllib.error
 import urllib.request
@@ -32,12 +27,6 @@ import urllib.request
 from dusk.config import Config, get_config
 
 logger = logging.getLogger(__name__)
-
-
-def fire_webhook(payload: dict[str, object]) -> None:
-    """Fire the legacy single n8n webhook in a daemon thread -- never blocks the caller."""
-    url = os.getenv("N8N_WEBHOOK_URL", "")
-    threading.Thread(target=_send, args=(url, "legacy", payload), daemon=True).start()
 
 
 def fire_decision(payload: dict[str, object], config: Config | None = None) -> None:

@@ -1,11 +1,11 @@
 """Local stub for /v1/gate -- for agent-demo development only.
 
-Ritik's real gate service (src/dusk/api.py) already implements the full
+The real gate service (src/dusk/api.py) already implements the full
 contract with SIE-backed scoring. This stub exists so agent-demo work can
 iterate without the SIE/n8n/Docker stack running: it returns canned,
 schema-valid verdicts keyed off the incoming action_type, not real
 analysis. Swap DUSK_GATE_URL to the real gate once both sides are ready
-to integrate (T8).
+to integrate.
 """
 
 from __future__ import annotations
