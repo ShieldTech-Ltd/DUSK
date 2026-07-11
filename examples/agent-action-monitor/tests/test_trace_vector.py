@@ -237,3 +237,35 @@ def test_find_similar_reranks_shortlist_with_sie_score(monkeypatch) -> None:
     results = vector.find_similar("query-action", "netops-agent", decisions, top_k=3)
 
     assert [r.action for r in results] == ["c", "b", "a"]
+
+
+def test_similar_decision_uses_the_recorded_verdict_not_a_score_guess() -> None:
+    """Regression test: SimilarDecision.verdict must come from TraceDecision.verdict,
+    not be reconstructed from a hardcoded score cutoff decoupled from
+    gate_block_threshold and collapsing WOULD-BLOCK/BLOCK into one label."""
+    decisions = [
+        TraceDecision(
+            agent_id="netops-agent", action="a", score=95, reasoning="r", verdict="WOULD-BLOCK"
+        ),
+        TraceDecision(
+            agent_id="netops-agent", action="b", score=10, reasoning="r", verdict="ALLOW"
+        ),
+    ]
+
+    scored = list(zip([0.9, 0.8], decisions, strict=True))
+    results = vector._rank_candidates("query", scored, top_k=2)
+
+    verdict_by_action = {r.action: r.verdict for r in results}
+    assert verdict_by_action["a"] == "WOULD-BLOCK"
+    assert verdict_by_action["b"] == "ALLOW"
+
+
+def test_similar_decision_falls_back_for_legacy_decision_with_no_verdict() -> None:
+    """A TraceDecision recorded before the verdict field existed has verdict=='' --
+    must fall back to a labeled default, not silently claim ALLOW."""
+    decisions = [TraceDecision(agent_id="netops-agent", action="a", score=50, reasoning="r")]
+    scored = [(0.9, decisions[0])]
+
+    results = vector._rank_candidates("query", scored, top_k=1)
+
+    assert results[0].verdict == vector._UNKNOWN_VERDICT_FALLBACK

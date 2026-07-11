@@ -61,6 +61,12 @@ class SimilarDecision:
     score: int
 
 
+#: Fallback verdict for a TraceDecision recorded before the verdict field
+#: existed. Errs toward the more conservative label rather than guessing
+#: from score, which is what caused the bug this constant replaces.
+_UNKNOWN_VERDICT_FALLBACK = "WOULD-BLOCK"
+
+
 def _sie_client(config: Config) -> Any | None:  # noqa: ANN401
     """Return a constructed SIEClient if the sie-sdk package is installed, else None."""
     try:
@@ -251,7 +257,7 @@ def _rank_candidates(
             agent_id=d.agent_id,
             action=d.action,
             similarity=round(sim, 3),
-            verdict="BLOCK" if d.score >= 70 else "ALLOW",
+            verdict=d.verdict or _UNKNOWN_VERDICT_FALLBACK,
             score=d.score,
         )
         for sim, d in top

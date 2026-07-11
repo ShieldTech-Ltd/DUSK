@@ -229,3 +229,14 @@ def test_recorded_decision_carries_real_risk_flags_and_similar_ids(client) -> No
     # The third, near-identical action should find at least the second as a match.
     assert third["similar_decision_ids"] != []
     assert second["trace_id"] in third["similar_decision_ids"]
+
+
+def test_recorded_decision_carries_the_real_verdict(client) -> None:
+    """TraceDecision.verdict must reflect the actual gate verdict, not be left
+    at its dataclass default and reconstructed later from a hardcoded score cutoff."""
+    response = client.post("/v1/gate", json=_action_payload(port=443))
+    body = response.get_json()
+
+    stored = api._decision_history[-1][0]
+    assert stored.verdict == body["verdict"]
+    assert stored.verdict != ""

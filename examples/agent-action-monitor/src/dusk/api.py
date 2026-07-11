@@ -118,6 +118,7 @@ def _record_decision(
     score: float,
     reasons: list[str],
     similar_decision_ids: list[str],
+    verdict: str,
 ) -> None:
     from dusk.trace.models import TraceDecision
     from dusk.trace.vector import embed_text
@@ -130,6 +131,7 @@ def _record_decision(
         reasoning=reasons[0] if reasons else "",
         risk_flags=reasons,
         similar_decision_ids=similar_decision_ids,
+        verdict=verdict,
     )
     # Embedded with the same "agent_id action_text" text shape a future
     # lookup's candidates are compared against -- not the query shape.
@@ -188,6 +190,7 @@ def evaluate_gate_action() -> object:
         analysis.score,
         analysis.reasons,
         similar_decision_ids,
+        verdict.verdict,
     )
 
     from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report

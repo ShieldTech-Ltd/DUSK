@@ -23,6 +23,9 @@ class TraceDecision:
     timestamp: float = field(default_factory=time.time)
     risk_flags: list[str] = field(default_factory=list)
     similar_decision_ids: list[str] = field(default_factory=list)
+    #: The gate's actual verdict (ALLOW / WOULD-BLOCK / BLOCK) for this decision, empty when
+    #: unknown (e.g. a decision recorded before this field existed).
+    verdict: str = ""
 
     @property
     def risk_level(self) -> str:
@@ -41,6 +44,7 @@ class TraceDecision:
             "reasoning": self.reasoning,
             "risk_flags": self.risk_flags,
             "timestamp": self.timestamp,
+            "verdict": self.verdict,
             "output": {
                 "score": self.score,
                 "reasoning": self.reasoning,
