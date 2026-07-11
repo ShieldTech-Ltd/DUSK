@@ -69,6 +69,9 @@ class Config:
         n8n_report_url: n8n webhook fired on every gate verdict.
         n8n_decision_url: n8n webhook fired on every gate verdict, kept on
             its own URL so automation and reporting can be routed separately.
+        n8n_max_workers: Size of the bounded thread pool webhook firing uses,
+            so a sustained burst of refused verdicts can't spawn unbounded
+            OS threads.
     """
 
     sweep_threshold: int = 15
@@ -88,6 +91,7 @@ class Config:
     n8n_alert_url: str = ""
     n8n_report_url: str = ""
     n8n_decision_url: str = ""
+    n8n_max_workers: int = 8
 
     def __post_init__(self) -> None:
         """Validate values after construction.
@@ -105,6 +109,7 @@ class Config:
             "boundary_window_seconds",
             "gate_block_threshold",
             "sie_timeout_ms",
+            "n8n_max_workers",
         )
         for name in positive_numeric:
             value = getattr(self, name)

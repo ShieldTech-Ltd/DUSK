@@ -24,6 +24,11 @@ boundary_port_threshold: 10
 # Length of the boundary sliding window, in seconds.
 boundary_window_seconds: 30.0
 
+# --- Agent action gate ---
+# Anomaly score (0..1) at or above which an action is refused (WOULD-BLOCK in
+# watch mode, BLOCK in enforce mode).
+gate_block_threshold: 0.6
+
 # --- Alerting & logging ---
 # File the alert responder appends JSON entries to (relative to cwd).
 alert_log_path: dusk-alerts.json

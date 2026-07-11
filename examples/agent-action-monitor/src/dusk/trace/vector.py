@@ -13,6 +13,7 @@ self-hosted SIE needs no key at all.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -195,10 +196,21 @@ def sie_extract(
         return []
 
 
+def _stable_hash(token: str) -> int:
+    """Deterministic token hash, stable across process restarts.
+
+    Python's built-in hash() is salted per-process (PYTHONHASHSEED) for
+    strings, so two runs of the gate would embed the same text
+    differently -- silently making previously recorded fallback
+    embeddings incomparable to freshly computed ones after any restart.
+    """
+    return int(hashlib.sha256(token.encode("utf-8")).hexdigest(), 16)
+
+
 def _ngram_fallback(text: str, dims: int = 64) -> list[float]:
     vec = [0.0] * dims
     for token in text.lower().split():
-        vec[hash(token) % dims] += 1.0
+        vec[_stable_hash(token) % dims] += 1.0
     norm = math.sqrt(sum(v * v for v in vec)) or 1.0
     return [v / norm for v in vec]
 
