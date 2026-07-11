@@ -53,6 +53,9 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 "lab/*" = ["S", "ANN"]
 "agent-demo/test_*.py" = ["S", "ANN"]
 "mock-prod/test_*.py" = ["S", "ANN"]
+# Bare-name statements are vulture's own documented whitelist syntax, not a
+# real code smell -- see scripts/vulture_whitelist.py's module docstring.
+"scripts/vulture_whitelist.py" = ["B018"]
 
 [tool.mypy]
 python_version = "3.11"

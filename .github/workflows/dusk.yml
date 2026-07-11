@@ -39,6 +39,48 @@ jobs:
       # (a bare `pip-audit` also flags the runner's own pip/setuptools).
       - run: pip-audit -r requirements.txt
 
+  # Catches orphaned code that a coverage percentage alone can hide (a
+  # well-tested repo's average can stay high while one whole file sits at
+  # 0%, unreferenced anywhere -- exactly how heal.py went unnoticed).
+  # scripts/vulture_whitelist.py documents every suppressed finding with
+  # a real cross-reference check, not blanket ignores.
+  deadcode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]" vulture
+      - run: >
+          vulture src/ tests/ scripts/vulture_whitelist.py --min-confidence 60
+          --ignore-decorators "@main.command,@click.*,@app.route,@app.get,@app.post,@*.fixture"
+          --ignore-names "return_value,side_effect"
+
+  # Scans the full history on every push/PR, not just the current diff --
+  # .gitignore only stops a secret from being committed going forward, not
+  # from a past commit that was later "fixed" but is still reachable.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Narrow, purpose-built check for the exact bug in #62: CLAUDE.md quoted
+  # gate_block_threshold: 0.7 while config.py's real default was 0.6.
+  # Compares every numeric Config default against what CLAUDE.md/README.md
+  # actually say, not a general prose linter.
+  doc-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e "."
+      - run: python scripts/check_config_docs.py
+
   test:
     needs: [lint, typecheck, security]
     runs-on: ubuntu-latest
@@ -103,6 +145,21 @@ jobs:
           /tmp/audit-venv/bin/pip install -q -e . -r agent-demo/requirements.txt -r mock-prod/requirements.txt
           /tmp/audit-venv/bin/pip freeze | grep -v '^-e ' > /tmp/audit-requirements.txt
           pip-audit -r /tmp/audit-requirements.txt
+
+  example-deadcode:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: examples/agent-action-monitor }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]" vulture
+      - run: pip install -r agent-demo/requirements.txt -r mock-prod/requirements.txt
+      - run: >
+          vulture src/ tests/ agent-demo/ mock-prod/ scripts/vulture_whitelist.py --min-confidence 60
+          --ignore-decorators "@app.route,@app.get,@app.post,@click.*,@*.fixture"
+          --ignore-names "return_value,side_effect,testing"
 
   example-test:
     needs: [example-lint, example-typecheck, example-security]
