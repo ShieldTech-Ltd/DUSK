@@ -204,3 +204,28 @@ def test_gate_webhook_payload_includes_action_context(client) -> None:
     assert payload["action_type"] == "firewall_rule_change"
     assert payload["target"] == "fw-corp-https"
     assert set(CONTRACT_FIELDS) <= set(payload)
+
+
+def test_recorded_decision_carries_real_risk_flags_and_similar_ids(client) -> None:
+    """TraceDecision.risk_flags and .similar_decision_ids must reflect what the
+    response actually computed, not stay at their dataclass defaults -- both
+    were previously always empty on the stored object even when the response
+    carried real values (similar_decision_ids) or real reasons existed
+    (risk_flags). find_similar_cached needs at least 2 prior decisions before
+    it returns anything, so this fires three near-identical actions and
+    checks the third."""
+    client.post("/v1/gate", json=_action_payload(port=443))
+    second = client.post("/v1/gate", json=_action_payload(port=443)).get_json()
+    third_response = client.post("/v1/gate", json=_action_payload(port=443))
+    third = third_response.get_json()
+
+    stored_third = api._decision_history[-1][0]
+    assert stored_third.id == third["trace_id"]
+    assert stored_third.similar_decision_ids == third["similar_decision_ids"]
+    if third["reasons"]:
+        assert stored_third.risk_flags == third["reasons"]
+        assert stored_third.risk_flags != []
+
+    # The third, near-identical action should find at least the second as a match.
+    assert third["similar_decision_ids"] != []
+    assert second["trace_id"] in third["similar_decision_ids"]

@@ -112,7 +112,12 @@ def _find_similar_decisions(agent_id: str, action_text: str) -> list[str]:
 
 
 def _record_decision(
-    decision_id: str, agent_id: str, action_text: str, score: float, reasons: list[str]
+    decision_id: str,
+    agent_id: str,
+    action_text: str,
+    score: float,
+    reasons: list[str],
+    similar_decision_ids: list[str],
 ) -> None:
     from dusk.trace.models import TraceDecision
     from dusk.trace.vector import embed_text
@@ -123,6 +128,8 @@ def _record_decision(
         action=action_text,
         score=round(score * 100),
         reasoning=reasons[0] if reasons else "",
+        risk_flags=reasons,
+        similar_decision_ids=similar_decision_ids,
     )
     # Embedded with the same "agent_id action_text" text shape a future
     # lookup's candidates are compared against -- not the query shape.
@@ -154,6 +161,7 @@ def evaluate_gate_action() -> object:
     analysis = verdict.analysis
     action_text = f"{action.action_type} {action.target}"
     trace_id = uuid.uuid4().hex
+    similar_decision_ids = _find_similar_decisions(action.agent_id, action_text)
 
     response: dict[str, object] = {
         "trace_id": trace_id,
@@ -164,7 +172,7 @@ def evaluate_gate_action() -> object:
         "mitre_atlas": [analysis.mitre_atlas] if analysis.mitre_atlas else [],
         "reasons": analysis.reasons,
         "predicted_next": analysis.predicted_next,
-        "similar_decision_ids": _find_similar_decisions(action.agent_id, action_text),
+        "similar_decision_ids": similar_decision_ids,
     }
     logger.info(
         "gate verdict trace_id=%s agent=%s verdict=%s score=%.2f",
@@ -173,7 +181,14 @@ def evaluate_gate_action() -> object:
         verdict.verdict,
         analysis.score,
     )
-    _record_decision(trace_id, action.agent_id, action_text, analysis.score, analysis.reasons)
+    _record_decision(
+        trace_id,
+        action.agent_id,
+        action_text,
+        analysis.score,
+        analysis.reasons,
+        similar_decision_ids,
+    )
 
     from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report
 
