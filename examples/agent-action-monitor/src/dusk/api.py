@@ -213,10 +213,17 @@ def evaluate_gate_action() -> object:
 
 @app.route("/health")
 def health() -> object:
-    _get_gate_engine()  # forces the baseline load attempt so it's reflected below
+    gate_engine = _get_gate_engine()  # forces the baseline load attempt so it's reflected below
     if _baseline_load_error is not None:
         # 503 so the Dockerfile HEALTHCHECK actually flags this, not just a log line.
         return jsonify({"status": "degraded", "baseline_error": _baseline_load_error}), 503
+    offense_memory = gate_engine.offense_memory
+    persist_error = offense_memory.last_persist_error if offense_memory is not None else None
+    if persist_error is not None:
+        # Also degraded, not fatal: the gate keeps serving requests either way, but an
+        # operator watching persist_error silently fail loses the repeat-offense signal's
+        # durability guarantee without ever seeing it happen -- surface it here instead.
+        return jsonify({"status": "degraded", "offense_memory_error": persist_error}), 503
     return jsonify({"status": "ok"})
 
 

@@ -159,6 +159,29 @@ def test_gate_still_serves_requests_when_baseline_is_broken(client, monkeypatch)
     assert any("no established baseline" in reason for reason in r.get_json()["reasons"])
 
 
+def test_health_reports_degraded_when_offense_memory_persistence_fails(
+    client, tmp_path, monkeypatch
+) -> None:
+    """A silently failing repeat-offense write must be visible to monitoring, not just logs."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("blocking file", encoding="utf-8")
+    bad_storage = blocker / "offense-memory.json"
+    monkeypatch.setenv("DUSK_OFFENSE_MEMORY_PATH", str(bad_storage))
+    reset_config()
+    api.reset_gate_engine()
+
+    payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
+    r = client.post("/v1/gate", json=payload)
+    assert r.get_json()["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    api._get_gate_engine().offense_memory.flush()
+
+    health = client.get("/health")
+    assert health.status_code == 503
+    body = health.get_json()
+    assert body["status"] == "degraded"
+    assert "offense_memory_error" in body
+
+
 def test_gate_enforce_mode_via_config_blocks_instead_of_would_block(client, monkeypatch) -> None:
     monkeypatch.setenv("DUSK_ENFORCE", "true")
     reset_config()
