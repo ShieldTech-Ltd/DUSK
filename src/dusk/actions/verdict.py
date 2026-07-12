@@ -1,12 +1,4 @@
-"""Turn an analysis into a gate decision.
-
-The gate ties the pieces together: learn a baseline from known-good actions,
-analyse a new action, and render a verdict. The verdict is deliberately
-conservative about enforcement. In watch mode (the default) the gate never
-blocks; it renders WOULD-BLOCK so an operator can see what an inline gate
-would have done, because a gate that wrongly blocks a legitimate action can
-disrupt a network. Enforce mode upgrades WOULD-BLOCK to BLOCK.
-"""
+"""Render ALLOW, WOULD-BLOCK, or BLOCK from behavioral analysis."""
 
 from __future__ import annotations
 
