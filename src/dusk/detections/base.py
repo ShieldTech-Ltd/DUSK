@@ -1,9 +1,4 @@
-"""Base types shared by every Dusk detection.
-
-A :class:`Detection` inspects a list of packet dicts (as produced by the
-sensors in :mod:`dusk.sensor`) and returns a :class:`DetectionResult`
-describing whether the traffic looks benign and, if not, why.
-"""
+"""Shared interfaces and results for packet detections."""
 
 from __future__ import annotations
 

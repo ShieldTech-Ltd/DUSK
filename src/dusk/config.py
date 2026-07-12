@@ -1,16 +1,4 @@
-"""Configuration system for Dusk.
-
-Configuration is resolved from three layers, lowest to highest precedence:
-
-1. Dataclass defaults defined on :class:`Config`.
-2. A ``dusk.yaml`` file in the current working directory, if present.
-3. Environment variables prefixed ``DUSK_`` (e.g. ``DUSK_SWEEP_THRESHOLD``).
-
-The active configuration is a process-wide singleton: :func:`get_config`
-loads it once and caches it. Detections and the engine receive a
-:class:`Config` instance rather than reading any hardcoded values, so every
-threshold has a single, overridable source of truth.
-"""
+"""Layered configuration from defaults, YAML, and DUSK_* environment variables."""
 
 from __future__ import annotations
 

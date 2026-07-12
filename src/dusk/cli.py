@@ -1,14 +1,4 @@
-"""Dusk command-line interface.
-
-Commands:
-    dusk scan --file <path.pcap>          analyse a pcap and print a verdict
-    dusk scan --file <path.pcap> --json   machine-readable JSON output
-    dusk watch --interface <iface>        live mode (coming in v0.2)
-
-A global ``--verbose`` flag raises the root logger to DEBUG; otherwise the
-log level comes from :class:`~dusk.config.Config` (``WARNING`` by default),
-keeping output clean.
-"""
+"""Command-line interface for packet and agent-action analysis."""
 
 from __future__ import annotations
 

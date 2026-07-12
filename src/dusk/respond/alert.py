@@ -1,10 +1,4 @@
-"""Alert responder, surface a finding to the analyst and persist it.
-
-On a failing detection this responder prints a Rich-formatted panel to the
-terminal and appends a structured JSON entry to the configured alert log
-(``Config.alert_log_path``, ``dusk-alerts.json`` by default) so alerts
-accumulate across runs.
-"""
+"""Render detection alerts and append them to the configured JSON log."""
 
 from __future__ import annotations
 

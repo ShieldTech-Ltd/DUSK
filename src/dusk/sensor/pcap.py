@@ -1,9 +1,4 @@
-"""Pcap sensor, read a capture file with Scapy into Dusk packet dicts.
-
-Scapy is an optional-at-import dependency: if it is missing we raise a
-clear :class:`ImportError` telling the user how to install it, rather than
-letting an opaque traceback escape.
-"""
+"""Read Scapy captures into normalized packet dictionaries."""
 
 from __future__ import annotations
 

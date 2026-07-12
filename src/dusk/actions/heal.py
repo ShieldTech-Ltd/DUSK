@@ -1,21 +1,4 @@
-"""Agent self-healing for DUSK.
-
-When DUSK fires WOULD-BLOCK or BLOCK on an agent, the healer:
-  1. Quarantines the agent -- marks it untrusted, blocks further actions
-  2. Wipes the corrupted baseline from memory
-  3. Replays the agent's last known-good actions to rebuild the baseline
-  4. Returns the agent to service once its baseline reflects only
-     known-good behaviour
-
-Other agents' profiles are untouched throughout -- healing only ever
-mutates the one agent's entry in the shared Baseline.
-
-Recovery, not just detection, is the point: quarantine alone leaves a
-falsely-flagged or since-corrected agent stuck forever. This module
-does not itself write an audit trail, fire a webhook, or call any
-external system -- see cli.py's ``--heal`` flag for how a caller wires
-a real audit/notification path around the result this returns.
-"""
+"""Quarantine an agent and rebuild its baseline from known-good history."""
 
 from __future__ import annotations
 
@@ -35,13 +18,7 @@ logger = logging.getLogger("dusk.actions.heal")
 
 @dataclass
 class HealResult:
-    """The outcome of a self-healing operation.
-
-    ``healed`` is true only when the agent was actually returned to
-    service (released from quarantine) by this call -- it is not true
-    just because healing was attempted. Check ``healed``, not just the
-    absence of an exception, before treating an agent as trusted again.
-    """
+    """Outcome of a healing operation; ``healed`` confirms release."""
 
     agent_id: str
     healed: bool
@@ -64,13 +41,7 @@ class HealResult:
 
 
 class AgentHealer:
-    """Resets a compromised agent to its last known-good baseline.
-
-    Thread-safe -- the quarantine set is protected by a lock so concurrent
-    gate evaluations from multiple threads never race. Pass one AgentHealer
-    instance through the whole gate pipeline; all other agents are
-    completely unaffected while a single agent is being healed.
-    """
+    """Thread-safe reset of one agent to its last known-good baseline."""
 
     def __init__(self) -> None:
         self._quarantined: set[str] = set()
@@ -107,14 +78,8 @@ class AgentHealer:
     ) -> HealResult:
         """Heal an agent after a WOULD-BLOCK or BLOCK verdict.
 
-        Wipes the agent's current baseline profile and rebuilds it from
-        its own known-good history (most recent 10 actions), then
-        releases the agent from quarantine. An agent with no known-good
-        history in ``good_history`` is still released, but with an
-        empty profile -- equivalent to a brand-new agent, so its next
-        action is judged on its own merits rather than left permanently
-        locked out because ``good_history`` didn't happen to be passed
-        with enough context.
+        Replays at most ten known-good actions. With no history, the agent
+        is released with an empty profile and evaluated as new.
 
         Args:
             verdict:      The verdict that triggered healing.
@@ -123,10 +88,7 @@ class AgentHealer:
             baseline:     The shared gate baseline to reset in place.
 
         Returns:
-            A HealResult. ``healed`` reflects whether the agent was
-            actually released -- true for every refused verdict this
-            method handles, since release always happens, with or
-            without history to replay.
+            The healing outcome and measured timeline.
         """
         agent_id = verdict.analysis.agent_id
         start = time.monotonic()
