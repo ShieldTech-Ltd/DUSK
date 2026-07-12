@@ -9,6 +9,7 @@ COPY src/ ./src/
 
 RUN pip install --no-cache-dir -e ".[sie]" \
     && useradd --create-home --uid 1000 dusk \
+    && mkdir -p /app/state \
     && chown -R dusk:dusk /app
 
 USER dusk
