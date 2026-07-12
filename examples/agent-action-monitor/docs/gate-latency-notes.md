@@ -1,7 +1,8 @@
 # Gate latency under load
 
-A first data point on latency-under-load, captured once real
-`SIE_ENDPOINT`/`SIE_API_KEY` credentials became available. This measures
+A first data point on latency-under-load, captured once a real
+`DUSK_SIE_ENDPOINT` and, for the authenticated hosted deployment,
+`SIE_API_KEY` became available. This measures
 `/v1/gate`'s own added latency with live SIE enabled -- not the full
 `agent-demo` -> gate -> `mock-prod` round trip. Treat this as a preliminary
 probe, superseded by the full-stack run recorded further down.
@@ -9,7 +10,7 @@ probe, superseded by the full-stack run recorded further down.
 ## Setup
 
 - `dusk-gate` run locally (not in Docker), baseline loaded from
-  `tests/fixtures/actions_normal.json`, `DUSK_SIE_ENDPOINT` pointed at
+  `sample-data/baseline.json`, with `DUSK_SIE_ENDPOINT` pointed at
   Superlinked's hosted tester cluster.
 - 10 requests per concurrency level, a single trial, same clean
   `firewall_rule_change` action repeated (an `ALLOW` case, so both
@@ -44,9 +45,9 @@ probe, superseded by the full-stack run recorded further down.
 With `agent-demo`/`mock-prod` in place, running the real `dusk-gate` +
 `mock-prod` + `agent-demo/harness.py` end to end confirms a clean action is
 `ALLOW`ed and applied, and a poisoned action is `WOULD-BLOCK` (watch mode)
-or `BLOCK` (enforce mode) and never reaches `mock-prod` either way -- see
-this doc's companion, `docs/gate-docker-verification.md`, for the exact
-commands.
+or `BLOCK` (enforce mode). In watch mode, `WOULD-BLOCK` is still forwarded;
+in enforce mode, `BLOCK` never reaches `mock-prod`. See the
+[local run instructions](../README.md#run-it-locally) for the exact commands.
 
 A first attempt at a real `agent-demo/load_driver.py` run against the
 hosted tester cluster (after the table above was captured, in the same
@@ -82,7 +83,7 @@ case except when a cold re-provision outlasted `agent-demo/harness.py`'s
 temporarily so live SIE calls are actually made (the project's own venv
 does not ship `sie-sdk` by default -- it lives in the `sie` extras group,
 uninstalled again after this run to keep the venv matching CI); baseline
-from `tests/fixtures/actions_normal.json`; `mock-prod` run locally; full
+from `sample-data/baseline.json`; `mock-prod` run locally; full
 round trip via `agent-demo/load_driver.py` (`harness.run_scenario` ->
 `/v1/gate` -> `mock-prod` on `ALLOW`), 20 requests per concurrency level,
 20% poisoned / 80% clean mix, single trial.

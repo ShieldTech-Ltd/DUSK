@@ -21,7 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 sie = [
-    "sie-sdk==0.6.17", # pinned: the only version actually tested against v0.4.1-cpu-default
+    # Tested compatibility pair: SDK 0.6.17 with server v0.4.1-cpu-default.
+    "sie-sdk==0.6.17",
 ]
 dev = [
     "pytest>=7.4.0",

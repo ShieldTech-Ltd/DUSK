@@ -7,6 +7,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Self-contained Superlinked submission packaging for `agent-action-monitor`,
+  including an implementation-accurate architecture diagram, local environment
+  template, and example-scoped ignore rules.
 - Agent action gate (v1.2 to v1.4): per-agent behavioural baseline
   (src/dusk/actions/baseline.py), an analyser that scores an action against the
   baseline into an anomaly score with reasons, MITRE ATT&CK + ATLAS mapping,
@@ -35,6 +38,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and how to add a detection.
 
 ### Changed
+- Polished the `agent-action-monitor` README and SIE validation notes for
+  upstream submission, correcting environment variables, fixture paths, and
+  tested server/SDK compatibility guidance.
 - Plain-text style across all docs, issue templates, alert panel, and code
   docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
   removed. No functional changes.
