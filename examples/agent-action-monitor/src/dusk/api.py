@@ -15,13 +15,6 @@ if TYPE_CHECKING:
 
 load_dotenv()
 
-try:
-    import aikido_zen  # type: ignore[import-not-found]
-
-    aikido_zen.protect()
-except ImportError:
-    pass
-
 app = Flask(__name__)
 CORS(app)
 # Bound public input without constraining normal AgentAction payloads.
