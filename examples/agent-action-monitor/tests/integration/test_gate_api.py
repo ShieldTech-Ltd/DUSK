@@ -269,6 +269,24 @@ def test_recorded_decision_carries_the_real_verdict(client) -> None:
     assert stored.verdict != ""
 
 
+def test_decision_history_per_agent_cap_protects_a_quiet_agent(client) -> None:
+    """A noisy agent flooding the gate must not evict a quiet agent's decision
+    history entirely -- see api._DECISION_HISTORY_PER_AGENT_CAP."""
+    quiet_payload = _action_payload(agent_id="quiet-agent", target="fw-corp-https", port=443)
+    client.post("/v1/gate", json=quiet_payload)
+
+    noisy_payload = _action_payload(agent_id="noisy-agent", target="fw-corp-https", port=443)
+    for _ in range(250):  # past both the per-agent sub-cap and the 200-entry total cap
+        client.post("/v1/gate", json=noisy_payload)
+
+    agent_ids = {decision.agent_id for decision, _vec in api._decision_history}
+    assert "quiet-agent" in agent_ids
+    noisy_count = sum(
+        1 for decision, _vec in api._decision_history if decision.agent_id == "noisy-agent"
+    )
+    assert noisy_count <= 40
+
+
 def test_repeated_refused_action_scores_at_least_as_high_the_second_time(client) -> None:
     """End-to-end repeat-offense signal through the live /v1/gate handler."""
     payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
