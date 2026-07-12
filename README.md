@@ -388,7 +388,6 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
 - [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [Superlinked SIE gate service](#superlinked-sie-gate-service) above)
 - [n8n](https://n8n.io/) -- SOAR workflow automation, three named webhooks fired from `/v1/gate`
-- [Aikido Security](https://aikido.dev/) -- runtime security scanning integrated into DUSK CI
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 

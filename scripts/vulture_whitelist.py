@@ -35,12 +35,11 @@ from dusk.trace.vector import SimilarDecision, find_similar, find_similar_cached
 
 # Public API only reached from examples/agent-action-monitor/'s api.py, not
 # from anything in this repo's own src/ or tests/. TraceDecision's own dead
-# fields (raw_prompt_snippet, tavily_enrichment, replay_count, from_dict)
-# are tracked as a real fix, not whitelisted -- see #76.
+# fields (raw_prompt_snippet, tavily_enrichment, replay_count) were removed
+# entirely rather than whitelisted -- see #76.
 find_similar
 find_similar_cached
 SimilarDecision.similarity
-TraceDecision.raw_prompt_snippet
 
 set_config
 
