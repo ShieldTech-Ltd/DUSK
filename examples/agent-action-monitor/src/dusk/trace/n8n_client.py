@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 #: Pool size is fixed from process configuration on first use.
 _executor: ThreadPoolExecutor | None = None
 
+#: Queued-or-in-flight send count; bounds the pool's own unbounded task queue.
+_pending_lock = threading.Lock()
+_pending_count = 0
+
 
 def _get_executor() -> ThreadPoolExecutor:
     global _executor
@@ -25,22 +30,48 @@ def _get_executor() -> ThreadPoolExecutor:
     return _executor
 
 
+def _submit(url: str, label: str, payload: dict[str, object], config: Config) -> None:
+    if not url:
+        return
+    global _pending_count
+    with _pending_lock:
+        if _pending_count >= config.n8n_max_queued:
+            logger.warning(
+                "n8n webhook (%s) dropped: %d already queued or in flight (n8n_max_queued=%d)",
+                label,
+                _pending_count,
+                config.n8n_max_queued,
+            )
+            return
+        _pending_count += 1
+    _get_executor().submit(_send_and_release, url, label, payload)
+
+
+def _send_and_release(url: str, label: str, payload: dict[str, object]) -> None:
+    global _pending_count
+    try:
+        _send(url, label, payload)
+    finally:
+        with _pending_lock:
+            _pending_count -= 1
+
+
 def fire_decision(payload: dict[str, object], config: Config | None = None) -> None:
     """Fire the decision webhook on the bounded pool -- never blocks the caller."""
-    url = (config or get_config()).n8n_decision_url
-    _get_executor().submit(_send, url, "decision", payload)
+    cfg = config or get_config()
+    _submit(cfg.n8n_decision_url, "decision", payload, cfg)
 
 
 def fire_report(payload: dict[str, object], config: Config | None = None) -> None:
     """Fire the report webhook on the bounded pool -- never blocks the caller."""
-    url = (config or get_config()).n8n_report_url
-    _get_executor().submit(_send, url, "report", payload)
+    cfg = config or get_config()
+    _submit(cfg.n8n_report_url, "report", payload, cfg)
 
 
 def fire_alert(payload: dict[str, object], config: Config | None = None) -> None:
     """Fire the alert webhook on the bounded pool -- never blocks the caller."""
-    url = (config or get_config()).n8n_alert_url
-    _get_executor().submit(_send, url, "alert", payload)
+    cfg = config or get_config()
+    _submit(cfg.n8n_alert_url, "alert", payload, cfg)
 
 
 def _send(url: str, label: str, payload: dict[str, object]) -> None:

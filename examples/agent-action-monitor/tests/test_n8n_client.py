@@ -84,6 +84,85 @@ def test_send_swallows_errors() -> None:
         n8n_client._send("https://example.com/hook", "decision", {"a": 1})
 
 
+def test_webhook_dropped_when_backlog_at_cap(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Once n8n_max_queued sends are already queued or in flight, a new one is
+    dropped and logged rather than growing the backlog without limit."""
+    calls = _track_send_calls(monkeypatch)
+    config = Config(n8n_decision_url="https://example.com/decision", n8n_max_queued=2)
+    monkeypatch.setattr(n8n_client, "_pending_count", 2)
+
+    with caplog.at_level("WARNING"):
+        n8n_client.fire_decision({"a": 1}, config=config)
+
+    assert calls == []
+    assert any("dropped" in r.message for r in caplog.records)
+
+
+def test_pending_count_returns_to_zero_after_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The backlog counter must not leak -- a delivered webhook frees its slot."""
+    _track_send_calls(monkeypatch)
+    config = Config(n8n_decision_url="https://example.com/decision")
+    monkeypatch.setattr(n8n_client, "_pending_count", 0)
+
+    n8n_client.fire_decision({"a": 1}, config=config)
+
+    assert n8n_client._pending_count == 0
+
+
+def test_fire_with_empty_url_does_not_touch_the_backlog(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _track_send_calls(monkeypatch)
+    config = Config(n8n_decision_url="")
+    monkeypatch.setattr(n8n_client, "_pending_count", 0)
+
+    n8n_client.fire_decision({"a": 1}, config=config)
+
+    assert calls == []
+    assert n8n_client._pending_count == 0
+
+
+def test_webhook_backlog_bound_survives_a_real_burst(monkeypatch: pytest.MonkeyPatch) -> None:
+    """End-to-end proof against the real pool: firing far more webhooks than
+    n8n_max_queued allows must not grow the backlog past the configured cap.
+
+    Needs the real pool, not the autouse synchronous-executor fixture -- that
+    fixture runs submitted work inline on the calling thread, which would
+    make this test's own blocking send deadlock waiting on a release signal
+    only the same (blocked) thread could ever send.
+    """
+    import threading
+    import time
+
+    monkeypatch.setattr(n8n_client, "_get_executor", _real_get_executor)
+    monkeypatch.setattr(n8n_client, "_executor", None)
+    monkeypatch.setattr(n8n_client, "_pending_count", 0)
+    config = Config(
+        n8n_decision_url="https://example.com/decision", n8n_max_workers=1, n8n_max_queued=5
+    )
+
+    release = threading.Event()
+    max_seen = 0
+    seen_lock = threading.Lock()
+
+    def _blocking_send(url: str, label: str, payload: dict[str, object]) -> None:
+        nonlocal max_seen
+        with seen_lock:
+            max_seen = max(max_seen, n8n_client._pending_count)
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(n8n_client, "_send", _blocking_send)
+
+    for i in range(50):
+        n8n_client.fire_decision({"i": i}, config=config)
+    time.sleep(0.1)  # let the single worker pick up the first send and start blocking
+
+    with n8n_client._pending_lock:
+        assert n8n_client._pending_count <= config.n8n_max_queued
+
+    release.set()
+
+
 def test_webhook_concurrency_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     """Firing many webhooks in a burst must not spawn one OS thread per call."""
     import threading

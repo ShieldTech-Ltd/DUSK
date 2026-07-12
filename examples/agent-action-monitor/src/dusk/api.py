@@ -91,6 +91,8 @@ def reset_gate_engine() -> None:
 
 #: Capped decision history with embeddings computed at record time.
 _DECISION_HISTORY_CAP = 200
+#: Per-agent sub-cap so one noisy agent can't evict the whole fleet's candidates.
+_DECISION_HISTORY_PER_AGENT_CAP = 40
 _decision_history: list[tuple[TraceDecision, list[float]]] = []
 _decision_history_lock = threading.Lock()
 
@@ -135,6 +137,9 @@ def _record_decision(
     # Candidate and stored embeddings must use the same text shape.
     vec = embed_text(f"{agent_id} {action_text}")
     with _decision_history_lock:
+        agent_indices = [i for i, (d, _v) in enumerate(_decision_history) if d.agent_id == agent_id]
+        if len(agent_indices) >= _DECISION_HISTORY_PER_AGENT_CAP:
+            del _decision_history[agent_indices[0]]
         _decision_history.append((decision, vec))
         if len(_decision_history) > _DECISION_HISTORY_CAP:
             del _decision_history[: len(_decision_history) - _DECISION_HISTORY_CAP]
