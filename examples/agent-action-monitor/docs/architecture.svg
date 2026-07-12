@@ -1,0 +1,71 @@
+<svg viewBox="0 0 960 480" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#0b1220"/>
+    <stop offset="1" stop-color="#070b14"/>
+  </linearGradient>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#6e7d94"/>
+  </marker>
+  <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#56d4dd"/>
+  </marker>
+</defs>
+
+<rect x="4" y="4" width="952" height="472" rx="14" fill="url(#bg)" stroke="#1e2d42"/>
+<line x1="4" y1="46" x2="956" y2="46" stroke="#1e2d42"/>
+<text x="24" y="30" fill="#d0d8e4" font-weight="700" font-size="15">DUSK agent-action-monitor</text>
+<text x="252" y="30" fill="#6e7d94" font-size="12">architecture</text>
+
+<!-- agent-demo -->
+<rect x="24" y="216" width="130" height="64" rx="10" fill="#0e1827" stroke="#6e7d94" stroke-width="1.5"/>
+<text x="89" y="243" text-anchor="middle" fill="#d0d8e4" font-weight="700" font-size="13">agent-demo</text>
+<text x="89" y="260" text-anchor="middle" fill="#6e7d94" font-size="10">proposes an action</text>
+
+<line x1="154" y1="248" x2="198" y2="248" stroke="#6e7d94" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- dusk-gate outer -->
+<rect x="202" y="80" width="290" height="340" rx="12" fill="#0b1724" stroke="#56d4dd" stroke-width="1.5"/>
+<text x="347" y="104" text-anchor="middle" fill="#56d4dd" font-weight="700" font-size="13" letter-spacing="1">DUSK GATE  --  /v1/gate</text>
+
+<rect x="222" y="120" width="250" height="52" rx="8" fill="#0e1d2e" stroke="#56d4dd" stroke-width="1.2"/>
+<text x="347" y="141" text-anchor="middle" fill="#d0d8e4" font-size="12" font-weight="600">baseline.py + analyse.py</text>
+<text x="347" y="158" text-anchor="middle" fill="#6e7d94" font-size="10">deterministic scoring, always on</text>
+
+<line x1="347" y1="172" x2="347" y2="198" stroke="#56d4dd" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+
+<rect x="222" y="202" width="250" height="64" rx="8" fill="#0e1d2e" stroke="#56d4dd" stroke-width="1.2"/>
+<text x="347" y="223" text-anchor="middle" fill="#d0d8e4" font-size="12" font-weight="600">SIE: encode / score / extract</text>
+<text x="347" y="240" text-anchor="middle" fill="#6e7d94" font-size="10">additive enrichment, fails soft --</text>
+<text x="347" y="255" text-anchor="middle" fill="#6e7d94" font-size="10">deterministic score is unaffected</text>
+
+<line x1="347" y1="266" x2="347" y2="292" stroke="#56d4dd" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+
+<rect x="222" y="296" width="250" height="52" rx="8" fill="#0e1d2e" stroke="#56d4dd" stroke-width="1.2"/>
+<text x="347" y="317" text-anchor="middle" fill="#d0d8e4" font-size="12" font-weight="600">OffenseMemory</text>
+<text x="347" y="334" text-anchor="middle" fill="#6e7d94" font-size="10">per-agent, file-backed, decays with age</text>
+
+<line x1="222" y1="322" x2="154" y2="280" stroke="#6e7d94" stroke-width="1.2" stroke-dasharray="4 3"/>
+
+<text x="347" y="376" text-anchor="middle" fill="#3fb950" font-weight="700" font-size="12">ALLOW / WOULD-BLOCK / BLOCK</text>
+<text x="347" y="393" text-anchor="middle" fill="#6e7d94" font-size="10">trace_id + reasons + MITRE ATT&amp;CK / ATLAS</text>
+
+<!-- mock-prod -->
+<line x1="492" y1="248" x2="536" y2="248" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="540" y="216" width="130" height="64" rx="10" fill="#0c1d0d" stroke="#3fb950" stroke-width="1.5"/>
+<text x="605" y="243" text-anchor="middle" fill="#d0d8e4" font-weight="700" font-size="13">mock-prod</text>
+<text x="605" y="260" text-anchor="middle" fill="#6e7d94" font-size="10">ALLOW / WOULD-BLOCK reaches it</text>
+
+<!-- n8n -->
+<line x1="492" y1="140" x2="716" y2="140" stroke="#e3b341" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="720" y="98" width="212" height="164" rx="10" fill="#1a1607" stroke="#e3b341" stroke-width="1.5"/>
+<text x="826" y="122" text-anchor="middle" fill="#d0d8e4" font-weight="700" font-size="13">n8n webhooks</text>
+<text x="826" y="146" text-anchor="middle" fill="#6e7d94" font-size="10">decision -- every verdict</text>
+<text x="826" y="164" text-anchor="middle" fill="#6e7d94" font-size="10">report -- every verdict</text>
+<text x="826" y="182" text-anchor="middle" fill="#6e7d94" font-size="10">alert -- refused only</text>
+<text x="826" y="200" text-anchor="middle" fill="#6e7d94" font-size="10">(WOULD-BLOCK / BLOCK)</text>
+<text x="826" y="224" text-anchor="middle" fill="#f85149" font-size="10">enforce mode: BLOCK stops here,</text>
+<text x="826" y="240" text-anchor="middle" fill="#f85149" font-size="10">never reaches mock-prod</text>
+
+<text x="24" y="452" fill="#6e7d94" font-size="10">watch mode (default): WOULD-BLOCK logs and still lets the action proceed  --  enforce mode upgrades it to a hard stop</text>
+</svg>
