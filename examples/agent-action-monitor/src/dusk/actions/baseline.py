@@ -1,16 +1,4 @@
-"""Per-agent behavioural baseline.
-
-A baseline is the model of what an agent normally does. It is learned from a
-history of :class:`~dusk.actions.event.AgentAction` events and records, per
-agent, the action types, target classes and tokens, and change values that
-agent has been seen to use. A later action is anomalous to the degree that it
-departs from this learned profile.
-
-The feature extraction here is deterministic and dependency-free, so a live
-demo always behaves the same. It is deliberately small and explicit; a vector
-backend (for example Superlinked embeddings) can replace
-:func:`action_features` without changing the rest of the gate.
-"""
+"""Deterministic per-agent behavioral baselines and feature extraction."""
 
 from __future__ import annotations
 
@@ -41,16 +29,7 @@ def target_tokens(target: str) -> set[str]:
 
 
 def _flatten_scalars(payload: Any, values: set[str], *, _depth: int = 0) -> None:  # noqa: ANN401
-    """Collect every scalar leaf value from an arbitrarily nested dict/list.
-
-    A control-plane payload can bury a sensitive value inside a nested
-    structure, for example ``{"after": {"rules": [{"cidr": "0.0.0.0/0"}]}}``.
-    Only inspecting the top level of ``before``/``after`` would leave that
-    cidr invisible to both the novelty check and the sensitive-value match.
-    Depth is capped defensively -- a real control-plane payload doesn't nest
-    ten levels deep, and an adversarial one that tried to shouldn't be able
-    to make this scan unbounded.
-    """
+    """Collect nested scalar values with a defensive recursion limit."""
     if _depth > 10:
         return
     if isinstance(payload, dict):

@@ -24,8 +24,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
-# A real AgentAction is a few hundred bytes; this bounds a public endpoint
-# against a trivially oversized request without constraining any real caller.
+# Bound public input without constraining normal AgentAction payloads.
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +33,7 @@ logger = logging.getLogger(__name__)
 _gate_engine: ActionGate | None = None
 _gate_lock = threading.Lock()
 
-#: Error message when DUSK_GATE_BASELINE_PATH was set but failed to load, so /health can surface it.
+#: Baseline failure exposed by the health endpoint.
 _baseline_load_error: str | None = None
 
 
@@ -73,10 +72,8 @@ def _load_gate_engine() -> ActionGate:
 
 
 def _get_gate_engine() -> ActionGate:
-    # Baseline is loaded once at process startup and never mutated by live
-    # traffic: folding incoming actions back into the baseline would let a
-    # sustained drip of benign-looking requests widen what counts as normal
-    # before the real payload lands.
+    # Live traffic never updates the trusted baseline; doing so would permit
+    # gradual baseline poisoning.
     global _gate_engine
     if _gate_engine is None:
         with _gate_lock:
@@ -92,7 +89,7 @@ def reset_gate_engine() -> None:
         _gate_engine = None
 
 
-#: Past verdicts paired with their embedding (computed once, at record time), capped at 200 entries.
+#: Capped decision history with embeddings computed at record time.
 _DECISION_HISTORY_CAP = 200
 _decision_history: list[tuple[TraceDecision, list[float]]] = []
 _decision_history_lock = threading.Lock()
@@ -135,8 +132,7 @@ def _record_decision(
         similar_decision_ids=similar_decision_ids,
         verdict=verdict,
     )
-    # Embedded with the same "agent_id action_text" text shape a future
-    # lookup's candidates are compared against -- not the query shape.
+    # Candidate and stored embeddings must use the same text shape.
     vec = embed_text(f"{agent_id} {action_text}")
     with _decision_history_lock:
         _decision_history.append((decision, vec))
@@ -215,14 +211,12 @@ def evaluate_gate_action() -> object:
 def health() -> object:
     gate_engine = _get_gate_engine()  # forces the baseline load attempt so it's reflected below
     if _baseline_load_error is not None:
-        # 503 so the Dockerfile HEALTHCHECK actually flags this, not just a log line.
+        # A non-200 response propagates the failure to the container health check.
         return jsonify({"status": "degraded", "baseline_error": _baseline_load_error}), 503
     offense_memory = gate_engine.offense_memory
     persist_error = offense_memory.last_persist_error if offense_memory is not None else None
     if persist_error is not None:
-        # Also degraded, not fatal: the gate keeps serving requests either way, but an
-        # operator watching persist_error silently fail loses the repeat-offense signal's
-        # durability guarantee without ever seeing it happen -- surface it here instead.
+        # The gate remains available, but repeat-offense durability is degraded.
         return jsonify({"status": "degraded", "offense_memory_error": persist_error}), 503
     return jsonify({"status": "ok"})
 

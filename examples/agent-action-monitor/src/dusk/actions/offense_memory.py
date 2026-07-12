@@ -1,31 +1,4 @@
-"""Per-agent repeat-offense memory: the gate's record of its own past refusals.
-
-A gate that scores an agent's 10th blocked action identically to its 1st has
-no memory of what happened before -- there is no way for it to escalate
-against a genuinely repeat offender, or to have any of that judgement survive
-a restart. :class:`OffenseMemory` closes that gap: it persists every refused
-(WOULD-BLOCK or BLOCK) verdict per agent, and lets :mod:`dusk.actions.analyse`
-ask "has this agent done something like this before, and how recently."
-
-Design constraints, deliberately:
-
-- **Per-agent, not a shared flat list.** A single noisy agent must never be
-  able to crowd out another agent's history -- each agent gets its own
-  capped ring of offenses.
-- **Bounded across agents too, not just within one.** An unbounded set of
-  distinct ``agent_id`` values (a buggy caller, or a hijacked agent minting
-  fresh IDs) must not grow memory or the persisted file without limit --
-  the least-recently-touched agent is evicted once the tracked-agent cap is
-  hit.
-- **File-backed, not in-memory-only.** A structure that resets on every
-  restart cannot honestly be called memory; ``OffenseMemory`` reloads its
-  state from disk on construction and persists every new record.
-- **Auditable.** Every record keeps enough to be cited by trace_id in a
-  human-readable reason, not just counted.
-- **Decays with time and requires similarity, not just a raw count** -- see
-  :func:`dusk.actions.analyse._repeat_offense_signal` for how a record here
-  actually turns into score.
-"""
+"""Bounded, durable history of refused actions, partitioned by agent."""
 
 from __future__ import annotations
 
@@ -41,14 +14,8 @@ from typing import Any
 
 logger = logging.getLogger("dusk.actions.offense_memory")
 
-#: Offenses kept per agent. Bounds both memory and file size regardless of
-#: how long-lived or noisy any single agent is.
+#: Retention limits bound both memory use and the persisted file.
 _MAX_OFFENSES_PER_AGENT = 50
-
-#: Distinct agents tracked at all. Without this, an unbounded set of agent
-#: IDs (buggy caller, or an attacker minting fresh ones) grows the store
-#: without limit even though each individual agent is capped. The
-#: least-recently-touched agent is evicted first.
 _MAX_TRACKED_AGENTS = 500
 
 
@@ -111,25 +78,11 @@ class _AgentOffenses:
 
 
 class OffenseMemory:
-    """Persisted, per-agent store of the gate's own past refusals.
+    """Thread-safe offense store with coalesced, single-writer persistence.
 
-    Thread-safe: a single instance is shared across concurrent request
-    threads in the live ``/v1/gate`` service, matching the locking
-    convention :class:`~dusk.actions.heal.AgentHealer` already uses.
-
-    Disk writes run on a background thread so ``record()``/``clear()``
-    never block the calling request thread on I/O, matching the
-    fire-and-forget convention :mod:`dusk.trace.n8n_client` already uses
-    for the same reason. Writes genuinely coalesce: a burst of records that
-    arrives while a write is already in flight sets a dirty flag rather
-    than queuing a second task, and the in-flight write loops once more
-    before it exits if it observes new dirty state -- so a request storm
-    costs at most one extra write, not one write per record, and the
-    executor's task queue never grows past a single outstanding item. All
-    scheduling state (the executor itself, the dirty flag, and the
-    in-flight flag) is mutated under the same lock that guards the
-    in-memory data, so there is exactly one writer at a time even under
-    concurrent ``record()`` calls racing to be the first to schedule work.
+    The dirty flag prevents request bursts from creating an unbounded write
+    queue. All scheduling state shares the data lock, preserving the
+    single-writer invariant during concurrent first use.
     """
 
     def __init__(self, storage_path: str | None = None) -> None:
@@ -153,10 +106,7 @@ class OffenseMemory:
         self._closed = False
 
     def _touch(self, agent_id: str) -> _AgentOffenses:
-        """Return (creating if needed) an agent's offense list, marking it
-        most-recently-used and evicting the least-recently-used agent if the
-        tracked-agent cap is exceeded. Caller must hold ``self._lock``.
-        """
+        """Return the agent record and enforce LRU retention. Lock required."""
         offenses = self._by_agent.get(agent_id)
         if offenses is None:
             offenses = _AgentOffenses()
@@ -222,14 +172,7 @@ class OffenseMemory:
             logger.warning("Could not persist offense memory to %s: %s", self._storage_path, exc)
 
     def _persist_loop(self) -> None:
-        """Run on the background writer thread until no dirty state remains.
-
-        Loops rather than returning after one write: if new records arrive
-        while this write is in flight, they set ``_dirty`` again, and this
-        loop drains that too before the task completes -- so the ``Future``
-        this task returns only resolves once every record scheduled before
-        it was fully durable, including anything that arrived mid-write.
-        """
+        """Persist snapshots until no changes occurred during the last write."""
         while True:
             with self._lock:
                 self._dirty = False
@@ -244,13 +187,7 @@ class OffenseMemory:
                     return
 
     def _schedule_persist(self) -> None:
-        """Mark state dirty and ensure exactly one writer is draining it.
-
-        Caller must hold ``self._lock``. If a write is already in flight,
-        this only sets the dirty flag -- that write's own loop will pick up
-        the change, so no second task is queued. The executor's task queue
-        therefore never holds more than one outstanding item.
-        """
+        """Mark state dirty and start the writer if needed. Lock required."""
         if self._storage_path is None or self._closed:
             return
         self._dirty = True
@@ -264,25 +201,14 @@ class OffenseMemory:
         self._last_write = self._executor.submit(self._persist_loop)
 
     def flush(self, timeout: float | None = None) -> None:
-        """Block until every write scheduled before this call is durable.
-
-        Waits on the most recently scheduled write task. Because that
-        task's own loop keeps draining dirty state until none remains (see
-        ``_persist_loop``), waiting on it is sufficient even if more
-        records were recorded while the write was already running.
-        """
+        """Block until every write scheduled before this call is durable."""
         with self._lock:
             future = self._last_write
         if future is not None:
             future.result(timeout=timeout)
 
     def close(self, timeout: float | None = None) -> None:
-        """Flush pending writes and shut down the background writer.
-
-        Safe to call more than once. After this, further ``record()`` calls
-        still update in-memory state but stop scheduling disk writes --
-        intended for an orderly shutdown, not for reuse afterward.
-        """
+        """Flush and stop the writer. Safe to call more than once."""
         self.flush(timeout=timeout)
         with self._lock:
             self._closed = True
@@ -293,9 +219,7 @@ class OffenseMemory:
 
     @property
     def last_persist_error(self) -> str | None:
-        """The most recent disk-write failure, or ``None`` if the last write
-        (if any) succeeded. Advisory for health reporting, not a
-        correctness-critical read, so it's read without the lock."""
+        """Return the latest disk-write error for health reporting."""
         return self._last_persist_error
 
     def record(

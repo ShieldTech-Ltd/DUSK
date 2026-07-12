@@ -1,19 +1,4 @@
-"""MockBedrock: canned Converse API responses, keyless by default.
-
-Two scenarios, both required by the example's Definition of Done: a demo
-that runs with zero external keys. USE_REAL_BEDROCK=false (the default)
-wires this in instead of bedrock_client.build_real_client().
-
-- "clean": a routine action, in the agent's established baseline.
-- "poisoned": a hidden-instruction hijack. The agent's own system prompt
-  gets a smuggled instruction that steers it into proposing a
-  firewall_rule_change into a restricted segment -- something well
-  outside a normal netops agent's baseline. This is the scenario DUSK's
-  behavioural gate is built to catch: the request looks legitimate to
-  anything that only checks credentials, because the agent's credentials
-  are real. Only the behaviour -- an agent that never touches firewall
-  rules suddenly proposing one -- gives the hijack away.
-"""
+"""Keyless Bedrock responses for clean and poisoned scenarios."""
 
 from __future__ import annotations
 

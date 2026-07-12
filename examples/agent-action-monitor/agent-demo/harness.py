@@ -1,19 +1,4 @@
-"""Agent harness: model -> extract action -> gate -> mock-PROD.
-
-Ties the pipeline into one runnable flow:
-
-    model (mock or real Bedrock)
-      -> extract proposed toolUse (mock_bedrock.extract_tool_use)
-      -> normalise into an AgentAction (BedrockAdapter.parse_tool_use)
-      -> POST /v1/gate (DUSK_GATE_URL)
-          -> ALLOW: call mock-PROD (MOCK_PROD_URL)
-          -> WOULD-BLOCK: log the reason, still call mock-PROD -- watch mode
-             is observational, not enforcing (see dusk.actions.verdict)
-          -> BLOCK: stop, surface the reason, mock-PROD never sees the action
-
-DUSK_GATE_URL defaults to a local stub gate for isolated testing; point it
-at the real dusk-gate service once both sides are ready to integrate.
-"""
+"""Agent-to-gate harness with a mock production target."""
 
 from __future__ import annotations
 
@@ -75,10 +60,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     gate_resp.raise_for_status()
     verdict_payload = gate_resp.json()
 
-    # BLOCK (enforce mode) is the only verdict that actually stops the
-    # action. WOULD-BLOCK (watch mode, the default) is observational: it
-    # logs what an inline gate would have done without disrupting real
-    # traffic, so it still reaches mock-PROD, same as ALLOW.
+    # Watch mode forwards WOULD-BLOCK; enforce mode stops BLOCK.
     if verdict_payload["verdict"] == "BLOCK":
         return {
             "verdict": verdict_payload["verdict"],

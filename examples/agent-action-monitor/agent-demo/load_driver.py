@@ -1,16 +1,4 @@
-"""Load-scenario driver: fire concurrent actions through the agent path.
-
-Generates realistic concurrent traffic through harness.run_scenario() so
-latency-under-load has real numbers to measure against -- gate latency
-under a mix of clean and poisoned actions looks different from a gate
-handling only quiet, uniform traffic.
-
-Run 20 concurrent requests, 80% clean / 20% poisoned::
-
-    python agent-demo/load_driver.py --concurrency 20 --total 200
-
-Requires the gate (stub or real) and mock-prod running.
-"""
+"""Concurrent load driver for mixed clean and poisoned scenarios."""
 
 from __future__ import annotations
 

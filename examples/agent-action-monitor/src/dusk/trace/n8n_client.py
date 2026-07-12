@@ -1,21 +1,4 @@
-"""n8n webhook client for DUSK alert notifications.
-
-Fires webhooks on a bounded background thread pool so they never block the
-Flask response, and so a sustained burst of refused verdicts can't spawn an
-unbounded number of OS threads. All failures are logged and swallowed.
-
-The gate service fires three named webhooks per verdict. Each URL comes from
-the process-wide :class:`~dusk.config.Config` (``n8n_alert_url``,
-``n8n_report_url``, ``n8n_decision_url``), overridable via ``dusk.yaml`` or
-``DUSK_N8N_*_URL`` env vars, so an n8n workflow builder can route each concern
-to a different workflow even though the payload is the same verdict record:
-
-  decision -- fires on every verdict; the machine-readable automation trigger.
-  report   -- fires on every verdict; the same record for an audit/reporting
-              workflow, kept on a separate URL from decision so the two
-              concerns can be routed independently.
-  alert    -- fires only when the verdict is refused (WOULD-BLOCK or BLOCK).
-"""
+"""Non-blocking n8n decision, report, and alert webhooks."""
 
 from __future__ import annotations
 
@@ -29,8 +12,7 @@ from dusk.config import Config, get_config
 
 logger = logging.getLogger(__name__)
 
-#: Sized once from the process-wide Config the first time a webhook fires;
-#: a per-call Config override (as tests pass) changes URLs, not pool size.
+#: Pool size is fixed from process configuration on first use.
 _executor: ThreadPoolExecutor | None = None
 
 

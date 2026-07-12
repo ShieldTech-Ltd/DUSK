@@ -1,14 +1,4 @@
-"""DuskBedrockClient: the interception seam between an agent and Bedrock.
-
-DUSK judges the model's proposed action -- its output -- not the prompt
-that produced it. That is the gap generic guardrails miss: tool input and
-output for agent frameworks commonly bypass prompt-level filtering
-entirely. Every model call an agent makes goes through this wrapper first,
-so there is exactly one place where enforcement can be guaranteed.
-
-Real Bedrock is opt-in only (USE_REAL_BEDROCK=true); the default path
-uses MockBedrock (see mock_bedrock.py) so the demo runs keyless.
-"""
+"""Common interface for mock and real Bedrock Converse clients."""
 
 from __future__ import annotations
 
@@ -42,16 +32,7 @@ class BedrockConverseClient(Protocol):
 
 @dataclass
 class DuskBedrockClient:
-    """Wraps a Bedrock (or mock) converse client.
-
-    This wrapper's job is narrow: make the model call and hand the raw
-    response back. It does not itself call the gate or raise
-    DuskBlockedError -- that happens once the response has been turned
-    into an AgentAction and evaluated (see harness.py), since only the
-    harness knows the gate's verdict. This class exists so there is one
-    seam every model call passes through, and so mock/real Bedrock are
-    interchangeable behind the same interface.
-    """
+    """Wrap a Bedrock-compatible client behind one Converse interface."""
 
     client: BedrockConverseClient
     model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"

@@ -1,10 +1,4 @@
-"""Route a raw source record to the right adapter and return an AgentAction.
-
-The normaliser holds a small registry of source adapters keyed by source
-name. Ingest hands it a source name and a raw record; it selects the adapter
-and returns the canonical :class:`~dusk.actions.event.AgentAction`. New
-sources are added by registering an adapter, never by editing ingest.
-"""
+"""Route source records through registered AgentAction adapters."""
 
 from __future__ import annotations
 

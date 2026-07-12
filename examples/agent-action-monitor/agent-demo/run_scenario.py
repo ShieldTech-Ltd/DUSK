@@ -1,23 +1,4 @@
-"""Run the agent-demo scenarios end to end over HTTP.
-
-Unlike demo/live_attack.py (which calls DUSK's ActionGate in-process),
-this drives the actual agent-demo -> /v1/gate -> mock-PROD path used by
-the SIE example: a real Bedrock (or mock) response, extracted into an
-AgentAction, sent to the gate over HTTP, and applied to mock-PROD on
-ALLOW. This is what a superlinked/sie reviewer runs to see the whole
-system talk to itself.
-
-Requires the stub gate (or the real dusk-gate) and mock-prod running --
-see agent-demo/stub_gate.py, mock-prod/app.py, or docker compose up.
-
-Run both scenarios::
-
-    python agent-demo/run_scenario.py
-
-Run one::
-
-    python agent-demo/run_scenario.py --scenario poisoned
-"""
+"""Run clean and poisoned agent scenarios through the HTTP gate."""
 
 from __future__ import annotations
 
@@ -60,11 +41,7 @@ def main() -> int:
             continue
         _print_result(scenario, result)
         if scenario == "poisoned" and result["verdict"] == "ALLOW":
-            # The gate failed to flag this at all -- the one outcome the
-            # whole example exists to prevent. WOULD-BLOCK reaching
-            # mock-PROD is not a failure: watch mode is meant to observe
-            # without disrupting, so "flagged but still applied" is the
-            # correct, documented default-mode outcome.
+            # WOULD-BLOCK is valid in watch mode; ALLOW means detection failed.
             exit_code = 1
 
     return exit_code
