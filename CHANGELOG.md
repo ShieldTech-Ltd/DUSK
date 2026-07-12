@@ -41,6 +41,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Polished the `agent-action-monitor` README and SIE validation notes for
   upstream submission, correcting environment variables, fixture paths, and
   tested server/SDK compatibility guidance.
+- Reconciled the root architecture and SIE documentation with the implemented
+  gate boundary, removed broken document links, and corrected animated SVG
+  timing and text layout.
 - Plain-text style across all docs, issue templates, alert panel, and code
   docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
   removed. No functional changes.

@@ -138,13 +138,23 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 
 ## Architecture
 
-### Enterprise system architecture
+### Current gate implementation
+
+<p align="center">
+  <img src="examples/agent-action-monitor/docs/architecture.svg" alt="Current DUSK agent-action-monitor implementation with deterministic analysis, Superlinked SIE enrichment, verdicts, state, execution, and notifications" width="100%">
+</p>
+
+This is the implemented boundary of the self-contained HTTP gate example. It
+does not imply a vector database, policy repository, SIEM, cloud platform, or
+human-review service.
+
+### Attack flow
 
 <p align="center">
   <img src="docs/dusk-arch-demo.svg" alt="DUSK three-phase architecture: before deployment, under attack without a gate, and DUSK blocking the hijacked action" width="100%">
 </p>
 
-<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller -- the network is breached. Phase 3: DUSK is active; the same attack arrives, the gate scores it 0.95, and the action is refused before it reaches the controller.</sub></p>
+<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller. Phase 3: DUSK is active; the same attack arrives, the gate scores it 0.80, and the action is refused before it reaches the controller.</sub></p>
 
 For the full layered design and integration notes, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -188,7 +198,7 @@ curl -X POST http://localhost:8000/v1/gate \
        "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
 ```
 
-The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), its own directory with its own `pyproject.toml`, `src/dusk/`, and Docker/compose stack, contributed as an example to [`superlinked/sie`](https://github.com/superlinked/sie). This root repo does not run `/v1/gate` itself -- its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
+The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with its own `pyproject.toml`, `src/dusk/`, and Docker Compose stack. It is prepared for contribution to the [`superlinked/sie`](https://github.com/superlinked/sie) example gallery. This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
 
 ---
 

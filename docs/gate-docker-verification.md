@@ -235,13 +235,12 @@ workflow had actually activated). `n8n`'s base image ships no healthcheck,
 so `n8n/Dockerfile` adds one (`wget` against `/healthz`, since the image has
 no Python or curl).
 
-Separately, `sie-sdk` is now pinned to an exact version (`==0.6.17` in
-`pyproject.toml`, not the open `>=0.6` range) rather than chasing a
-"matching" server version number -- the client and server publish
-independent version numbers (the server's newest tag is `v0.4.1`; there is
-no `v0.6.x` server image), so the `SDK version skew` line SIE logs at
-startup is expected, not a compatibility bug. What matters is testing one
-specific pinned pair, which this is.
+Separately, `sie-sdk` is pinned to an exact version (`==0.6.17` in
+`pyproject.toml`, not the open `>=0.6` range). The client and server publish
+independent version numbers, so their numbers do not need to match. This
+example deliberately keeps the `v0.4.1-cpu-default` server image and SDK
+0.6.17 pair used for its recorded validation. Newer server releases exist;
+upgrade the pair only after rerunning the live compatibility benchmark.
 
 ## n8n previously 404'd on every webhook -- no workflow was ever imported
 

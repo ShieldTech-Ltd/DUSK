@@ -94,8 +94,10 @@ def _pct(t: float) -> str:
 
 def _phase_kf(name: str, on: float, off: float) -> str:
     fade = 1.2
+    initial = "0%{opacity:0}" if on > 0 else ""
     return (
         f"@keyframes {name}{{"
+        f"{initial}"
         f"{_pct(max(0.0, on - 0.5))}{{opacity:0}}"
         f"{_pct(on)}{{opacity:1}}"
         f"{_pct(off)}{{opacity:1}}"
@@ -105,11 +107,18 @@ def _phase_kf(name: str, on: float, off: float) -> str:
     )
 
 
-def _node(cx: int, cy: int, hw: int, hh: int,
-          name: str, sub: str,
-          fill: str, stroke: str,
-          name_col: str = FG,
-          cls: str = "") -> str:
+def _node(
+    cx: int,
+    cy: int,
+    hw: int,
+    hh: int,
+    name: str,
+    sub: str,
+    fill: str,
+    stroke: str,
+    name_col: str = FG,
+    cls: str = "",
+) -> str:
     x, y = cx - hw, cy - hh
     ca = f' class="{cls}"' if cls else ""
     return (
@@ -157,15 +166,19 @@ def build() -> str:  # noqa: PLR0915
     score_x = dsk_x + 16
     score_y = SUB_BOT + 10
 
-    paths = "\n".join([
-        f'<path id="p-wa" d="M{WEB_R},{FY} L{AGT_L},{FY}" fill="none"/>',
-        f'<path id="p-ad" d="M{AGT_R},{FY} L{DSK_L},{FY}" fill="none"/>',
-        f'<path id="p-dc" d="M{DSK_R},{FY} L{CTL_L},{FY}" fill="none"/>',
-        f'<path id="p-cn" d="M{CTL_R},{FY} L{NET_L},{FY}" fill="none"/>',
-        (f'<path id="p-ag" d="M{AGT_R},{FY} '
-         f'C{AGT_R + 35},{FY} {DSK_L},{DSK[1]} {DSK[0]},{DSK[1]}" fill="none"/>'),
-        f'<path id="p-ac" d="M{AGT_R},{FY} L{CTL_L},{FY}" fill="none"/>',
-    ])
+    paths = "\n".join(
+        [
+            f'<path id="p-wa" d="M{WEB_R},{FY} L{AGT_L},{FY}" fill="none"/>',
+            f'<path id="p-ad" d="M{AGT_R},{FY} L{DSK_L},{FY}" fill="none"/>',
+            f'<path id="p-dc" d="M{DSK_R},{FY} L{CTL_L},{FY}" fill="none"/>',
+            f'<path id="p-cn" d="M{CTL_R},{FY} L{NET_L},{FY}" fill="none"/>',
+            (
+                f'<path id="p-ag" d="M{AGT_R},{FY} '
+                f'C{AGT_R + 35},{FY} {DSK_L},{DSK[1]} {DSK[0]},{DSK[1]}" fill="none"/>'
+            ),
+            f'<path id="p-ac" d="M{AGT_R},{FY} L{CTL_L},{FY}" fill="none"/>',
+        ]
+    )
 
     kf_p1 = _phase_kf("p1v", P1_ON, P1_OFF)
     kf_p2 = _phase_kf("p2v", P2_ON, P2_OFF)
@@ -251,26 +264,38 @@ def build() -> str:  # noqa: PLR0915
         "@keyframes pls{0%,100%{opacity:1}50%{opacity:0.15}}"
     )
 
-    css = " ".join([
-        "text{white-space:pre}", utils,
-        kf_p1, kf_p2, kf_p3, kf_flow,
-        *kf_agt, *kf_net, *kf_ctl, *kf_gate,
-        kf_sub1, kf_sub2, kf_sub3, kf_score,
-        f".p1{{animation:p1v {LOOP}s infinite}}",
-        f".p2{{animation:p2v {LOOP}s infinite}}",
-        f".p3{{animation:p3v {LOOP}s infinite}}",
-        ".live{animation:live 1.4s ease-in-out infinite}",
-        ".pls{animation:pls 0.9s ease-in-out infinite}",
-        f".agt-r{{stroke-width:2;animation:agt-col {LOOP}s infinite}}",
-        f".net-r{{stroke-width:1.5;animation:net-col {LOOP}s infinite}}",
-        f".ctl-r{{stroke-width:1.5;animation:ctl-col {LOOP}s infinite}}",
-        f".gate-r{{stroke-width:2.5;animation:gate-a {LOOP}s infinite}}",
-        f".sb1{{animation:sb1 {LOOP}s infinite}}",
-        f".sb2{{animation:sb2 {LOOP}s infinite}}",
-        f".sb3{{animation:sb3 {LOOP}s infinite}}",
-        f".sf{{animation:sw {LOOP}s infinite}}",
-        ".fl{stroke-dasharray:8 5;animation:fl 1.4s linear infinite}",
-    ])
+    css = " ".join(
+        [
+            "text{white-space:pre}",
+            utils,
+            kf_p1,
+            kf_p2,
+            kf_p3,
+            kf_flow,
+            *kf_agt,
+            *kf_net,
+            *kf_ctl,
+            *kf_gate,
+            kf_sub1,
+            kf_sub2,
+            kf_sub3,
+            kf_score,
+            f".p1{{animation:p1v {LOOP}s infinite}}",
+            f".p2{{opacity:0;animation:p2v {LOOP}s infinite}}",
+            f".p3{{opacity:0;animation:p3v {LOOP}s infinite}}",
+            ".live{animation:live 1.4s ease-in-out infinite}",
+            ".pls{animation:pls 0.9s ease-in-out infinite}",
+            f".agt-r{{stroke-width:2;animation:agt-col {LOOP}s infinite}}",
+            f".net-r{{stroke-width:1.5;animation:net-col {LOOP}s infinite}}",
+            f".ctl-r{{stroke-width:1.5;animation:ctl-col {LOOP}s infinite}}",
+            f".gate-r{{stroke-width:2.5;animation:gate-a {LOOP}s infinite}}",
+            f".sb1{{animation:sb1 {LOOP}s infinite}}",
+            f".sb2{{animation:sb2 {LOOP}s infinite}}",
+            f".sb3{{animation:sb3 {LOOP}s infinite}}",
+            f".sf{{animation:sw {LOOP}s infinite}}",
+            ".fl{stroke-dasharray:8 5;animation:fl 1.4s linear infinite}",
+        ]
+    )
 
     chrome = (
         "<defs>"
@@ -288,7 +313,7 @@ def build() -> str:  # noqa: PLR0915
         f'rx="14" fill="url(#bg)" stroke="{CARD_BD}"/>'
         "</g>"
         f'<path d="M{M} {M + 14} a14 14 0 0 1 14 -14 '
-        f'h{W - 2 * M - 28} a14 14 0 0 1 14 14 '
+        f"h{W - 2 * M - 28} a14 14 0 0 1 14 14 "
         f'v{TITLE_H - 14} h-{W - 2 * M} z" fill="{TITLE_BG}"/>'
         f'<line x1="{M}" y1="{M + TITLE_H}" x2="{W - M}" y2="{M + TITLE_H}" '
         f'stroke="{CARD_BD}"/>'
@@ -296,9 +321,9 @@ def build() -> str:  # noqa: PLR0915
         f'<circle cx="48" cy="{M + TITLE_H // 2}" r="6" fill="#ffbd2e"/>'
         f'<circle cx="68" cy="{M + TITLE_H // 2}" r="6" fill="#27c93f"/>'
         f'<text x="96" y="{M + 29}" fill="{FG}" font-weight="700" font-size="16">'
-        f'DUSK</text>'
+        f"DUSK</text>"
         f'<text x="142" y="{M + 29}" fill="{DIM}" font-size="12">'
-        f'  behavioral gate for agentic networks</text>'
+        f"  behavioral gate for agentic networks</text>"
         f'<rect x="{M}" y="{M + TITLE_H}" width="{W - 2 * M}" '
         f'height="{STRIP_H}" fill="#080d1a"/>'
         f'<line x1="{M}" y1="{M + TITLE_H + STRIP_H}" '
@@ -316,8 +341,9 @@ def build() -> str:  # noqa: PLR0915
         f'fill="{RED}" font-size="10">Threat</text>'
     )
 
-    web_node = _node(*WEB[:2], WEB[2], WEB[3], "Web Content", "external source",
-                     NODE_BG, CYAN, CYAN)
+    web_node = _node(
+        *WEB[:2], WEB[2], WEB[3], "Web Content", "external source", NODE_BG, CYAN, CYAN
+    )
     agt_node = (
         f'<rect class="agt-r" x="{AGT[0] - AGT[2]}" y="{AGT[1] - AGT[3]}" '
         f'width="{AGT[2] * 2}" height="{AGT[3] * 2}" rx="10"/>'
@@ -347,7 +373,7 @@ def build() -> str:  # noqa: PLR0915
         f'width="{dsk_w}" height="{dsk_h}" rx="12" fill="#0b1724"/>'
         f'<text x="{DSK[0]}" y="{dsk_y + 22}" text-anchor="middle" '
         f'fill="{CYAN}" font-weight="700" font-size="12" letter-spacing="2">'
-        f'DUSK GATE</text>'
+        f"DUSK GATE</text>"
         + _sub(SUB_Y1, "Baseline  --  per-agent profile", "sb1")
         + _sub(SUB_Y2, "Analyse  --  anomaly score", "sb2")
         + _sub(SUB_Y3, "Verdict  --  ALLOW / BLOCK", "sb3")
@@ -378,8 +404,8 @@ def build() -> str:  # noqa: PLR0915
         f'<g class="p1">'
         f'<circle class="live" cx="{M + 14}" cy="{sy - 3}" r="4" fill="{GREEN}"/>'
         f'<text x="{M + 26}" y="{sy}" fill="{GREEN}" font-size="10">'
-        f'BEFORE DUSK   --   no behavioral gate   --   '
-        f'all agent actions pass through unmonitored</text>'
+        f"BEFORE DUSK   --   no behavioral gate   --   "
+        f"all agent actions pass through unmonitored</text>"
         + _line(WEB_R, AGT_L, GREEN, "fl")
         + _line(AGT_R, DSK_L, GREEN, "fl")
         + _line(DSK_R, CTL_L, GREEN, "fl")
@@ -390,7 +416,7 @@ def build() -> str:  # noqa: PLR0915
         f'fill="{GREEN}" font-size="11">Runbook</text>'
         f'<text x="{AGT[0]}" y="{agt_bot - 14}" text-anchor="middle" '
         f'fill="{GREEN}" font-weight="700" font-size="12">NORMAL</text>'
-        f'<text x="{DSK[0]}" y="{DSK[1] + 10}" text-anchor="middle" '
+        f'<text x="{DSK[0]}" y="{DSK[1] + DSK[3] - 14}" text-anchor="middle" '
         f'fill="{DIM}" font-size="11" opacity="0.45">INACTIVE</text>'
         f'<text x="{NET[0]}" y="{net_bot - 14}" text-anchor="middle" '
         f'fill="{GREEN}" font-size="11">ACTIVE</text>'
@@ -407,11 +433,12 @@ def build() -> str:  # noqa: PLR0915
 
     mid_x = (DSK_R + CTL_L) // 2
     p2 = (
-        f'<g class="p2">'
-        f'<circle class="pls" cx="{M + 14}" cy="{sy - 3}" r="4" fill="{RED}"/>'
+        '<g class="p2">'
+        + threat
+        + f'<circle class="pls" cx="{M + 14}" cy="{sy - 3}" r="4" fill="{RED}"/>'
         f'<text x="{M + 26}" y="{sy}" fill="{RED}" font-weight="700" '
         f'font-size="10">ATTACK   --   prompt injection   --   no gate   --   '
-        f'action reaches controller   --   NETWORK BREACHED</text>'
+        f"action reaches controller   --   NETWORK BREACHED</text>"
         + _line(WEB_R, AGT_L, RED, "fl")
         + _line(AGT_R, DSK_L, RED, "fl")
         + _line(DSK_R, CTL_L, RED, "fl")
@@ -419,7 +446,7 @@ def build() -> str:  # noqa: PLR0915
         + poison_badge
         + f'<text x="{AGT[0]}" y="{agt_bot - 14}" text-anchor="middle" '
         f'fill="{RED}" font-weight="700" font-size="12">HIJACKED</text>'
-        f'<text x="{DSK[0]}" y="{DSK[1] + 10}" text-anchor="middle" '
+        f'<text x="{DSK[0]}" y="{DSK[1] + DSK[3] - 14}" text-anchor="middle" '
         f'fill="{DIM}" font-size="11" opacity="0.45">INACTIVE</text>'
         + _pkt("ac", 1.4, 0.0, RED, r=6)
         + _pkt("cn", 0.55, 0.8, RED, r=5)
@@ -428,18 +455,18 @@ def build() -> str:  # noqa: PLR0915
         f'<text x="{NET[0]}" y="{net_bot - 13}" text-anchor="middle" '
         f'fill="{RED}" font-size="10">COMPROMISED</text>'
         f'<text x="{CTL[0]}" y="{CTL[1] + CTL[3] - 12}" text-anchor="middle" '
-        f'fill="{RED}" font-size="10">COMPROMISED</text>'
-        + "</g>"
+        f'fill="{RED}" font-size="10">COMPROMISED</text>' + "</g>"
     )
 
     lbl_y = score_y + 22
     verd_y = lbl_y + 26
     p3 = (
-        f'<g class="p3">'
-        f'<circle class="live" cx="{M + 14}" cy="{sy - 3}" r="4" fill="{CYAN}"/>'
+        '<g class="p3">'
+        + threat
+        + f'<circle class="live" cx="{M + 14}" cy="{sy - 3}" r="4" fill="{CYAN}"/>'
         f'<text x="{M + 26}" y="{sy}" fill="{CYAN}" font-weight="700" '
         f'font-size="10">DUSK DEPLOYED   --   same attack intercepted at gate   --   '
-        f'score 0.80   --   WOULD-BLOCK   --   network PROTECTED</text>'
+        f"score 0.80   --   WOULD-BLOCK   --   network PROTECTED</text>"
         + _line(WEB_R, AGT_L, RED, "fl")
         + _line(AGT_R, DSK_L, RED, "fl")
         + _line(DSK_R, CTL_L, DIM)
@@ -455,7 +482,7 @@ def build() -> str:  # noqa: PLR0915
         f'<line x1="{mid_x + 14}" y1="{FY - 14}" x2="{mid_x - 14}" '
         f'y2="{FY + 14}" stroke="{RED}" stroke-width="4" stroke-linecap="round"/>'
         f'<text x="{score_x}" y="{score_y - 2}" fill="{DIM}" font-size="9">'
-        f'anomaly score  --  computing baseline delta</text>'
+        f"anomaly score  --  computing baseline delta</text>"
         f'<rect x="{score_x}" y="{score_y}" width="{score_track_w}" '
         f'height="8" rx="4" fill="#060910"/>'
         f'<rect class="sf" x="{score_x}" y="{score_y}" '
@@ -464,7 +491,7 @@ def build() -> str:  # noqa: PLR0915
         f'text-anchor="end" fill="{RED}" font-size="10" font-weight="700">0.80</text>'
         f'<text x="{DSK[0]}" y="{lbl_y}" text-anchor="middle" '
         f'fill="{DIM}" font-size="9">'
-        f'ATT&amp;CK T1562.004  |  ATLAS AML.T0051</text>'
+        f"ATT&amp;CK T1562.004  |  ATLAS AML.T0051</text>"
         f'<text x="{DSK[0]}" y="{lbl_y + 12}" text-anchor="middle" '
         f'fill="{DIM}" font-size="9">'
         f"reason: introduces sensitive term 'restricted'</text>"
@@ -473,18 +500,16 @@ def build() -> str:  # noqa: PLR0915
         f'<text x="{DSK[0]}" y="{verd_y}" text-anchor="middle" '
         f'fill="{RED}" font-weight="700" font-size="16">WOULD-BLOCK</text>'
         f'<text x="{NET[0]}" y="{net_bot - 14}" text-anchor="middle" '
-        f'fill="{GREEN}" font-weight="700" font-size="12">PROTECTED</text>'
-        + "</g>"
+        f'fill="{GREEN}" font-weight="700" font-size="12">PROTECTED</text>' + "</g>"
     )
 
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="{W}" height="{H}" '
         f'viewBox="0 0 {W} {H}" font-family="{FONT}" font-size="13">\n'
         f"<style>{css}</style>\n"
         f"<defs>{paths}</defs>\n"
         f"{chrome}\n"
         f"{base_lines}\n"
-        f"{threat}\n"
         f"{web_node}\n"
         f"{agt_node}\n"
         f"{dsk_node}\n"
