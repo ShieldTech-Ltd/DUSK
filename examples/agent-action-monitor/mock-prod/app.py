@@ -1,11 +1,4 @@
-"""mock-prod: dummy downstream controller/DB target for the DUSK example.
-
-Stands in for whatever real system an agent's actions would apply to (a
-firewall controller, a cloud API, a database). Accepts an applied action,
-logs it, and returns success. Actions reach this service on ALLOW; never
-on BLOCK -- the log here is the visible proof that the gate stopped
-something, not just a status code buried in a response.
-"""
+"""In-memory downstream target used to verify gate enforcement."""
 
 from __future__ import annotations
 

@@ -1,41 +1,7 @@
-"""Bedrock tool-call adapter.
+"""Normalize proposed Bedrock Converse tool calls before execution.
 
-Maps the tool-call an agent proposes through Amazon Bedrock's Converse API
-into the canonical AgentAction. Unlike the Azure adapter (which reads a
-control-plane audit log after the fact), this adapter reads a *proposed*
-action straight out of the model's response, before it has been applied
-anywhere -- this is the seam DUSK judges: the model's output, not its
-prompt.
-
-Field assumptions, based on the Converse API's toolUse content block
-(https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolUseBlock.html):
-
-- ``toolUse.name``: the tool the model chose to call. Mapped to
-  ``action_type`` via a name-substring rule, same style as the Azure
-  adapter's operation-name mapping.
-- ``toolUse.input``: the tool's arguments. Expected to carry ``target``
-  (the resource acted on) and optionally ``before``/``after`` (the
-  proposed delta). Missing ``before``/``after`` is not an error -- many
-  proposed actions are creates, with no prior state.
-- ``toolUse.toolUseId``: Bedrock's own id for this tool-call. Used as
-  ``raw_ref``.
-
-Tool-name to action_type mapping (substring, case-insensitive), mirroring
-the vocabulary firewall/route/segment/role/port controllers actually use:
-
-- firewall or securitygroup -> ``firewall_rule_change``
-- route                     -> ``route_change``
-- segment or subnet or vpc  -> ``segment_change``
-- role or permission        -> ``role_assignment``
-- port                      -> ``port_change``
-- anything else             -> ``unknown``
-
-``agent_id`` and ``timestamp`` are not part of the toolUse block itself;
-the caller (the agent harness) supplies them, since only it knows which
-agent is running and when the call happened. This adapter's ``parse()``
-therefore takes the toolUse block plus that context, not just a bare raw
-dict -- callers should use ``parse_tool_use`` directly rather than the
-``SourceAdapter.parse(raw)`` contract used by log-based adapters.
+The harness supplies agent identity and timestamp because Bedrock's
+``toolUse`` block contains only the tool name, arguments, and call ID.
 """
 
 from __future__ import annotations

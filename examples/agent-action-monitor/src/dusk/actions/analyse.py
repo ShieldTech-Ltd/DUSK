@@ -1,18 +1,4 @@
-"""Score an agent action against a baseline and explain the result.
-
-The analyser is the judgement layer. Given a learned
-:class:`~dusk.actions.baseline.Baseline` and a new
-:class:`~dusk.actions.event.AgentAction`, it produces an
-:class:`AnalysisResult`: an anomaly score in ``0..1``, the human-readable
-reasons behind it, the MITRE ATT&CK and ATLAS techniques the behaviour maps
-to, an estimate of blast radius, and a prediction of what an attacker would
-do next.
-
-The scoring is behavioural: a hijacked agent uses valid credentials, so what
-gives it away is doing something its own history never shows. Each novelty
-signal contributes a weighted amount to the score; the weights are explicit
-and the whole computation is deterministic.
-"""
+"""Score agent behavior against its baseline and explain each signal."""
 
 from __future__ import annotations
 

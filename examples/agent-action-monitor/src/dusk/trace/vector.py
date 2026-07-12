@@ -1,15 +1,4 @@
-"""SIE-backed semantic similarity for past agent decisions.
-
-Calls the self-hosted Superlinked Inference Engine (SIE) encode/score/extract
-primitives for real embeddings, reranking, and entity extraction; falls back
-to a deterministic n-gram hash embedding (and empty results for score/extract)
-so the example always works without SIE running. SIE settings come from the
-process-wide :class:`~dusk.config.Config` (``sie_endpoint``, ``sie_encode_model``,
-``sie_score_model``, ``sie_extract_model``), overridable via ``dusk.yaml`` or
-``DUSK_SIE_*`` env vars. ``SIE_API_KEY`` is read directly from the environment,
-not from Config, since it's a secret rather than an operational setting; a
-self-hosted SIE needs no key at all.
-"""
+"""SIE-backed similarity with deterministic offline fallbacks."""
 
 from __future__ import annotations
 
@@ -28,9 +17,7 @@ logger = logging.getLogger(__name__)
 #: Default zero-shot labels for pulling privileged terms out of an action.
 DEFAULT_EXTRACT_LABELS = ["role", "privilege", "resource", "segment", "port"]
 
-#: Max wait for a cold/at-capacity model per call. A single /v1/gate request can make several
-#: SIE calls in sequence, so this must be small enough that even all of them missing capacity
-#: still leaves the request well under the caller's own timeout, not just under cfg.sie_timeout_ms.
+#: Per-call provisioning bound; one gate request can make several sequential SIE calls.
 _PROVISION_TIMEOUT_S = 1.5
 
 
@@ -61,9 +48,7 @@ class SimilarDecision:
     score: int
 
 
-#: Fallback verdict for a TraceDecision recorded before the verdict field
-#: existed. Errs toward the more conservative label rather than guessing
-#: from score, which is what caused the bug this constant replaces.
+#: Conservative label for records created before verdict persistence existed.
 _UNKNOWN_VERDICT_FALLBACK = "WOULD-BLOCK"
 
 
@@ -94,8 +79,7 @@ def sie_encode(text: str, config: Config | None = None) -> list[float] | None:
     try:
         from sie_sdk.types import Item  # type: ignore[import-not-found]
 
-        # An inline gate must never block on a cold/at-capacity model; both
-        # kwargs bound how long this can wait before falling back below.
+        # Cold or saturated models must not stall the inline gate.
         result = client.encode(
             cfg.sie_encode_model,
             Item(text=text),
@@ -203,13 +187,7 @@ def sie_extract(
 
 
 def _stable_hash(token: str) -> int:
-    """Deterministic token hash, stable across process restarts.
-
-    Python's built-in hash() is salted per-process (PYTHONHASHSEED) for
-    strings, so two runs of the gate would embed the same text
-    differently -- silently making previously recorded fallback
-    embeddings incomparable to freshly computed ones after any restart.
-    """
+    """Return a process-stable token hash for persisted fallback embeddings."""
     return int(hashlib.sha256(token.encode("utf-8")).hexdigest(), 16)
 
 
@@ -243,9 +221,7 @@ def _rank_candidates(
     scored.sort(key=lambda x: x[0], reverse=True)
     top = scored[:top_k]
 
-    # Optional rerank pass over the shortlist for higher precision. Cosine
-    # similarity already ranked it; if SIE's cross-encoder is available,
-    # prefer its ranking of this same shortlist instead.
+    # Prefer the cross-encoder ordering when SIE can rerank the shortlist.
     rerank = sie_score(query, [f"{d.agent_id} {d.action}" for _, d in top])
     if rerank and len(rerank) == len(top):
         reranked = sorted(zip(rerank, top, strict=True), key=lambda x: x[0], reverse=True)

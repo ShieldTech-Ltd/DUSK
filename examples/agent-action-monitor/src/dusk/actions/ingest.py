@@ -1,10 +1,4 @@
-"""Ingest entrypoint: read a source file into a list of AgentAction events.
-
-A source file is a JSON array of raw records in one controller's native
-shape. Each record is routed through the normaliser to the right adapter.
-Records that cannot be normalised are logged at WARNING and skipped, so one
-bad record never aborts the whole batch. Ingest does not think; it normalises.
-"""
+"""Normalize JSON source records into AgentAction events."""
 
 from __future__ import annotations
 
