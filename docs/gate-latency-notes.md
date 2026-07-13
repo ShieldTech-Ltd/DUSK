@@ -1,7 +1,8 @@
 # Gate latency under load
 
-A first data point on latency-under-load, captured once real
-`SIE_ENDPOINT`/`SIE_API_KEY` credentials became available. This measures
+A first data point on latency-under-load, captured once a real
+`DUSK_SIE_ENDPOINT` and, for the authenticated hosted deployment,
+`SIE_API_KEY` became available. This measures
 `/v1/gate`'s own added latency with live SIE enabled -- not the full
 `agent-demo` -> gate -> `mock-prod` round trip. Treat this as a preliminary
 probe, superseded by the full-stack run recorded further down.

@@ -51,16 +51,17 @@ gate's rule-based score is never reduced by their absence. `dusk gate` and
 `/v1/gate` work identically without any SIE container running.
 
 This degrades quickly, not just gracefully: all three calls pass
-`wait_for_capacity=False` and a short `provision_timeout_s` (both needed --
-see `docs/gate-docker-verification.md`), so a model that isn't warm yet
-fails in ~1.5s rather than blocking the request while the SDK's own retry
-loop waits for it.
+`wait_for_capacity=False` and a short `provision_timeout_s`, so a model that
+isn't warm yet fails in ~1.5s rather than blocking the request while the
+SDK's own retry loop waits for it. See the
+[local run instructions](../README.md#run-it-locally) for the expected cold
+start behavior.
 
 ## Validated against a real SIE cluster
 
-`tests/test_sie_live_benchmark.py` was written to skip until `SIE_ENDPOINT`
-and `SIE_API_KEY` point at a reachable cluster. Run against Superlinked's
-hosted tester endpoint, both checks pass:
+`tests/test_sie_live_benchmark.py` skips until `DUSK_SIE_ENDPOINT` and, for
+authenticated deployments, `SIE_API_KEY` point at a reachable cluster. Run
+against Superlinked's hosted tester endpoint, both checks pass:
 
 - `sie_encode` returns a real 1024-dimension dense vector from `BAAI/bge-m3`
   (confirming the model actually loaded and served, not just that the
@@ -70,8 +71,9 @@ hosted tester endpoint, both checks pass:
 - At least one attack's `reasons` carries a real `SIE rerank` or
   `SIE extract` marker, confirming the primitives are actually contributing
   a signal over the network, not a no-op that happens to still pass.
-- The full test suite (185 tests) passes unchanged with live SIE enabled,
-  confirming nothing depends on the deterministic fallback path being taken.
+- The full test suite passes unchanged with live SIE enabled, confirming
+  nothing depends on the deterministic fallback path being taken. The exact
+  test count is intentionally omitted because it changes as coverage grows.
 
 This is evidence that SIE is load-bearing here ("removing SIE degrades the
 result"), not just a claim.

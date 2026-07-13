@@ -58,9 +58,9 @@ loop waits for it.
 
 ## Validated against a real SIE cluster
 
-`tests/test_sie_live_benchmark.py` was written to skip until `SIE_ENDPOINT`
-and `SIE_API_KEY` point at a reachable cluster. Run against Superlinked's
-hosted tester endpoint, both checks pass:
+`tests/test_sie_live_benchmark.py` skips until `DUSK_SIE_ENDPOINT` and, for
+authenticated deployments, `SIE_API_KEY` point at a reachable cluster. Run
+against Superlinked's hosted tester endpoint, both checks pass:
 
 - `sie_encode` returns a real 1024-dimension dense vector from `BAAI/bge-m3`
   (confirming the model actually loaded and served, not just that the
@@ -70,8 +70,9 @@ hosted tester endpoint, both checks pass:
 - At least one attack's `reasons` carries a real `SIE rerank` or
   `SIE extract` marker, confirming the primitives are actually contributing
   a signal over the network, not a no-op that happens to still pass.
-- The full test suite (185 tests) passes unchanged with live SIE enabled,
-  confirming nothing depends on the deterministic fallback path being taken.
+- The full test suite passes unchanged with live SIE enabled, confirming
+  nothing depends on the deterministic fallback path being taken. The exact
+  test count is omitted because it changes as coverage grows.
 
 This is evidence that SIE is load-bearing here ("removing SIE degrades the
 result"), not just a claim.

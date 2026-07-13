@@ -1,46 +1,61 @@
 # DUSK architecture
 
-DUSK is a layered, pluggable system. Each layer has one responsibility and a
-narrow interface to the next, so sources, detections, and responders can be
-added or replaced without touching the core.
+DUSK has two implemented evaluation paths: an offline root package and a
+self-contained HTTP gate example. Both consume the same canonical agent-action
+shape and apply per-agent behavioural analysis, but they have deliberately
+different deployment boundaries.
 
-For the full enterprise system view, see
-[dusk-enterprise-flow.svg](dusk-enterprise-flow.svg).
+## Current gate implementation
 
-## Layers
+![DUSK agent-action-monitor implementation architecture](../examples/agent-action-monitor/docs/architecture.svg)
 
-- Sensors (`dusk.sensor`): turn a traffic source (a pcap today, live capture and
-  Zeek next) into a uniform stream of packet records.
-- Actions (`dusk.actions`): ingest an agent's control-plane action from any
-  source and normalise it into a single canonical AgentAction event. Adapters
-  map vendor-specific records onto the canonical shape.
-- Engine (`dusk.core`): runs the registered detections over the input, reaches a
-  verdict, and predicts the next kill-chain stage.
-- Responders (`dusk.respond`): act on a finding, from alerting today to active
-  isolation later.
+The diagram represents the runnable `examples/agent-action-monitor` stack. It
+does not imply a vector database, policy repository, SIEM, cloud platform, or
+human-review service.
 
-## Data flow
+## Root package
 
-Input is normalised by a sensor or an action adapter, evaluated by the engine,
-and turned into a verdict. A CLEAR verdict passes; an ALERT verdict is handed to
-a responder. The agent action path and the packet path share the engine and
-responder layers while keeping their own ingestion.
+- Actions (`dusk.actions`) normalise Azure, Bedrock, and generic records into a
+  canonical `AgentAction`, learn a trusted per-agent baseline, calculate an
+  anomaly score, and render `ALLOW`, `WOULD-BLOCK`, or `BLOCK`.
+- Sensors (`dusk.sensor`) normalise pcap, live-capture, and Zeek inputs for the
+  packet-detection path.
+- Detections (`dusk.detections`) evaluate network sweep, boundary, lateral, and
+  telemetry signals.
+- Responders (`dusk.respond`) turn findings into alerts or isolation actions.
+- The root `dusk gate` command evaluates action files offline. It does not host
+  `/v1/gate`.
 
-## Roadmap
+## Self-contained gate service
 
-- v1: agent action layer. Ingest control-plane actions, baseline each agent,
-  analyse and predict, and render verdicts in watch mode.
-- v2: data plane. Reposition the existing packet and flow detections (sweep,
-  boundary, pcap sensor) as a confirmation layer that correlates what an agent
-  commanded with what the network actually did.
-- v3: reasoning layer. Inspect the agent's decision and tool-call reasoning to
-  catch intent before the action is formed.
+`examples/agent-action-monitor` owns the Flask `/v1/gate` service, Docker
+Compose stack, trusted sample baseline, prior-refusal memory, bounded in-process
+decision history, n8n webhooks, agent harness, and mock downstream target.
 
-DUSK ships in watch mode first: it renders a verdict on every action but does
-not enforce until its analysis is trusted in a given environment, because an
-inline gate that wrongly blocks a legitimate action can disrupt a network.
+Superlinked SIE is a separate inference service. `score` and `extract` add
+semantic novelty and privileged-entity signals to behavioural analysis;
+`encode` and `score` power similar-decision lookup. All model-derived signals
+fail soft, leaving the deterministic result available.
 
-## Oracle AI Database 26ai integration
+## Decision and execution flow
 
-See [ORACLE-INTEGRATION.md](ORACLE-INTEGRATION.md) for how DUSK and Oracle 26ai
-work as complementary security layers.
+1. A client submits a structured `AgentAction`.
+2. DUSK validates it and compares it with that agent's trusted baseline.
+3. Optional SIE signals and prior-refusal memory add evidence.
+4. The configured threshold produces an explainable verdict.
+5. Watch mode returns `WOULD-BLOCK` but forwards the action. Enforce mode
+   returns `BLOCK` and prevents the client from calling the target.
+6. Decision and report webhooks fire for every verdict; alerts fire only for
+   refused verdicts.
+
+The trusted baseline is never updated from live requests, which prevents an
+attacker from slowly teaching malicious behavior as normal.
+
+## Related documentation
+
+- [Agent-action schema](action-schema.md)
+- [Agent demo walkthrough](agent-demo-walkthrough.md)
+- [SIE primitives](sie-primitives.md)
+- [Gate Docker verification](gate-docker-verification.md)
+- [Gate latency notes](gate-latency-notes.md)
+- [Threat model](threat-model.md)

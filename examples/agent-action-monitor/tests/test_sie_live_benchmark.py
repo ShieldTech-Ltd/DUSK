@@ -1,4 +1,4 @@
-"""Live SIE benchmark: skipped until SIE_ENDPOINT/SIE_API_KEY point at a reachable cluster.
+"""Live SIE benchmark: skipped until DUSK_SIE_ENDPOINT reaches an SIE cluster.
 
 Once SIE is actually reachable (self-hosted container or the Superlinked-hosted
 tester endpoint), this proves the primitives are load-bearing rather than a
@@ -37,7 +37,10 @@ def _attacks() -> list[AgentAction]:
 @pytest.fixture(autouse=True)
 def _skip_unless_sie_reachable() -> None:
     if sie_encode("connectivity check") is None:
-        pytest.skip("SIE not installed/reachable; set SIE_ENDPOINT and SIE_API_KEY to run this")
+        pytest.skip(
+            "SIE not installed/reachable; set DUSK_SIE_ENDPOINT and, when required, "
+            "SIE_API_KEY to run this"
+        )
 
 
 def test_live_sie_precision_recall_matches_or_beats_deterministic_baseline() -> None:

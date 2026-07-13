@@ -31,7 +31,8 @@ services:
     ports: ["8000:8000"] # /v1/gate
 
   sie:
-    image: ghcr.io/superlinked/sie-server:v0.4.1-cpu-default # pinned, not latest-*; newest tag published
+    # Reproducible version used for the recorded live validation. Upgrade only with the SDK pin.
+    image: ghcr.io/superlinked/sie-server:v0.4.1-cpu-default
     # Upstream is amd64-only (no arm64 manifest); this pin works native on amd64, emulated on arm64.
     platform: linux/amd64
     volumes:

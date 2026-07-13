@@ -3,11 +3,10 @@
 Watching agent behaviour for what most tooling quietly misses, with
 Superlinked surfacing the anomalies.
 
-> This directory is self-contained: its own `pyproject.toml`, `src/dusk/`,
-> `tests/`, and Docker/compose stack, independent of the main
-> [DUSK](https://github.com/TFT444/DUSK) repo it's developed alongside. It's
-> ready to be contributed as an example to `superlinked/sie` -- see "What's
-> in the box" below for exactly what's bundled.
+> This is a self-contained example from the
+> [DUSK](https://github.com/TFT444/DUSK) project. It has its own package,
+> tests, sample data, and Docker Compose stack. See "What's in the box" for
+> exactly what's bundled.
 
 ![architecture](docs/architecture.svg)
 
@@ -64,6 +63,9 @@ than the deterministic n-gram fallback) requires **Python 3.12+**, since
 exactly this reason:
 
 ```bash
+# optional: start from the documented SIE settings
+cp .env.example .env
+
 # terminal 1: the gate
 python -m dusk.api
 
@@ -159,12 +161,15 @@ attacks with zero false alarms on the 15 routine actions).
 | Score | `BAAI/bge-reranker-v2-m3` | ~568M params, Apache-2.0 | Reranks the encode-shortlisted history for `similar_decision_ids`, and separately reranks an agent's own baseline history to catch semantic novelty. |
 | Extract | `urchade/gliner_multi-v2.1` | ~289M params, Apache-2.0 | Zero-shot NER for privileged terms (role, privilege, resource, segment, port), weighted by the model's own confidence rather than a flat yes/no. |
 
-All three ship in SIE's `default` bundle on the self-hosted
-`sie-server:v0.4.1-cpu-default` image this example pins. Each is a
+All three ship in the `default` bundle of the pinned
+`sie-server:v0.4.1-cpu-default` image. The example intentionally pairs that
+server with `sie-sdk==0.6.17`, the combination used for its recorded live
+validation. The pin makes the demo reproducible; update the pair only after
+running the live benchmark against the replacement versions. Each model is a
 `Config` field (`sie_encode_model` / `sie_score_model` /
-`sie_extract_model`), overridable via the matching `DUSK_SIE_*_MODEL` env
-var -- swappable without a code change, provided the replacement is
-available in your SIE deployment's catalog.
+`sie_extract_model`) and can be replaced through the matching
+`DUSK_SIE_*_MODEL` environment variable when it exists in the target SIE
+catalog.
 
 ## SIE features used
 
@@ -196,8 +201,8 @@ hosted endpoint for real-load testing with a one-line env var change.
 
 ## Latency
 
-Full `agent-demo` -> gate -> `mock-prod` round trip against Superlinked's
-hosted tester cluster, 20 requests per concurrency level, 20% poisoned /
+The recorded full `agent-demo` -> gate -> `mock-prod` run used Superlinked's
+hosted tester cluster, 20 requests per concurrency level, and a 20% poisoned /
 80% clean mix:
 
 | Concurrency | p50 | p95 | Errors |
@@ -206,28 +211,23 @@ hosted tester cluster, 20 requests per concurrency level, 20% poisoned /
 | 3 | 307ms | 474ms | 0/20 |
 | 5 | 295ms | 317ms | 0/20 |
 
-Correctness held throughout: every allowed action reached `mock-prod`, and
-every poisoned action was correctly flagged `WOULD-BLOCK` (this run used
-watch mode, so flagged actions still reached `mock-prod` -- see "What
-you'll see" above for the watch-vs-enforce distinction). The concurrency=1
-tail is the tester cluster scaling a model back to zero between sparse
-sequential requests, not a concurrency effect -- see
-`docs/gate-latency-notes.md` for the full account, including why that tail
-is a property of the shared tester allocation rather than the gate.
+Every allowed action reached `mock-prod`, and every poisoned action was
+flagged `WOULD-BLOCK`. See `docs/gate-latency-notes.md` for the methodology,
+cold-start behavior, and limitations of this single small trial.
 
 ## What's in the box
 
-This directory is self-contained, ready to contribute as an example to
-`superlinked/sie`:
+This example is self-contained and includes everything needed to run the
+complete local flow:
 
 - `Dockerfile`, `compose.yml` -- the gate service, self-hosted SIE,
   n8n, mock-prod, and agent-demo, wired together on one internal network
 - `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
   contract
 - `src/dusk/` -- the gate itself: `actions/` (baseline, analyse, verdict),
-  `trace/` (SIE client, n8n webhooks), `config.py`, `api.py`. Only the
-  agent-action gate, not DUSK's separate network/packet-detection layer
-  (`sensor/`, `detections/`), which stays in the main DUSK repo
+  `trace/` (SIE client, n8n webhooks), `config.py`, and `api.py`. This example
+  deliberately contains only the agent-action gate; network packet detection
+  is outside its scope
 - `agent-demo/` -- the Bedrock-or-mock agent harness, tool-call extraction,
   load driver
 - `mock-prod/` -- the dummy downstream target
