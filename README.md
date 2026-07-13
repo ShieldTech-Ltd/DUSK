@@ -1,8 +1,5 @@
-<h1 align="center">DUSK</h1>
-
 <p align="center">
-  <strong>Behavioural threat detection for agentic networks</strong><br>
-  The missing security layer between AI agents and your infrastructure
+  <img src="docs/dusk-hero-banner.svg" alt="DUSK behavioural AI security for agentic systems" width="100%">
 </p>
 
 <p align="center">
@@ -15,6 +12,10 @@
 
 <p align="center">
   <em>Credentials verify identity. DUSK verifies behaviour.</em>
+</p>
+
+<p align="center">
+  <img src="docs/dusk-workflow-strip.svg" alt="How DUSK evaluates a proposed agent action in five steps" width="100%">
 </p>
 
 ---

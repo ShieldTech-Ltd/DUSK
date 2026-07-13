@@ -47,6 +47,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Replaced the legacy terminal-style demos with a unified branded visual system:
   a three-stage action journey, a decision-evidence comparison, and a responsive
   architecture walkthrough.
+- Added a branded README hero and compact five-step workflow strip so new
+  visitors can understand DUSK before reading the detailed documentation.
 - Plain-text style across all docs, issue templates, alert panel, and code
   docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
   removed. No functional changes.
