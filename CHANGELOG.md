@@ -44,6 +44,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Reconciled the root architecture and SIE documentation with the implemented
   gate boundary, removed broken document links, and corrected animated SVG
   timing and text layout.
+- Replaced the legacy terminal-style demos with a unified branded visual system:
+  a three-stage action journey, a decision-evidence comparison, and a responsive
+  architecture walkthrough.
 - Plain-text style across all docs, issue templates, alert panel, and code
   docstrings. Em dashes, en dashes, navigation arrows, and decorative emojis
   removed. No functional changes.

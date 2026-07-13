@@ -134,6 +134,12 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 
 **Verdict rendering.** Actions above the configured threshold receive ALLOW, WOULD-BLOCK, or BLOCK with full reasoning, MITRE mappings, blast radius, and a prediction of what an attacker would do next. Watch mode never blocks; enforce mode upgrades WOULD-BLOCK to BLOCK once the baseline is trusted.
 
+### Decision evidence
+
+<p align="center">
+  <img src="docs/dusk-attack-demo.svg" alt="DUSK decision evidence comparing a routine action with a prompt-injected firewall action" width="100%">
+</p>
+
 ---
 
 ## Architecture
@@ -151,10 +157,10 @@ human-review service.
 ### Attack flow
 
 <p align="center">
-  <img src="docs/dusk-arch-demo.svg" alt="DUSK three-phase architecture: before deployment, under attack without a gate, and DUSK blocking the hijacked action" width="100%">
+  <img src="docs/dusk-arch-demo.svg" alt="DUSK branded three-stage journey showing normal behavior, a compromised agent, and DUSK protection" width="100%">
 </p>
 
-<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller. Phase 3: DUSK is active; the same attack arrives, the gate scores it 0.80, and the action is refused before it reaches the controller.</sub></p>
+<p align="center"><sub>The visual keeps all three moments visible: a routine action follows the established pattern, prompt injection changes the action when no behavioral gate is present, and DUSK intercepts the same anomaly before execution. Animated paths preserve the sense of movement without hiding the comparison.</sub></p>
 
 For the full layered design and integration notes, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
