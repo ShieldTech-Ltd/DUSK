@@ -95,20 +95,13 @@ The gate scores 1.0 precision, 1.0 recall, and 0.0 false-positive rate on the bu
 
 ### Network sweep detection
 
-```text
-$ dusk scan --file capture.pcap
-
-╭───────────────────────── DUSK ALERT ─────────────────────────╮
-│ Source IP         10.0.40.2                                    │
-│ Detection         sweep                                        │
-│ MITRE ATT&CK      T1046                                        │
-│ Kill-chain stage  Reconnaissance                               │
-│ Confidence        53%                                          │
-│ Next stage        Expect LateralMovement. Watch for east-west  │
-│                   connections into segments this host has      │
-│                   never talked to.                             │
-╰───────────────────────────────────────────────────────────────╯
-VERDICT: ALERT, analysed 25 packets, 1 detection(s) fired.
+```mermaid
+flowchart LR
+    A["dusk scan --file capture.pcap"] --> B["Analyse 25 packets"]
+    B --> C["Detect network sweep<br/>Source: 10.0.40.2"]
+    C --> D["Map evidence<br/>MITRE ATT&amp;CK T1046<br/>Reconnaissance"]
+    D --> E["Predict next stage<br/>Watch for lateral movement"]
+    E --> F["ALERT<br/>Confidence: 53%<br/>1 detection fired"]
 ```
 
 ---
