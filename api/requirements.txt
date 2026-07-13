@@ -1,8 +1,0 @@
-flask
-flask-cors
-requests
-python-dotenv
-google-generativeai
-tavily-python
-urllib3
-PyYAML

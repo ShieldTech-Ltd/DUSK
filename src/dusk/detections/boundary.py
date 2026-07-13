@@ -1,16 +1,4 @@
-"""Boundary detection, port scanning against a single destination.
-
-A hijacked agent probing where the walls are will hammer one destination
-across many ports in a short window. Unlike the sweep detection (which
-watches fan-out across *destinations*), this watches fan-out across *ports*
-for a single ``(source, destination)`` pair.
-
-MITRE: T1590 (Gather Victim Network Information).
-Kill chain: Reconnaissance.
-
-Every threshold is read from :class:`~dusk.config.Config`; this module holds
-no hardcoded detection constants.
-"""
+"""Detect high port fan-out for a source-destination pair (MITRE T1590)."""
 
 from __future__ import annotations
 

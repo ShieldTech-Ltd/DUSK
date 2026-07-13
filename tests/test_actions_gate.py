@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(LAB_DIR))
 
 import generate_actions  # noqa: E402
 
+from dusk.actions import baseline as baseline_module  # noqa: E402
 from dusk.actions.analyse import analyse  # noqa: E402
 from dusk.actions.baseline import Baseline, target_class  # noqa: E402
 from dusk.actions.event import AgentAction  # noqa: E402
@@ -22,6 +23,7 @@ from dusk.actions.normaliser import normalise_record  # noqa: E402
 from dusk.actions.verdict import ALLOW, BLOCK, WOULD_BLOCK, ActionGate  # noqa: E402
 from dusk.cli import main  # noqa: E402
 from dusk.config import Config  # noqa: E402
+from dusk.trace.vector import ExtractedTerm  # noqa: E402
 
 CONFIG = Config()
 _TS = datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
@@ -66,6 +68,43 @@ def test_target_class_groups_by_first_token() -> None:
     assert target_class("seg-corporate") == "seg"
 
 
+def test_change_values_flattens_nested_dicts() -> None:
+    """A value buried in a nested dict must not be invisible to scoring."""
+    change = {"before": None, "after": {"rules": {"cidr": "0.0.0.0/0", "port": 22}}}
+    values = baseline_module._change_values(change)
+    assert "0.0.0.0/0" in values
+    assert "22" in values
+
+
+def test_change_values_flattens_nested_lists() -> None:
+    """A value buried inside a list of dicts must not be invisible to scoring."""
+    change = {
+        "before": None,
+        "after": {"rules": [{"cidr": "10.0.0.0/8"}, {"cidr": "0.0.0.0/0", "port": 22}]},
+    }
+    values = baseline_module._change_values(change)
+    assert "0.0.0.0/0" in values
+    assert "10.0.0.0/8" in values
+    assert "22" in values
+
+
+def test_change_values_still_flattens_top_level() -> None:
+    """The original flat-dict behaviour is unchanged."""
+    change = {"before": None, "after": {"port": 443}}
+    assert baseline_module._change_values(change) == {"443"}
+
+
+def test_change_values_depth_is_bounded() -> None:
+    """An adversarially deep payload does not make flattening unbounded."""
+    nested: dict[str, object] = {"leaf": "0.0.0.0/0"}
+    for _ in range(20):
+        nested = {"wrapper": nested}
+    change = {"before": None, "after": nested}
+    # Should not raise (e.g. RecursionError) and should not necessarily find
+    # the deeply buried leaf, since depth is capped defensively.
+    baseline_module._change_values(change)
+
+
 # --- analyse -----------------------------------------------------------------
 
 
@@ -95,12 +134,150 @@ def test_privilege_escalation_is_flagged() -> None:
     assert any("sensitive" in r for r in result.reasons)
 
 
+def test_nested_privilege_escalation_is_flagged() -> None:
+    """A sensitive value buried in a nested change payload is not invisible.
+
+    Same scenario as test_privilege_escalation_is_flagged, but the sensitive
+    value sits inside a nested structure -- realistic for a control-plane
+    payload shaped like {"after": {"rules": [{"role": "owner"}]}}. Before the
+    nested-flatten fix, this would score 0.0 and pass through silently.
+    """
+    baseline = Baseline.learn(_normal())
+    action = AgentAction(
+        agent_id="iam-agent",
+        timestamp=_TS,
+        action_type="role_assignment",
+        target="ra-self",
+        change={"before": None, "after": {"grants": [{"role": "owner", "scope": "global"}]}},
+        source="generic",
+    )
+    result = analyse(baseline, action)
+    assert result.score >= CONFIG.gate_block_threshold
+    assert result.blast_radius == "high"
+    assert any("sensitive" in r for r in result.reasons)
+
+
 def test_unknown_agent_is_noted() -> None:
     """An agent with no baseline is called out."""
     baseline = Baseline.learn(_normal())
     result = analyse(baseline, _action("ghost-agent", "route_change", "rt-x"))
     assert result.score > 0.0
     assert any("no established baseline" in r for r in result.reasons)
+
+
+def test_agent_history_without_sie_does_not_change_score() -> None:
+    """Passing history with SIE unavailable is a no-op (the default, no-SIE case)."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    with_history = analyse(baseline, action, agent_history=_normal())
+    without_history = analyse(baseline, action)
+    assert with_history.score == without_history.score
+    assert with_history.reasons == without_history.reasons
+
+
+def test_agent_history_low_rerank_similarity_adds_reason() -> None:
+    """A low SIE rerank score adds a reason and raises the score, on top of rule-based checks."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.05, 0.05]):
+        reranked = analyse(baseline, action, agent_history=_normal()[:2])
+
+    assert reranked.score > baseline_only.score
+    assert any("SIE rerank" in r for r in reranked.reasons)
+
+
+def test_agent_history_high_rerank_similarity_is_unchanged() -> None:
+    """A confident rerank match does not add the low-similarity reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.9, 0.9]):
+        reranked = analyse(baseline, action, agent_history=_normal()[:2])
+
+    assert reranked.score == baseline_only.score
+    assert not any("SIE rerank" in r for r in reranked.reasons)
+
+
+def test_sie_extract_flags_terms_missed_by_the_static_frozenset() -> None:
+    """A GLiNER-extracted term outside the hardcoded sensitive set adds a reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    term = ExtractedTerm(text="superuser", label="role", score=0.95)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score > baseline_only.score
+    assert any("SIE extract" in r and "superuser" in r for r in extracted.reasons)
+
+
+def test_sie_extract_terms_already_in_static_set_are_not_duplicated() -> None:
+    """A term the static frozenset already catches doesn't add a second reason."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("iam-agent", "role_assignment", "ra-self", role="owner")
+    baseline_only = analyse(baseline, action)
+
+    term = ExtractedTerm(text="owner", label="role", score=0.95)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
+
+
+def test_sie_extract_low_confidence_term_is_ignored() -> None:
+    """A GLiNER hit below the confidence floor is dropped, not counted as evidence."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    term = ExtractedTerm(text="superuser", label="role", score=0.2)
+    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+
+
+def test_sie_extract_high_confidence_non_privileged_label_is_ignored() -> None:
+    """A confident but ordinary resource/port extraction is not privilege escalation."""
+    from unittest.mock import patch
+
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    baseline_only = analyse(baseline, action)
+
+    terms = [
+        ExtractedTerm(text="eth0", label="resource", score=0.95),
+        ExtractedTerm(text="8080", label="port", score=0.95),
+    ]
+    with patch("dusk.actions.analyse.sie_extract", return_value=terms):
+        extracted = analyse(baseline, action)
+
+    assert extracted.score == baseline_only.score
+    assert not any("SIE extract" in r for r in extracted.reasons)
+    assert not any("SIE extract" in r for r in extracted.reasons)
+
+
+def test_sie_extract_unavailable_does_not_change_score() -> None:
+    """The default (no-SIE) case: sie_extract returns [] and nothing changes."""
+    baseline = Baseline.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+    result = analyse(baseline, action)
+    assert not any("SIE extract" in r for r in result.reasons)
 
 
 # --- verdict -----------------------------------------------------------------
@@ -116,6 +293,29 @@ def test_gate_allows_routine_refuses_attacks() -> None:
         v = gate.evaluate(attack)
         assert v.verdict == WOULD_BLOCK
         assert v.refused is True
+
+
+def test_gate_learn_tracks_raw_history_per_agent() -> None:
+    """learn() keeps the raw actions ActionGate.evaluate() feeds into analyse()."""
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    netops_history = gate._history.get("netops-agent", [])
+    assert netops_history
+    assert all(a.agent_id == "netops-agent" for a in netops_history)
+
+
+def test_gate_evaluate_passes_history_to_sie_rerank() -> None:
+    """A gate evaluation surfaces the SIE rerank reason when the mocked score is low."""
+    from unittest.mock import patch
+
+    gate = ActionGate(config=CONFIG)
+    gate.learn(_normal())
+    action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
+
+    with patch("dusk.actions.analyse.sie_score", return_value=[0.05] * 20):
+        verdict = gate.evaluate(action)
+
+    assert any("SIE rerank" in r for r in verdict.analysis.reasons)
 
 
 def test_enforce_mode_blocks() -> None:
@@ -195,6 +395,37 @@ def test_cli_gate_json(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["actions_evaluated"] == 18
     assert payload["refused"] == 3
+
+
+def test_cli_gate_heal_reports_healed_agents(tmp_path: Path) -> None:
+    """`dusk gate --heal` quarantines and releases every refused agent."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(main, ["gate", "--baseline", normal, "--check", mixed, "--heal"])
+    assert result.exit_code == 1
+    assert "HEAL" in result.output
+    assert "returned to service" in result.output
+
+
+def test_cli_gate_heal_json_includes_heal_results(tmp_path: Path) -> None:
+    """`dusk gate --heal --json` includes a heal_results entry per refused agent."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(
+        main, ["gate", "--baseline", normal, "--check", mixed, "--heal", "--json"]
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert "heal_results" in payload
+    assert len(payload["heal_results"]) == payload["refused"]
+    for h in payload["heal_results"]:
+        assert h["healed"] is True
+
+
+def test_cli_gate_without_heal_omits_heal_results(tmp_path: Path) -> None:
+    """Without --heal, the JSON payload has no heal_results key at all."""
+    normal, mixed = _write_fixtures(tmp_path)
+    result = CliRunner().invoke(main, ["gate", "--baseline", normal, "--check", mixed, "--json"])
+    payload = json.loads(result.output)
+    assert "heal_results" not in payload
 
 
 def test_cli_gate_clean_baseline_exits_0(tmp_path: Path) -> None:

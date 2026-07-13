@@ -1,18 +1,4 @@
-"""Score an agent action against a baseline and explain the result.
-
-The analyser is the judgement layer. Given a learned
-:class:`~dusk.actions.baseline.Baseline` and a new
-:class:`~dusk.actions.event.AgentAction`, it produces an
-:class:`AnalysisResult`: an anomaly score in ``0..1``, the human-readable
-reasons behind it, the MITRE ATT&CK and ATLAS techniques the behaviour maps
-to, an estimate of blast radius, and a prediction of what an attacker would
-do next.
-
-The scoring is behavioural: a hijacked agent uses valid credentials, so what
-gives it away is doing something its own history never shows. Each novelty
-signal contributes a weighted amount to the score; the weights are explicit
-and the whole computation is deterministic.
-"""
+"""Score agent behavior against its baseline and explain each signal."""
 
 from __future__ import annotations
 
@@ -22,6 +8,7 @@ from typing import Any
 
 from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
+from dusk.trace.vector import sie_extract, sie_score
 
 logger = logging.getLogger("dusk.actions.analyse")
 
@@ -32,6 +19,23 @@ _W_NEW_TOKENS = 0.2
 _W_NEW_CHANGE_VALUES = 0.25
 _W_UNKNOWN_AGENT = 0.5
 _W_SENSITIVE = 0.35
+#: Extra contribution when SIE's reranker finds no close match in the
+#: agent's raw history, even though the deterministic feature checks above
+#: found nothing new. Only fires when SIE is configured and reachable; the
+#: rule-based score above is unchanged otherwise.
+_W_LOW_SEMANTIC_SIMILARITY = 0.2
+#: Rerank score below this is "no close match". sie_score() bounds the raw logit into [0, 1] via
+#: sigmoid, but this floor is a heuristic, not an empirically calibrated cutoff.
+_SEMANTIC_SIMILARITY_FLOOR = 0.3
+#: Extra contribution when SIE's zero-shot extractor (GLiNER) surfaces a
+#: privileged term the static frozenset below doesn't already cover. Slightly
+#: below _W_SENSITIVE since it's a probabilistic match, not an exact one.
+_W_EXTRACTED_SENSITIVE = 0.3
+#: Below this confidence, a zero-shot extraction is treated as noise, not evidence.
+_EXTRACT_CONFIDENCE_FLOOR = 0.5
+#: Only these GLiNER labels indicate privilege escalation; "resource"/"segment"/"port" (also in
+#: DEFAULT_EXTRACT_LABELS) are neutral descriptors and shouldn't add score on their own.
+_PRIVILEGED_LABELS = frozenset({"role", "privilege"})
 
 #: MITRE ATT&CK technique per normalised action type.
 _ATTCK: dict[str, str] = {
@@ -133,12 +137,88 @@ def _predicted_next(action: AgentAction) -> str:
     )
 
 
-def analyse(baseline: Baseline, action: AgentAction) -> AnalysisResult:
+def _extracted_sensitive_terms(features: dict[str, Any]) -> set[str]:
+    """Pull privileged terms from the action's target/change text via SIE extract.
+
+    Returns an empty set whenever SIE is not configured/reachable, or when
+    every extraction is low-confidence or labeled as a neutral descriptor
+    rather than role/privilege (see _EXTRACT_CONFIDENCE_FLOOR, _PRIVILEGED_LABELS).
+    """
+    text = " ".join(sorted(features["tokens"] | features["change_values"]))
+    if not text:
+        return set()
+    return {
+        term.text.lower()
+        for term in sie_extract(text)
+        if term.score >= _EXTRACT_CONFIDENCE_FLOOR and term.label.lower() in _PRIVILEGED_LABELS
+    }
+
+
+def _semantic_novelty(
+    action: AgentAction, agent_history: list[AgentAction]
+) -> tuple[float, str | None]:
+    """Rerank ``action`` against the agent's raw history via SIE's cross-encoder.
+
+    Returns ``(0.0, None)`` whenever there is no history to compare against
+    or SIE is not configured/reachable, so the deterministic score above is
+    unchanged in the default (no-SIE) case.
+    """
+    if not agent_history:
+        return 0.0, None
+
+    query = f"{action.action_type} {action.target}"
+    candidates = [f"{a.action_type} {a.target}" for a in agent_history]
+    scores = sie_score(query, candidates)
+    if not scores:
+        return 0.0, None
+
+    best = max(scores)
+    if best < _SEMANTIC_SIMILARITY_FLOOR:
+        return (
+            _W_LOW_SEMANTIC_SIMILARITY,
+            f"SIE rerank finds no close match in this agent's recorded history (best={best:.2f})",
+        )
+    return 0.0, None
+
+
+def _extra_sie_signals(
+    action: AgentAction, features: dict[str, Any], agent_history: list[AgentAction]
+) -> tuple[float, list[str]]:
+    """Optional SIE-backed signals: extracted privileged terms and rerank novelty.
+
+    Both are no-ops (contribute nothing) when SIE is not configured/reachable,
+    so the deterministic score above is unchanged in the default case.
+    """
+    extra_score = 0.0
+    reasons: list[str] = []
+
+    extracted = _extracted_sensitive_terms(features) - _SENSITIVE
+    if extracted:
+        extra_score += _W_EXTRACTED_SENSITIVE
+        reasons.append(f"SIE extract flags additional privileged terms {sorted(extracted)}")
+
+    novelty_score, novelty_reason = _semantic_novelty(action, agent_history)
+    if novelty_reason:
+        extra_score += novelty_score
+        reasons.append(novelty_reason)
+
+    return extra_score, reasons
+
+
+def analyse(
+    baseline: Baseline,
+    action: AgentAction,
+    agent_history: list[AgentAction] | None = None,
+) -> AnalysisResult:
     """Score and explain ``action`` against ``baseline``.
 
     Args:
         baseline: The learned per-agent baseline.
         action: The action to evaluate.
+        agent_history: The agent's raw known-good actions, used for an
+            optional SIE-reranked semantic novelty check on top of the
+            deterministic feature checks below. Omit or pass an empty list
+            to skip this signal entirely.
 
     Returns:
         An :class:`AnalysisResult` with score, reasons, and mappings.
@@ -185,6 +265,10 @@ def analyse(baseline: Baseline, action: AgentAction) -> AnalysisResult:
             reasons.append(
                 f"newly introduces sensitive or privileged terms {sorted(sensitive_new)}"
             )
+
+    extra_score, extra_reasons = _extra_sie_signals(action, features, agent_history or [])
+    score += extra_score
+    reasons.extend(extra_reasons)
 
     score = min(1.0, score)
     blast = _blast_radius(action, features)

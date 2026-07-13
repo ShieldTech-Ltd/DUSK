@@ -1,15 +1,4 @@
-"""Sweep detection, machine-paced systematic scanning of a segment.
-
-A hijacked agent enumerating a network leaves a tell-tale signature: a
-single source touching many destinations in a short window, with timing
-far too regular to be human. This detection looks for exactly that.
-
-MITRE: T1046 (Network Service Discovery).
-Kill chain: Reconnaissance.
-
-Every threshold is read from :class:`~dusk.config.Config`; this module holds
-no hardcoded detection constants.
-"""
+"""Detect machine-paced destination sweeps (MITRE T1046)."""
 
 from __future__ import annotations
 

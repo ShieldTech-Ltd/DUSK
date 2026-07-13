@@ -1,20 +1,11 @@
-"""Dusk command-line interface.
-
-Commands:
-    dusk scan --file <path.pcap>          analyse a pcap and print a verdict
-    dusk scan --file <path.pcap> --json   machine-readable JSON output
-    dusk watch --interface <iface>        live mode (coming in v0.2)
-
-A global ``--verbose`` flag raises the root logger to DEBUG; otherwise the
-log level comes from :class:`~dusk.config.Config` (``WARNING`` by default),
-keeping output clean.
-"""
+"""Command-line interface for packet and agent-action analysis."""
 
 from __future__ import annotations
 
 import json
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
@@ -22,6 +13,10 @@ from rich.console import Console
 from dusk import __version__
 from dusk.config import ConfigError, get_config
 from dusk.core.engine import VERDICT_ALERT, Engine
+
+if TYPE_CHECKING:
+    from dusk.actions.heal import HealResult
+    from dusk.actions.verdict import GateVerdict
 
 logger = logging.getLogger("dusk.cli")
 console = Console()
@@ -226,12 +221,31 @@ def actions(file_path: str, source: str, as_json: bool) -> None:
     default=False,
     help="Emit a machine-readable JSON report instead of formatted output.",
 )
-def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_json: bool) -> None:
+@click.option(
+    "--heal",
+    "heal_refused",
+    is_flag=True,
+    default=False,
+    help=(
+        "For each refused action, quarantine the agent and rebuild its "
+        "baseline from --baseline's known-good history for that agent, "
+        "then return it to service."
+    ),
+)
+def gate(
+    baseline_path: str,
+    check_path: str,
+    source: str,
+    enforce: bool,
+    as_json: bool,
+    heal_refused: bool,
+) -> None:
     """Learn a baseline, then render a verdict for each checked action.
 
     Exits ``1`` when any action is refused (WOULD-BLOCK or BLOCK), ``0`` when
     every action is allowed, and ``2`` on an input error.
     """
+    from dusk.actions.heal import AgentHealer
     from dusk.actions.ingest import ingest_file
     from dusk.actions.verdict import ActionGate
 
@@ -247,91 +261,68 @@ def gate(baseline_path: str, check_path: str, source: str, enforce: bool, as_jso
     verdicts = gate_engine.evaluate_all(to_check)
     refused = [v for v in verdicts if v.refused]
 
+    heal_results = []
+    if heal_refused:
+        healer = AgentHealer()
+        heal_results = [healer.heal(v, known_good, gate_engine.baseline) for v in refused]
+
     if as_json:
-        payload = {
-            "baseline": baseline_path,
-            "check": check_path,
-            "actions_evaluated": len(verdicts),
-            "refused": len(refused),
-            "results": [v.to_dict() for v in verdicts],
-        }
-        click.echo(json.dumps(payload, indent=2))
+        _print_gate_json(baseline_path, check_path, verdicts, refused, heal_results, heal_refused)
     else:
-        for v in verdicts:
-            a = v.analysis
-            colour = {"ALLOW": "green", "WOULD-BLOCK": "yellow", "BLOCK": "red"}[v.verdict]
-            console.print(
-                f"[bold {colour}]{v.verdict:<11}[/bold {colour}] "
-                f"{a.agent_id} {a.action_type} {a.target}  "
-                f"[dim]score={a.score:.2f} blast={a.blast_radius}[/dim]"
-            )
-            if v.refused:
-                console.print(f"            [dim]ATT&CK[/dim] {a.mitre_attack}")
-                console.print(f"            [dim]ATLAS[/dim]  {a.mitre_atlas}")
-                for reason in a.reasons:
-                    console.print(f"            [dim]reason[/dim] {reason}")
-                console.print(f"            [dim]next[/dim]   {a.predicted_next}")
-        console.print(
-            f"\n[bold]GATE[/bold] evaluated {len(verdicts)} action(s), refused {len(refused)}."
-        )
+        _print_gate_console(verdicts, refused, heal_results, heal_refused)
 
     sys.exit(1 if refused else 0)
 
 
-@main.command(help="Research a company and score it as a prospect.")
-@click.argument("company")
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit machine-readable JSON instead of formatted output.",
-)
-def research(company: str, as_json: bool) -> None:
-    """Fetch live intelligence on COMPANY and score it with Gemini Flash."""
-    from dusk.agent import research_company
+def _print_gate_json(
+    baseline_path: str,
+    check_path: str,
+    verdicts: list[GateVerdict],
+    refused: list[GateVerdict],
+    heal_results: list[HealResult],
+    heal_refused: bool,
+) -> None:
+    payload: dict[str, object] = {
+        "baseline": baseline_path,
+        "check": check_path,
+        "actions_evaluated": len(verdicts),
+        "refused": len(refused),
+        "results": [v.to_dict() for v in verdicts],
+    }
+    if heal_refused:
+        payload["heal_results"] = [h.to_dict() for h in heal_results]
+    click.echo(json.dumps(payload, indent=2))
 
-    try:
-        decision = research_company(company)
-    except Exception as exc:  # noqa: BLE001
-        _fail(str(exc), as_json=as_json)
-        return
 
-    if as_json:
-        click.echo(json.dumps(decision.to_dict(), indent=2))
-    else:
-        risk_colour = {"high": "red", "medium": "yellow", "low": "green"}[decision.risk_level.value]
-        verdict = "QUALIFIED" if decision.score >= 65 else "FLAGGED"
-        verdict_colour = "green" if verdict == "QUALIFIED" else "yellow"
+def _print_gate_console(
+    verdicts: list[GateVerdict],
+    refused: list[GateVerdict],
+    heal_results: list[HealResult],
+    heal_refused: bool,
+) -> None:
+    for v in verdicts:
+        a = v.analysis
+        colour = {"ALLOW": "green", "WOULD-BLOCK": "yellow", "BLOCK": "red"}[v.verdict]
         console.print(
-            f"\n[bold {verdict_colour}]{verdict}[/bold {verdict_colour}]  "
-            f"[bold]{decision.subject}[/bold]  "
-            f"score=[bold {risk_colour}]{decision.score}/100[/bold {risk_colour}]  "
-            f"confidence={decision.confidence:.0%}"
+            f"[bold {colour}]{v.verdict:<11}[/bold {colour}] "
+            f"{a.agent_id} {a.action_type} {a.target}  "
+            f"[dim]score={a.score:.2f} blast={a.blast_radius}[/dim]"
         )
-        console.print(f"  [dim]reasoning:[/dim] {decision.reasoning}")
-        if decision.risk_flags:
-            console.print(f"  [dim]risk flags:[/dim] {', '.join(decision.risk_flags)}")
-        console.print(
-            f"  [dim]latency:[/dim] tavily={decision.latency_tavily_ms}ms  "
-            f"gemini={decision.latency_gemini_ms}ms  "
-            f"[dim]id:[/dim] {decision.id}"
-        )
-
-    sys.exit(0)
-
-
-@main.command(help="Start the DUSK research API server.")
-@click.option("--port", default=5000, show_default=True, help="Port to listen on.")
-def serve(port: int) -> None:
-    """Run the Flask API server."""
-    import os as _os
-
-    _os.environ.setdefault("FLASK_PORT", str(port))
-    from dusk.api import run
-
-    console.print(f"[bold]DUSK API[/bold] starting on port {port}")
-    run()
+        if v.refused:
+            console.print(f"            [dim]ATT&CK[/dim] {a.mitre_attack}")
+            console.print(f"            [dim]ATLAS[/dim]  {a.mitre_atlas}")
+            for reason in a.reasons:
+                console.print(f"            [dim]reason[/dim] {reason}")
+            console.print(f"            [dim]next[/dim]   {a.predicted_next}")
+    console.print(
+        f"\n[bold]GATE[/bold] evaluated {len(verdicts)} action(s), refused {len(refused)}."
+    )
+    if heal_refused:
+        for h in heal_results:
+            status = "green" if h.healed else "red"
+            console.print(f"\n[bold {status}]HEAL[/bold {status}] {h.agent_id}: {h.reason}")
+            for line in h.timeline:
+                console.print(f"            [dim]{line}[/dim]")
 
 
 def _fail(message: str, *, as_json: bool) -> None:

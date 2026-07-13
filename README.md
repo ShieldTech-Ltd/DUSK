@@ -1,8 +1,5 @@
-<h1 align="center">DUSK</h1>
-
 <p align="center">
-  <strong>Behavioural threat detection for agentic networks</strong><br>
-  The missing security layer between AI agents and your infrastructure
+  <img src="docs/dusk-hero-banner.svg" alt="DUSK behavioural AI security for agentic systems" width="100%">
 </p>
 
 <p align="center">
@@ -17,27 +14,21 @@
   <em>Credentials verify identity. DUSK verifies behaviour.</em>
 </p>
 
+<p align="center">
+  <img src="docs/dusk-workflow-strip.svg" alt="How DUSK evaluates a proposed agent action in five steps" width="100%">
+</p>
+
 ---
 
 > **Independently validated in the last 30 days**
 >
-> [Anthropic Frontier Red Team (3 Jun 2026)](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) — autonomous killchain orchestration is the #1 AI threat; MITRE ATT&CK has no taxonomy for it yet.
+> [Anthropic Frontier Red Team (3 Jun 2026)](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) -- autonomous killchain orchestration is the #1 AI threat; MITRE ATT&CK has no taxonomy for it yet.
 >
-> [Google DeepMind AI Control Roadmap (18 Jun 2026)](https://deepmind.google/blog/securing-the-future-of-ai-agents/) — runtime behavioural monitoring is the missing security layer.
+> [Google DeepMind AI Control Roadmap (18 Jun 2026)](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- runtime behavioural monitoring is the missing security layer.
 >
 > **DUSK is the open-source implementation of that missing layer.**
 
 ---
-
-<p align="center">
-  <img src="docs/dusk-attack-demo.svg" alt="DUSK live prompt-injection demo: a hijacked network agent is refused before its action reaches the controller" width="100%">
-</p>
-
-<p align="center"><sub>A network agent reads a poisoned web page, a hidden prompt injection hijacks it into opening a firewall path into the restricted segment, and DUSK refuses the action before it reaches the controller. DUSK simultaneously fires Gemini Flash (plain-English briefing), Attio CRM (incident record), n8n SOAR (security team alert), and Superlinked (similarity search) -- all in under 2 seconds.</sub></p>
-
-<p align="center">
-  <strong>Interactive demo:</strong> open <code>demo/live_demo.html</code> in a browser for an animated walkthrough of the full 6-phase attack and response pipeline. No server required.
-</p>
 
 <details>
 <summary><b>Contents</b></summary>
@@ -46,6 +37,7 @@
 - [Detection in action](#detection-in-action)
 - [What it detects](#what-it-detects)
 - [Architecture](#architecture)
+- [Superlinked SIE gate service](#superlinked-sie-gate-service)
 - [Quickstart](#quickstart)
 - [Roadmap](#roadmap)
 - [Where DUSK sits](#where-dusk-sits-in-the-enterprise-stack)
@@ -75,17 +67,11 @@ DUSK closes this gap. It is **complementary** to every platform above, not a com
 
 ## Detection in action
 
-### Live prompt-injection scenario
-
-The animation at the top of this README is the real demo (`python demo/live_attack.py`). A network operations agent reads a web page and acts on the instructions it finds. On a clean page it does its routine job and DUSK allows it. On a poisoned page, a hidden prompt injection hijacks the agent into opening a firewall path from the guest segment into the restricted segment -- and DUSK refuses that action before it reaches the controller.
-
-Pass a real URL with `TAVILY_API_KEY` set and DUSK fetches live content via Tavily instead of the canned pages, so the demo can run on genuinely fresh data without any code changes.
-
 ### Batch gate evaluation
 
 ```text
-$ dusk gate --baseline lab/actions/actions_normal.json \
-            --check lab/actions/actions_mixed.json
+$ dusk gate --baseline tests/fixtures/actions_normal.json \
+            --check tests/fixtures/actions_mixed.json
 
 ALLOW       netops-agent   route_change         rt-corp-default         score=0.00 blast=low
 ALLOW       iam-agent      role_assignment      ra-iam-readonly         score=0.00 blast=low
@@ -149,27 +135,35 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 
 **Verdict rendering.** Actions above the configured threshold receive ALLOW, WOULD-BLOCK, or BLOCK with full reasoning, MITRE mappings, blast radius, and a prediction of what an attacker would do next. Watch mode never blocks; enforce mode upgrades WOULD-BLOCK to BLOCK once the baseline is trusted.
 
+### Decision evidence
+
+<p align="center">
+  <img src="docs/dusk-attack-demo.svg" alt="DUSK decision evidence comparing a routine action with a prompt-injected firewall action" width="100%">
+</p>
+
 ---
 
 ## Architecture
 
-### Enterprise system architecture
+### Current gate implementation
 
 <p align="center">
-  <img src="docs/dusk-arch-demo.svg" alt="DUSK three-phase architecture: before deployment, under attack without a gate, and DUSK blocking the hijacked action" width="100%">
+  <img src="examples/agent-action-monitor/docs/architecture.svg" alt="Current DUSK agent-action-monitor implementation with deterministic analysis, Superlinked SIE enrichment, verdicts, state, execution, and notifications" width="100%">
 </p>
 
-<p align="center"><sub>The animation runs three phases. Phase 1: a clean agent operates normally. Phase 2: a threat actor poisons a web page, the agent is hijacked, and the anomalous action flows straight to the controller — the network is breached. Phase 3: DUSK is active; the same attack arrives, the gate scores it 0.95, and the action is refused before it reaches the controller.</sub></p>
+This is the implemented boundary of the self-contained HTTP gate example. It
+does not imply a vector database, policy repository, SIEM, cloud platform, or
+human-review service.
+
+### Attack flow
+
+<p align="center">
+  <img src="docs/dusk-arch-demo.svg" alt="DUSK branded three-stage journey showing normal behavior, a compromised agent, and DUSK protection" width="100%">
+</p>
+
+<p align="center"><sub>The visual keeps all three moments visible: a routine action follows the established pattern, prompt injection changes the action when no behavioral gate is present, and DUSK intercepts the same anomaly before execution. Animated paths preserve the sense of movement without hiding the comparison.</sub></p>
 
 For the full layered design and integration notes, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-### n8n integration demo
-
-<p align="center">
-  <img src="docs/dusk-n8n-demo.svg" alt="DUSK × n8n integration: DUSK fires a WOULD-BLOCK alert, n8n receives it via webhook, enriches via Tavily, notifies the security team, and quarantines the agent" width="100%">
-</p>
-
-<p align="center"><sub>DUSK fires a WOULD-BLOCK alert → n8n webhook receives the payload → three parallel tracks: Tavily enriches the threat in real time, the security team is notified, and the compromised agent is quarantined. Run: <code>python demo/live_attack.py</code> then trigger the n8n workflow from <code>demo/n8n_workflow.json</code>.</sub></p>
 
 ---
 
@@ -178,13 +172,11 @@ For the full layered design and integration notes, see [docs/ARCHITECTURE.md](do
 | Platform | Layer | Covers | Leaves open |
 |---|---|---|---|
 | AWS Bedrock | LLM gateway | Access control and audit for model calls | No baseline of an agent's downstream behavior |
-| Microsoft Sentinel | SIEM | Infrastructure detection and analytics | No per-agent action baseline at the control plane |
+| A SIEM (e.g. Microsoft Sentinel) | Infrastructure detection | Log-based analytics, known-bad signatures | No per-agent action baseline at the control plane |
 | Cisco and network tooling | Network | Traffic flows at OSI layers 3 to 7 | No agent or action context |
-| Oracle SQL Firewall | Database | Query allow-listing and audit at the database | Downstream of the agent's decision |
 | Google DeepMind agent security | Research | Frameworks for controlling agents | A research direction, not a deployable control |
+| Superlinked SIE | Inference engine | Embedding, rerank, and extraction primitives | Not a detection policy on its own -- DUSK is what wires it into one |
 | **DUSK** | **Control plane + network** | **Per-agent behavioral monitoring of actions** | **The gap the others leave** |
-
-> Oracle protects the database from bad queries. DUSK protects the database from good queries made by bad agents.
 
 ### Why not SIEM or access control?
 
@@ -198,6 +190,25 @@ SIEM rules fire on known-bad signatures. A behavioral baseline fires on anything
 
 ---
 
+## Superlinked SIE gate service
+
+The agent action gate is also shipped as a self-contained HTTP service (`POST /v1/gate`) inside [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with [Superlinked SIE](https://github.com/superlinked/sie) wired in for behavioural similarity: `encode` (embedding an action against an agent's history), `score` (cross-encoder rerank), and `extract` (zero-shot privileged-term detection), each verified against a live hosted SIE cluster and each an additive signal on top of the deterministic core -- disabling SIE degrades detection quality, never breaks the gate.
+
+```bash
+cd examples/agent-action-monitor
+docker compose up
+
+curl -X POST http://localhost:8000/v1/gate \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "netops-agent", "timestamp": "2023-11-14T22:20:00+00:00",
+       "action_type": "firewall_rule_change", "target": "fw-corp-https",
+       "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
+```
+
+The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with its own `pyproject.toml`, `src/dusk/`, and Docker Compose stack. It is prepared for contribution to the [`superlinked/sie`](https://github.com/superlinked/sie) example gallery. This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
+
+---
+
 ## Quickstart
 
 ```bash
@@ -205,110 +216,12 @@ git clone https://github.com/TFT444/DUSK.git
 cd DUSK
 pip install -e ".[dev]"
 
-# Run the live prompt-injection demo
-python demo/live_attack.py
-
 # Gate a batch of actions
-dusk gate --baseline lab/actions/actions_normal.json \
-          --check lab/actions/actions_mixed.json
+dusk gate --baseline tests/fixtures/actions_normal.json \
+          --check tests/fixtures/actions_mixed.json
 
 # Scan a packet capture
 dusk scan --file tests/fixtures/attack_sweep.pcap
-```
-
----
-
-## Live Dashboard -- Full End-to-End Demo
-
-DUSK ships with a real-time security operations dashboard and a Flask API that wires all partner integrations together.
-
-### Partner integrations (live)
-
-| Partner | Role | What DUSK does |
-|---------|------|----------------|
-| **Attio** | CRM hub | Auto-creates a CRM incident on every WOULD-BLOCK; closes it on self-heal; pushes research scores back as company notes |
-| **Gemini 2.5 Flash** | AI reasoning | Produces a plain-English threat explanation for every alert |
-| **n8n** | SOAR automation | Webhook fires on every alert; n8n routes to security team and enriches the record |
-| **Superlinked** | Vector search | 384-dim semantic embeddings surface similar past decisions |
-| **DuckDuckGo** | Threat intel | Free real-time web search for MITRE enrichment (no API key needed) |
-
-### Setup
-
-```bash
-# 1. Clone and install
-git clone https://github.com/TFT444/DUSK.git
-cd DUSK
-pip install -e ".[dev]"
-
-# 2. Configure integrations -- copy and fill in your keys
-cp .env.example .env   # edit with your GEMINI_API_KEY, ATTIO_API_KEY, N8N_WEBHOOK_URL,
-                       # SUPERLINKED_API_KEY, SUPERLINKED_ENDPOINT
-
-# 3. Verify all integrations before demo
-python demo/preflight.py   # must show 6 PASS
-
-# 4. Start the API server
-flask --app dusk.api run --port 5000
-
-# 5. Serve the frontend (separate terminal)
-python3 -m http.server 8081 --directory demo
-```
-
-Open `http://localhost:8081/index.html` in Chrome.
-
-### Environment variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes | Google AI Studio key (ai.google.dev) |
-| `ATTIO_API_KEY` | Yes | Attio workspace API key (app.attio.com/settings/api) |
-| `N8N_WEBHOOK_URL` | Yes | Production webhook URL from your n8n workflow |
-| `SUPERLINKED_API_KEY` | Yes | Superlinked cluster key |
-| `SUPERLINKED_ENDPOINT` | Yes | Superlinked cluster endpoint URL |
-| `TAVILY_API_KEY` | No | Falls back to DuckDuckGo automatically if not set |
-
-### API endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Server health and decision count |
-| `/api/alert` | POST | Record a security verdict -- triggers Gemini, n8n, Attio, Superlinked |
-| `/api/decisions` | GET | All recorded decisions |
-| `/api/decisions/<id>/heal` | POST | Trigger self-healing -- closes Attio incident |
-| `/research` | POST | Research a company via Gemini + DuckDuckGo -- pushes score to Attio |
-| `/research/decisions` | GET | All research results |
-| `/attio/trigger` | POST | Attio webhook -- receives company name, fires research in background |
-
-### Alert payload
-
-```json
-{
-  "agent_id": "netops-agent",
-  "action": "firewall_rule_change",
-  "score": 0.92,
-  "verdict": "WOULD-BLOCK",
-  "mitre": "T1562.004",
-  "blast_radius": "HIGH",
-  "reasoning": "opens guest-to-restricted segment",
-  "predicted_next": "lateral movement",
-  "decision_id": "demo-001"
-}
-```
-
-DUSK responds with a Gemini explanation, Attio note ID, n8n delivery status, and Superlinked similarity results synchronously.
-
-### Attio CRM -- bidirectional flow
-
-```
-New company in Attio
-  --> POST /attio/trigger {"company": "Acme Corp"}
-  --> DUSK researches via Gemini + DuckDuckGo
-  --> Score pushed as note on Attio company record
-
-Agent WOULD-BLOCK
-  --> DUSK calls create_incident() on "DUSK Security Hub" company
-  --> n8n webhook fires in parallel
-  --> Self-heal --> incident marked closed in Attio
 ```
 
 ---
@@ -344,8 +257,8 @@ dusk watch --interface <iface>      # live capture (coming in v0.2)
 
 ```json
 {
-  "baseline": "lab/actions/actions_normal.json",
-  "check": "lab/actions/actions_mixed.json",
+  "baseline": "tests/fixtures/actions_normal.json",
+  "check": "tests/fixtures/actions_mixed.json",
   "actions_evaluated": 18,
   "refused": 3,
   "results": [
@@ -403,29 +316,29 @@ All thresholds are configurable. Copy `dusk.yaml.example` to `dusk.yaml` in your
 
 ```text
 src/dusk/
-  cli.py                Command-line interface (Click)
+  cli.py                Command-line interface (Click): scan, watch, actions, gate
   config.py             Configuration: defaults, dusk.yaml, DUSK_* env vars
   actions/
     event.py            AgentAction canonical event schema
-    adapters/           Source-specific adapters (azure, generic)
+    adapters/           Source-specific adapters (azure, bedrock, generic)
     normaliser.py       Adapter registry keyed by source name
     ingest.py           ingest_file: reads JSON, normalises, skips malformed
     baseline.py         Per-agent behavioral baseline (learn, observe, profile)
     analyse.py          Anomaly scoring, blast radius, MITRE mapping, next-stage prediction
     verdict.py          ALLOW / WOULD-BLOCK / BLOCK rendering (ActionGate)
+    heal.py             AgentHealer: quarantine, baseline reset
   core/
     engine.py           Detection runner and verdict
     kill_chain.py       Kill-chain stage prediction
   detections/           One module per network behavioral detection
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
-demo/
-  live_demo.html        Interactive animated demo -- 6-phase prompt injection + pipeline response
-  index.html            Live security operations dashboard (Security Gate + Research Pipeline)
-  live_attack.py        End-to-end terminal scenario (DuckDuckGo + Attio)
-  preflight.py          Pre-demo smoke test -- verifies all 6 integrations
-  seed_attio.py         Seeds Attio with demo companies and incidents
-  DEMO_GUIDE.md         Timed 2-min video script and 5-min finalist guide
+  trace/                Superlinked SIE client (vector.py) + trace models, offline CLI path
+examples/agent-action-monitor/  Self-contained Superlinked SIE example -- own
+                                 pyproject.toml, src/dusk/ (gate + api.py + n8n
+                                 client), Docker/compose stack, agent-demo/,
+                                 mock-prod/, contracts/, n8n/. Not shared with
+                                 this repo's root; see its own README.
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
   scenarios/            pcap generators for network fixture data
@@ -442,8 +355,8 @@ pip install -e ".[dev]"
 pre-commit install
 
 # Individual checks (all run in CI)
-ruff check src/ tests/ demo/
-ruff format --check src/ tests/ demo/
+ruff check src/ tests/
+ruff format --check src/ tests/
 mypy src/dusk/
 bandit -r src/ -ll
 pip-audit -r requirements.txt
@@ -465,12 +378,12 @@ CI runs on every push and pull request to `dev` and `main`. All gates must pass 
 | v1.2 -- Baseline | Per-agent behavioral baseline: action types, target classes, token vocabulary, change values | Landed |
 | v1.3 -- Analyse | Weighted anomaly scoring, MITRE ATT&CK + ATLAS mapping, blast radius, next-stage prediction | Landed |
 | v1.4 -- Verdict gate | ALLOW / WOULD-BLOCK / BLOCK with full reasoning. Watch mode by default; enforce mode on trust. | Landed |
+| v1.5 -- Gate service + SIE | `/v1/gate` HTTP endpoint over the gate; Superlinked SIE encode, score, and extract wired in as additive signals, validated against a live hosted cluster. Self-contained Docker Compose stack in `examples/agent-action-monitor/`. | Landed |
 
 ### In progress
 
 | Layer | What it does |
 |---|---|
-| v1.5 -- Vector baseline | Embedding-based behavioral similarity (Superlinked-compatible) as an optional drop-in |
 | v2 -- Data plane | Reposition packet and flow detections as a confirmation layer |
 
 ### Direction
@@ -490,23 +403,10 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [MITRE ATT&CK](https://attack.mitre.org/) -- enterprise and network techniques
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
-- [Superlinked](https://superlinked.com/) -- vector embedding infrastructure compatible with DUSK v1.5 baseline
-- [Tavily](https://tavily.com/) -- real-time web search API used in the live demo and n8n integration
-- [n8n](https://n8n.io/) -- AI agent workflow orchestration used in the integration demo
-- [Aikido Security](https://aikido.dev/) -- runtime security scanning integrated into DUSK CI
+- [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [Superlinked SIE gate service](#superlinked-sie-gate-service) above)
+- [n8n](https://n8n.io/) -- SOAR workflow automation, three named webhooks fired from `/v1/gate`
 - [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
-- Oracle integration notes: [docs/ORACLE-INTEGRATION.md](docs/ORACLE-INTEGRATION.md)
-
----
-
-## Team
-
-| | Name | Role |
-|---|---|---|
-| [<img src="https://github.com/TFT444.png" width="32" style="border-radius:50%">](https://github.com/TFT444) | [Tanvir Farhad](https://linkedin.com/in/tanvir-farhad-466940307) | Lead -- architecture, detection engine, partner integrations |
-| [<img src="https://github.com/ritiksah141.png" width="32" style="border-radius:50%">](https://github.com/ritiksah141) | [ritiksah141](https://github.com/ritiksah141) | Agent research pipeline, Flask API, live demo |
-| [<img src="https://github.com/HXIAOSHAW.png" width="32" style="border-radius:50%">](https://github.com/HXIAOSHAW) | [He Xiao](https://github.com/HXIAOSHAW) | Contributor |
 
 ---
 
@@ -517,8 +417,5 @@ Apache-2.0. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  Built by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a>,
-  <a href="https://github.com/ritiksah141">ritiksah141</a> and
-  <a href="https://github.com/HXIAOSHAW">He Xiao</a>
-  · ShieldTech Ltd · London
+  Built by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a> and <a href="https://github.com/ritiksah141">Ritik Sah</a> · ShieldTech Ltd · London
 </p>
