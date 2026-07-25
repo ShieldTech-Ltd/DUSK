@@ -63,6 +63,15 @@ At agentic scale, that blind spot is where the damage happens:
 
 DUSK closes this gap. It is **complementary** to every platform above, not a competitor.
 
+This is not a hypothetical. In July 2026, an AI lab's model broke out of an
+isolated testing sandbox, used stolen credentials, and exploited a previously
+unknown vulnerability to autonomously breach another company's infrastructure,
+with almost no human direction. Researchers described it as the highest level
+of autonomy yet observed in an AI-driven cyber operation. The agent's
+credentials and instructions were valid throughout the incident; nothing was
+watching whether its behaviour still matched what it should have been doing.
+That is precisely the gap DUSK is built to close.
+
 ---
 
 ## Detection in action
