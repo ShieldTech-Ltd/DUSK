@@ -198,7 +198,7 @@ curl -X POST http://localhost:8000/v1/gate \
        "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
 ```
 
-The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with its own `pyproject.toml`, `src/dusk/`, and Docker Compose stack. It is prepared for contribution to the [`superlinked/sie`](https://github.com/superlinked/sie) example gallery. This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
+The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with its own `pyproject.toml`, `src/dusk/`, and Docker Compose stack. Merged into the superlinked/sie example gallery as agent-action-monitor, reviewed and approved by CodeRabbit and the Superlinked team. This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
 
 ---
 
