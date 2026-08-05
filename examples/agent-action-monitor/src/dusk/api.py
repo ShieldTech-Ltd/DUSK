@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import threading
@@ -16,7 +17,18 @@ if TYPE_CHECKING:
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("DUSK_CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if _cors_origins:
+    CORS(
+        app,
+        origins=_cors_origins,
+        methods=["POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 # Bound public input without constraining normal AgentAction payloads.
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
@@ -28,6 +40,19 @@ _gate_lock = threading.Lock()
 
 #: Baseline failure exposed by the health endpoint.
 _baseline_load_error: str | None = None
+
+
+def _gate_request_is_authorized() -> bool:
+    """Return whether the request satisfies optional bearer authentication."""
+    expected = os.getenv("DUSK_GATE_API_KEY", "")
+    if not expected:
+        return True
+
+    prefix = "Bearer "
+    presented = request.headers.get("Authorization", "")
+    if not presented.startswith(prefix):
+        return False
+    return hmac.compare_digest(presented[len(prefix) :], expected)
 
 
 def _load_gate_engine() -> ActionGate:
@@ -145,6 +170,11 @@ def evaluate_gate_action() -> object:
     Contract: contracts/gate.openapi.yaml.
     """
     from dusk.actions.event import AgentAction
+
+    if not _gate_request_is_authorized():
+        auth_response = jsonify({"error": "authentication required"})
+        auth_response.headers["WWW-Authenticate"] = "Bearer"
+        return auth_response, 401
 
     raw = request.get_json(force=True, silent=True)
     if not isinstance(raw, dict):

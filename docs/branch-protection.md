@@ -39,8 +39,9 @@ instead, in **Settings > Branches > Add branch protection rule** for `main`:
 
 - Require a pull request before merging, **1 approval**, **Require review from
   Code Owners**, **Dismiss stale approvals**
-- Require status checks to pass, **lint**, **typecheck**, **security**, **test**
-  (and "Require branches to be up to date")
+- Require every DCO, quality, security, documentation, root test, and example
+  test status configured by `scripts/protect-main.sh` to pass, with branches
+  required to be current
 - **Require signed commits**
 - **Require linear history**
 - **Require conversation resolution before merging**
@@ -49,6 +50,7 @@ instead, in **Settings > Branches > Add branch protection rule** for `main`:
 And in **Settings > General > Pull Requests**: allow **squash merging** only,
 and **automatically delete head branches**.
 
-`enforce_admins` is left off so a solo maintainer can still administer the repo;
-flip it on (or set `enforce_admins=true` in the script) to apply the rules to
-admins too.
+`enforce_admins` is left off for repository recovery and administration. Normal
+changes from maintainers still use the same pull request process. Set
+`enforce_admins=true` for maximum enforcement after confirming a documented
+recovery path.

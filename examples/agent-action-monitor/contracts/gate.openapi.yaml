@@ -13,6 +13,8 @@ paths:
     post:
       summary: Evaluate a proposed agent action and return a verdict.
       operationId: evaluateAction
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -28,8 +30,15 @@ paths:
                 $ref: "#/components/schemas/Verdict"
         "400":
           description: Invalid AgentAction (bad schema, empty agent_id/target, naive timestamp).
+        "401":
+          description: Bearer authentication is configured and the credential is missing or invalid.
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Required only when DUSK_GATE_API_KEY is configured.
   schemas:
     AgentAction:
       type: object

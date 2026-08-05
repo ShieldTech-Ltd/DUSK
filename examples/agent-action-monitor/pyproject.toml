@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dusk-agent-action-monitor"
-version = "0.1.0"
+version = "0.2.0"
 description = "DUSK's agent action gate, judging a proposed agent action against a per-agent behavioural baseline, with Superlinked SIE surfacing the anomalies."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,13 +16,13 @@ dependencies = [
     "PyYAML>=6.0",
     "flask>=3.0",
     "flask-cors>=4.0",
+    "gunicorn>=22.0",
     "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
 sie = [
-    # Tested compatibility pair: SDK 0.6.17 with server v0.4.1-cpu-default.
-    "sie-sdk==0.6.17",
+    "sie-sdk==0.6.26",
 ]
 dev = [
     "pytest>=7.4.0",

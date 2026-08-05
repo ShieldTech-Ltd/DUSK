@@ -103,7 +103,11 @@ def test_sie_encode_returns_none_and_does_not_raise_on_sdk_error(monkeypatch) ->
 
 def test_sie_client_returns_none_when_sie_sdk_not_installed(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "sie_sdk", None)
-    assert vector._sie_client(DEFAULT_CONFIG) is None
+    assert vector._sie_client(Config(sie_endpoint="http://sie:8080")) is None
+
+
+def test_sie_client_returns_none_when_endpoint_is_disabled() -> None:
+    assert vector._sie_client(Config(sie_endpoint="")) is None
 
 
 def test_sie_client_passes_configured_timeout(monkeypatch) -> None:

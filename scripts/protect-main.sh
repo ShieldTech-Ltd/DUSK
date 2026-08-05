@@ -9,7 +9,7 @@
 #
 # What it enforces on `main`:
 #   * changes land only through pull requests (no direct pushes for non-admins)
-#   * the four CI jobs must pass and be up to date: lint, typecheck, security, test
+#   * security, quality, DCO, documentation, and test jobs must pass and be current
 #   * at least one approving review, including Code Owners (see .github/CODEOWNERS)
 #   * stale approvals dismissed on new pushes; all conversations resolved
 #   * commits must be signed (Verified), keeps main's history fully verified
@@ -38,7 +38,22 @@ gh api -X PUT "repos/${OWNER}/${REPO}/branches/${BRANCH}/protection" \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["lint", "typecheck", "security", "test"]
+    "contexts": [
+      "dco",
+      "lint",
+      "typecheck",
+      "security",
+      "deadcode",
+      "secrets",
+      "doc-consistency",
+      "test",
+      "example-lint",
+      "example-typecheck",
+      "example-security",
+      "container-security",
+      "example-deadcode",
+      "example-test"
+    ]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": {
