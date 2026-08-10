@@ -4,8 +4,10 @@
 
 Do not open a public GitHub issue for security vulnerabilities.
 
-Report using GitHub Security Advisories (Security tab > Report a vulnerability).
-You will receive acknowledgement within 72 hours.
+Email `ritiksah141@gmail.com` and `tanvirfarhad007@gmail.com` with the subject
+`DUSK security report`. Include affected versions, reproduction steps, impact,
+and any suggested remediation. You will receive acknowledgement within 72
+hours.
 We target a patch within 30 days for critical issues, 90 days for others.
 We follow coordinated disclosure, we will notify you before public disclosure.
 

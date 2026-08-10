@@ -6,11 +6,11 @@ professional environment, regardless of background or identity.
 
 ## Reporting
 
-Report a conduct concern through the repository's confidential GitHub private
-reporting form: open the **Security** tab, choose **Report a vulnerability**,
-and prefix the report title with `Code of Conduct`. Repository administrators
-monitor this private channel. Do not include the report in a public issue or
-discussion.
+Report a conduct concern privately by email to the project maintainers at
+`ritiksah141@gmail.com` and `tanvirfarhad007@gmail.com`. Prefix the subject with
+`DUSK Code of Conduct`. Do not include the report in a public issue or
+discussion. If a report concerns one maintainer, send it only to the other
+maintainer and use the independent escalation route below.
 
 If a report concerns a maintainer or repository administrator, bypass the
 project channel and use the confidential reporting route identified by the
