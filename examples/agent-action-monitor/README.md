@@ -55,6 +55,22 @@ For local bearer authentication, set `DUSK_GATE_API_KEY` at runtime and send
 trusted origins are supplied through `DUSK_CORS_ALLOWED_ORIGINS`. Never store a
 real credential in `.env.example`, Compose, source control, or an image layer.
 
+### Reproducible OWASP reviewer demo
+
+Run both security modes through a cleanup-safe verifier:
+
+```bash
+./scripts/run_owasp_demo.sh watch
+./scripts/run_owasp_demo.sh enforce
+```
+
+Each invocation builds the three project images, starts only the local gate and
+mock target, runs both agent scenarios, verifies the exact verdict and applied
+status, checks the downstream action count, then removes the local containers
+and demo volume. The enforce override changes only `DUSK_ENFORCE`; all
+localhost bindings and container restrictions remain inherited from
+`compose.yml`.
+
 To use SIE enrichment, install the `sie` extra and configure
 `DUSK_SIE_ENDPOINT` for a separately maintained SIE deployment. Calls use short
 timeouts and fall back to deterministic behavior when that endpoint is cold,

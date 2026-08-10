@@ -196,6 +196,12 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: 1
+      - name: Verify OWASP demo in watch mode
+        working-directory: examples/agent-action-monitor
+        run: ./scripts/run_owasp_demo.sh watch
+      - name: Verify OWASP demo in enforce mode
+        working-directory: examples/agent-action-monitor
+        run: ./scripts/run_owasp_demo.sh enforce
 
   example-deadcode:
     runs-on: ubuntu-latest
