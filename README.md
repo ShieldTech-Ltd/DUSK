@@ -376,8 +376,8 @@ CI runs on every push and pull request to `dev` and `main`. All gates must pass 
 
 ## Governance and security
 
-DUSK is preparing for an OWASP Incubator application as a code and tool
-project. It does not claim complete OWASP Agentic Top 10 coverage or product
+DUSK is preparing for an OWASP Incubator application as a tool project. It does
+not claim complete OWASP Agentic Top 10 coverage or product
 certification. The exact shipped, partial, planned, and out-of-scope mappings
 are documented in [the threat model](docs/threat-model.md).
 
@@ -387,6 +387,7 @@ are documented in [the threat model](docs/threat-model.md).
 - [Production hardening](docs/production-hardening.md)
 - [Security self-assessment](docs/security-self-assessment.md)
 - [OWASP Incubator proposal](docs/owasp-project-proposal.md)
+- [OWASP application submission package](docs/owasp-application.md)
 - [Documentation license](LICENSE-docs.md)
 
 ---

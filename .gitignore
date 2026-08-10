@@ -17,6 +17,7 @@ env/
 .coverage
 htmlcov/
 .tox/
+.ua/
 
 # Dusk runtime artifacts
 dusk-alerts.json
