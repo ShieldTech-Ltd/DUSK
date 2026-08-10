@@ -423,7 +423,7 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [MITRE ATT&CK](https://attack.mitre.org/) -- enterprise and network techniques
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
-- [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [Superlinked SIE gate service](#superlinked-sie-gate-service) above)
+- [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [optional Superlinked SIE enrichment](#optional-superlinked-sie-enrichment) above)
 - [n8n](https://n8n.io/) -- optional external workflow automation target for the three named webhooks
 - [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) -- canonical agentic risk taxonomy
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)

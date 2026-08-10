@@ -13,7 +13,12 @@ paths:
     post:
       summary: Evaluate a proposed agent action and return a verdict.
       operationId: evaluateAction
+      description: >
+        Bearer authentication is optional for local example deployments. It is
+        required at runtime when DUSK_GATE_API_KEY is configured. Production
+        deployments must configure authentication as described in SECURITY.md.
       security:
+        - {}
         - bearerAuth: []
       requestBody:
         required: true
@@ -38,7 +43,9 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Required only when DUSK_GATE_API_KEY is configured.
+      description: >
+        Optional for local example deployments and required when
+        DUSK_GATE_API_KEY is configured.
   schemas:
     AgentAction:
       type: object

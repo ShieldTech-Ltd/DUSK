@@ -97,6 +97,7 @@ Requested type and level: Code and tool, Incubator
 - [x] Code of Conduct
 - [x] Security policy and private reporting path
 - [x] Explicit relationship to existing OWASP work
+- [ ] Each proposed leader has confirmed active Individual or Complimentary Membership
 - [ ] OWASP Foundation approval
 - [ ] Current leader emails supplied privately in the service desk request
 - [ ] Leader agreements signed within 30 days if OWASP provides them

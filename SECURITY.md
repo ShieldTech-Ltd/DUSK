@@ -17,14 +17,17 @@ dependency vulnerabilities, unsafe handling of pcap input.
 Out of scope: theoretical attacks with no practical path, issues in lab/
 scenarios (test code only).
 
-## Supported Versions
+## Supported Versions and Release Status
 
-| Version | Supported |
-|---------|-----------|
-| 0.2.x   | Yes |
-| 0.1.x   | No |
+| Version | Release status | Security support |
+|---------|----------------|------------------|
+| 0.2.x   | Unreleased | Development branch only |
+| 0.1.x   | Historical prototype | No |
 
-Security fixes are applied to the latest released minor version.
+DUSK does not currently have a published GitHub release. Until the first
+release is published, accepted security fixes are applied to the development
+branch and do not represent support for a released version. After publication,
+this table will identify the supported released minor version.
 
 ## Deployment Boundary
 

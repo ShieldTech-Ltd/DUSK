@@ -20,9 +20,10 @@ The current maintainers are:
 
 If OWASP accepts DUSK as an Incubator project, both maintainers are proposed as
 project leaders, subject to Foundation approval and any leader agreement OWASP
-provides. OWASP membership is recommended by the Foundation but is not required
-for project leadership. Project leadership is personal and is not held on
-behalf of an employer.
+provides. OWASP requires every project leader to be an active Individual or
+Complimentary Member. DUSK will not submit its project application until both
+proposed leaders have confirmed that they satisfy this requirement. Project
+leadership is personal and is not held on behalf of an employer.
 
 ## Decision making
 
