@@ -18,18 +18,18 @@ topology:
     # --- Routers (FRRouting, free/open-source) ---
     router-edge:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:latest@sha256:990e83490108b686fd6df3b1cafa6bdbb2714acb00eedb9a89693946f46f45ce
       # TODO(v0.2): bind FRR config, define loopbacks, enable OSPF/BGP.
 
     router-core:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:latest@sha256:990e83490108b686fd6df3b1cafa6bdbb2714acb00eedb9a89693946f46f45ce
       # TODO(v0.2): inter-segment routing between guest/corporate/restricted.
 
     # --- Firewall (FRR-based stand-in; swap for nftables container in v0.2) ---
     firewall:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:latest@sha256:990e83490108b686fd6df3b1cafa6bdbb2714acb00eedb9a89693946f46f45ce
       # TODO(v0.2): segment ACLs, guest must NOT reach 10.0.99.0/24.
 
   links:

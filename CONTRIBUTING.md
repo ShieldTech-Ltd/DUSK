@@ -13,9 +13,10 @@ contributions land cleanly and the published history stays professional.
   example `feature/lateral-detection`, `fix/pcap-empty-file`, or
   `docs/readme-polish`.
 
-Open a pull request from your branch into `main`. Pull requests are squash
-merged, which keeps a linear history and produces a single signed, verified
-commit on `main`.
+Open a pull request from your branch into `dev`. Maintainers promote tested
+changes from `dev` to `main` through a separate release pull request. Pull
+requests are squash merged, which keeps a linear history and produces a single
+signed, verified commit on `main`.
 
 ## Issue first
 
@@ -32,6 +33,23 @@ routine bug reports and feature requests. The blank-issue route is reserved for
 important or urgent items that do not fit a form. Do not file security
 vulnerabilities as public issues; use the private advisory link in
 [SECURITY.md](SECURITY.md).
+
+## Developer Certificate of Origin
+
+DUSK uses the [Developer Certificate of Origin 1.1](https://developercertificate.org/).
+Every commit in a pull request must include a `Signed-off-by` trailer that
+certifies you have the right to submit the contribution under this project's
+licenses.
+
+Create signed-off commits with:
+
+```bash
+git commit --signoff -m "type: concise description"
+```
+
+If a commit is missing the trailer, amend it with `git commit --amend --signoff`
+and update the branch. The DCO CI job rejects pull requests containing unsigned
+commits.
 
 ## Local checks
 
@@ -82,6 +100,10 @@ that cover both the attack and benign cases. Document it in
 The pull request template captures the full checklist. In short: link the issue,
 state how you tested, confirm the gates pass, and update `CHANGELOG.md` under
 `[Unreleased]`.
+
+By participating, contributors agree to follow
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Project decisions and maintainer
+responsibilities are documented in [GOVERNANCE.md](GOVERNANCE.md).
 
 ## Verified commits
 

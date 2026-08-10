@@ -56,7 +56,14 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     )
 
     gate_url = os.getenv("DUSK_GATE_URL", _DEFAULT_GATE_URL)
-    gate_resp = requests.post(gate_url, json=action.to_dict(), timeout=10)
+    gate_api_key = os.getenv("DUSK_GATE_API_KEY", "")
+    gate_headers = {"Authorization": f"Bearer {gate_api_key}"} if gate_api_key else None
+    gate_resp = requests.post(
+        gate_url,
+        json=action.to_dict(),
+        headers=gate_headers,
+        timeout=10,
+    )
     gate_resp.raise_for_status()
     verdict_payload = gate_resp.json()
 

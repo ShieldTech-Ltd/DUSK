@@ -50,6 +50,8 @@ class SimilarDecision:
 
 def _sie_client(config: Config) -> Any | None:  # noqa: ANN401
     """Return a constructed SIEClient if the sie-sdk package is installed, else None."""
+    if not config.sie_endpoint:
+        return None
     try:
         from sie_sdk import SIEClient  # type: ignore[import-not-found]
     except ImportError:

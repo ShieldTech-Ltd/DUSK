@@ -6,6 +6,7 @@ mock-PROD, so these tests need no services running.
 
 from __future__ import annotations
 
+import secrets
 from unittest.mock import MagicMock, patch
 
 from bedrock_client import DuskBlockedError
@@ -44,6 +45,19 @@ def test_clean_scenario_allowed_and_applied(mock_post):
     gate_call, apply_call = mock_post.call_args_list
     assert gate_call.args[0] == "http://localhost:8000/v1/gate"
     assert apply_call.args[0] == "http://localhost:9000/apply"
+
+
+@patch("harness.requests.post")
+def test_gate_bearer_token_is_sent_without_leaking_to_downstream(mock_post, monkeypatch):
+    gate_key = secrets.token_urlsafe(32)
+    monkeypatch.setenv("DUSK_GATE_API_KEY", gate_key)
+    mock_post.side_effect = [_mock_gate_response("ALLOW"), _mock_apply_response()]
+
+    run_scenario("agent-1", "clean")
+
+    gate_call, apply_call = mock_post.call_args_list
+    assert gate_call.kwargs["headers"] == {"Authorization": f"Bearer {gate_key}"}
+    assert "headers" not in apply_call.kwargs
 
 
 @patch("harness.requests.post")

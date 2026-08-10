@@ -4,7 +4,7 @@ Watching agent behaviour for what most tooling quietly misses, with
 Superlinked surfacing the anomalies.
 
 > This is a self-contained example from the
-> [DUSK](https://github.com/TFT444/DUSK) project. It has its own package,
+> [DUSK](https://github.com/ShieldTech-Ltd/DUSK) project. It has its own package,
 > tests, sample data, and Docker Compose stack. See "What's in the box" for
 > exactly what's bundled.
 
@@ -35,32 +35,34 @@ Two scenarios, both keyless by default:
 
 ## Run it locally
 
+> Security boundary: this Compose stack is a localhost-only demonstration. It
+> intentionally uses keyless local services and must not be exposed to an
+> untrusted network. Follow
+> [production hardening](../../docs/production-hardening.md) before using the
+> gate on a real action path.
+
 ```bash
 docker compose up
 ```
 
-Brings up the gate service (`dusk-gate`, the real `/v1/gate` HTTP
-endpoint), a self-hosted SIE container (`sie`), `n8n`, a dummy downstream
-target (`mock-prod`), and the agent harness (`agent-demo`) -- all on one
-internal network, no external egress beyond `sie`'s one-time model-weight
-download, no API keys required.
+Brings up the gate service (`dusk-gate`, the real `/v1/gate` HTTP endpoint), a
+dummy downstream target and bounded webhook sink (`mock-prod`), and the agent
+harness (`agent-demo`) on one internal network. The default stack uses the
+deterministic gate, needs no API key, and makes no model request.
 
-The first `up` cold-starts up to three CPU models in `sie` (encode, score,
-extract) on demand, not necessarily all at once -- each gate request only
-provisions the primitives it actually calls. Every SIE call is bounded to a
-short provisioning timeout (1.5s): a cold or at-capacity model falls back
-to the deterministic path in about a second rather than blocking the gate,
-so a slow or memory-constrained first `sie` startup degrades individual
-request latency, it doesn't hang them. Allocate at least 8 GB to Docker
-Desktop for `sie` to load its models promptly in the background; under
-that, model loading itself takes longer (competing for memory), but
-`/v1/gate` keeps responding throughout.
+For local bearer authentication, set `DUSK_GATE_API_KEY` at runtime and send
+`Authorization: Bearer <value>` to `/v1/gate`. CORS is disabled unless exact
+trusted origins are supplied through `DUSK_CORS_ALLOWED_ORIGINS`. Never store a
+real credential in `.env.example`, Compose, source control, or an image layer.
+
+To use SIE enrichment, install the `sie` extra and configure
+`DUSK_SIE_ENDPOINT` for a separately maintained SIE deployment. Calls use short
+timeouts and fall back to deterministic behavior when that endpoint is cold,
+unavailable, or saturated.
 
 Without Docker, run the pieces directly. The base install (`pip install -e .`)
-works on Python 3.11+; the `sie` extra (real SIE encode/score/extract, rather
-than the deterministic n-gram fallback) requires **Python 3.12+**, since
-`sie-sdk` itself does -- see the Dockerfile, which uses `python:3.12-slim` for
-exactly this reason:
+works on Python 3.11+; the optional `sie` extra requires Python 3.12+ because
+the SDK itself has that requirement:
 
 ```bash
 # optional: start from the documented SIE settings
@@ -118,14 +120,17 @@ Now `mock-prod`'s log shows only the clean action -- that absence is the
 entire point of enforce mode, once watch mode has built enough confidence
 to turn it on.
 
-### n8n webhooks
+### Webhook integrations
 
-Every verdict fires `decision` and `report`; refused verdicts also fire
-`alert` (`src/dusk/trace/n8n_client.py`). The `n8n` container has these
-three webhooks active from startup (`n8n/dusk-webhooks.json`, baked into
-the image, not imported by hand) -- each just responds immediately, no
-external service involved. Watch them land in the executions list at
-`http://localhost:5678`.
+Every verdict can fire `decision` and `report`; refused verdicts can also fire
+`alert` through `src/dusk/trace/n8n_client.py`. The local Compose stack routes
+these paths to the bounded metadata sink in `mock-prod`. Inspect received
+events at `http://localhost:9000/webhook-log`.
+
+The `n8n/dusk-webhooks.json` file can be imported into a separately maintained
+n8n deployment. DUSK does not bundle an n8n runtime image because its large
+third-party dependency tree must be patched and scanned on the operator's own
+release cadence.
 
 ## Sample data
 
@@ -161,43 +166,32 @@ attacks with zero false alarms on the 15 routine actions).
 | Score | `BAAI/bge-reranker-v2-m3` | ~568M params, Apache-2.0 | Reranks the encode-shortlisted history for `similar_decision_ids`, and separately reranks an agent's own baseline history to catch semantic novelty. |
 | Extract | `urchade/gliner_multi-v2.1` | ~289M params, Apache-2.0 | Zero-shot NER for privileged terms (role, privilege, resource, segment, port), weighted by the model's own confidence rather than a flat yes/no. |
 
-All three ship in the `default` bundle of the pinned
-`sie-server:v0.4.1-cpu-default` image. The example intentionally pairs that
-server with `sie-sdk==0.6.17`, the combination used for its recorded live
-validation. The pin makes the demo reproducible; update the pair only after
-running the live benchmark against the replacement versions. Each model is a
-`Config` field (`sie_encode_model` / `sie_score_model` /
-`sie_extract_model`) and can be replaced through the matching
-`DUSK_SIE_*_MODEL` environment variable when it exists in the target SIE
-catalog.
+The optional client pins `sie-sdk==0.6.26`. DUSK does not bundle a server image;
+operators select, patch, scan, and monitor the server appropriate to their
+environment. Each model is a `Config` field and can be replaced through the
+matching `DUSK_SIE_*_MODEL` environment variable when it exists in the target
+SIE catalog.
 
 ## SIE features used
 
-All three primitives run on the live `/v1/gate` request path, not just in
-a benchmark, and every signal they feed is additive-only, so disabling SIE
-degrades detection quality rather than breaking anything.
+When an endpoint is configured, all three primitives run on the live
+`/v1/gate` request path. Every signal is additive, so leaving SIE disabled does
+not break gate decisions.
 
 `/v1/gate`'s response carries the result directly: `similar_decision_ids`
 is populated from a real per-agent decision history (embedded once at
 record time, capped at 200 entries so lookup cost stays O(1) regardless of
 how long the gate has been running -- see `src/dusk/api.py`), not
-hardcoded. This has also been validated against Superlinked's hosted SIE
-cluster directly, not just assumed: `sie_encode` returns a genuine
-1024-dimension `bge-m3` vector, precision/recall on the labelled fixture is
-unchanged with SIE live versus the deterministic-only baseline (1.0/1.0
-either way), and at least one attack's reasons carry a real SIE-sourced
-marker confirming the primitives are actually contributing a signal over
-the network. See `docs/sie-primitives.md` for exactly where each primitive
-is wired in.
+hardcoded. The optional live benchmark is skipped unless an endpoint and any
+required credential are supplied at runtime. See `docs/sie-primitives.md` for
+where each primitive is wired in.
 
 ## Why SIE specifically
 
-The alternative to one SIE cluster serving all three primitives is three
-separate vendors (an embeddings API, a reranking API, an NER API), three
-sets of credentials, three failure modes. One self-hosted SIE container
-covers encode, score, and extract behind one client, with no API key
-needed for local development -- and the same client code points at a
-hosted endpoint for real-load testing with a one-line env var change.
+One separately managed SIE cluster can provide encode, score, and extract
+behind one client. Keeping it outside the default Compose stack lets operators
+apply their own image policy and patch cadence without weakening the
+deterministic local gate.
 
 ## Latency
 
@@ -220,8 +214,8 @@ cold-start behavior, and limitations of this single small trial.
 This example is self-contained and includes everything needed to run the
 complete local flow:
 
-- `Dockerfile`, `compose.yml` -- the gate service, self-hosted SIE,
-  n8n, mock-prod, and agent-demo, wired together on one internal network
+- `Dockerfile`, `compose.yml` -- the deterministic gate service, mock-prod
+  webhook sink, and agent-demo, wired on one internal network
 - `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
   contract
 - `src/dusk/` -- the gate itself: `actions/` (baseline, analyse, verdict),
@@ -231,9 +225,8 @@ complete local flow:
 - `agent-demo/` -- the Bedrock-or-mock agent harness, tool-call extraction,
   load driver
 - `mock-prod/` -- the dummy downstream target
-- `n8n/` -- a custom n8n image with the three DUSK webhooks (decision/
-  report/alert) baked in and active from container start; no manual
-  workflow import, no external service in the workflow itself
+- `n8n/dusk-webhooks.json` -- an optional workflow asset for an external,
+  separately patched n8n deployment
 - `sample-data/` -- the baseline and mixed-check fixtures referenced above
 
 ## Extend it
@@ -255,17 +248,15 @@ complete local flow:
   decision history in `api.py` is capped and in-process; swapping it for
   a shared store keeps it consistent when the gate runs as more than one
   instance.
-- **Route verdicts elsewhere.** The three n8n webhooks (decision/report/
-  alert) are plain HTTP POSTs -- point them at Slack, PagerDuty, or a
-  SIEM instead of, or alongside, n8n.
+- **Route verdicts elsewhere.** The three webhook destinations are plain HTTP
+  POSTs. Point them at a reviewed SOAR, paging service, or SIEM endpoint.
 
 ## Known limits
 
-- `/v1/gate` is unauthenticated with CORS open to all origins, and compose
-  publishes it on every host interface. That's appropriate for a local
-  example anyone can curl immediately -- it is not a production security
-  boundary. Put a real auth layer and network restriction in front of it
-  before exposing it beyond a trusted internal network.
+- `/v1/gate` permits keyless local use when `DUSK_GATE_API_KEY` is unset.
+  Compose binds it to localhost and CORS is disabled by default. A production
+  deployment must configure authentication, TLS, rate limits, and network
+  restrictions as described in `../../docs/production-hardening.md`.
 - If `DUSK_GATE_BASELINE_PATH` is set but the file fails to load, the gate
   still serves requests -- every agent just reads as unknown, which is a
   real degradation of what the gate actually catches, not just a startup
@@ -290,9 +281,10 @@ complete local flow:
 
 - [Superlinked SIE](https://github.com/superlinked/sie) (Apache-2.0): the
   inference engine hosting all three primitives
-- [Flask](https://flask.palletsprojects.com/) and [n8n](https://n8n.io/):
-  the `/v1/gate` HTTP service and the decision/report/alert webhook
-  automation
+- [Flask](https://flask.palletsprojects.com/): the `/v1/gate` HTTP service and
+  local bounded webhook sink
+- [n8n](https://n8n.io/): optional external workflow automation using the
+  provided import asset
 - [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) (MIT): encode
 - [BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)
   (Apache-2.0): score

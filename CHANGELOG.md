@@ -6,7 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [0.2.0], 2026-08-05
+
 ### Added
+- OWASP Incubator proposal, official ASI01 through ASI10 control mapping,
+  governance, Code of Conduct, DCO validation, and separate CC BY-SA 4.0
+  documentation licensing.
+- Production-hardening guidance and optional constant-time bearer
+  authentication for the example gate. Demo ports now bind to localhost and
+  browser CORS is disabled unless exact origins are configured.
+- Dependabot configuration, immutable GitHub Action pins, release SBOM,
+  artifact checksums, and build provenance.
 - Self-contained Superlinked submission packaging for `agent-action-monitor`,
   including an implementation-accurate architecture diagram, local environment
   template, and example-scoped ignore rules.
@@ -38,6 +50,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and how to add a detection.
 
 ### Changed
+- Reduced the default example to project-built, scanned services. SIE and n8n
+  remain optional external integrations, and the deterministic gate plus
+  bounded local webhook sink preserve the keyless demonstration path.
+- Updated the optional SIE client to 0.6.26 and disabled it unless an endpoint
+  is explicitly configured.
 - Polished the `agent-action-monitor` README and SIE validation notes for
   upstream submission, correcting environment variables, fixture paths, and
   tested server/SDK compatibility guidance.

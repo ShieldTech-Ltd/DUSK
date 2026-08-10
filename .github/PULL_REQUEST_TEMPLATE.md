@@ -29,3 +29,6 @@ Closes #
 - [ ] No magic numbers in detection logic, thresholds come from `Config`
 - [ ] Tests cover normal, attack, and edge cases
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] Every commit includes a `Signed-off-by` DCO trailer
+- [ ] No secret, credential, token, or private key is included
+- [ ] Security and deployment documentation is updated when trust boundaries change

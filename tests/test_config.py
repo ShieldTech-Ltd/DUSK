@@ -22,7 +22,7 @@ def test_defaults() -> None:
     assert config.alert_log_path == "dusk-alerts.json"
     assert config.log_level == "WARNING"
     assert config.enforce is False
-    assert config.sie_endpoint == "http://sie:8080"
+    assert config.sie_endpoint == ""
     assert config.sie_encode_model == "BAAI/bge-m3"
     assert config.sie_score_model == "BAAI/bge-reranker-v2-m3"
     assert config.sie_extract_model == "urchade/gliner_multi-v2.1"
