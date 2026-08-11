@@ -18,6 +18,7 @@ env/
 htmlcov/
 .tox/
 .ua/
+examples/agent-action-monitor/ci-logs/
 
 # Dusk runtime artifacts
 dusk-alerts.json

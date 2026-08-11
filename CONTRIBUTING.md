@@ -66,6 +66,10 @@ pip-audit -r requirements.txt
 pytest --cov=src/dusk --cov-fail-under=70
 ```
 
+The containerized authentication and enforcement checks require Docker Compose.
+Build and reproduce them with the commands in
+[CI/CD security gates](docs/ci-security.md#local-sandbox-reproduction).
+
 Install the pre-commit hooks so formatting and basic checks run automatically:
 
 ```bash
