@@ -53,6 +53,9 @@ dusk = "dusk.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"dusk.policies" = ["*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Force UTF-8 for the test process so console capture never falls back to a
