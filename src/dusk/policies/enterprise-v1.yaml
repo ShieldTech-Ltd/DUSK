@@ -1,0 +1,379 @@
+name: dusk-enterprise
+version: 1.0.0
+default_decision: ALLOW
+rules:
+  - &enforced
+    id: DUSK-IAM-001
+    version: 1.0.0
+    title: Prevent agent self-privilege escalation
+    category: identity
+    severity: critical
+    decision: DENY
+    status: enforced
+    owner: DUSK Security
+    rationale: An agent cannot increase its own authority.
+    frameworks: [OWASP-AGENTIC, NIST-AI-RMF]
+    match:
+      - {field: action.type, operator: equals, value: iam.role.assign}
+      - {field: action.target_identity, operator: equals, value: "$identity.agent_id"}
+      - {field: action.role, operator: in, value: [owner, administrator, root]}
+    prerequisites: []
+    tests: [allow, deny, bypass, sequence]
+  - <<: *enforced
+    id: DUSK-IAM-002
+    title: Prevent cross-tenant actions
+    rationale: An action cannot cross the authenticated tenant boundary.
+    match:
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: action.tenant_id, operator: exists, value: true}
+      - {field: action.tenant_id, operator: not_equals, value: "$identity.tenant_id"}
+  - <<: *enforced
+    id: DUSK-PERMIT-001
+    title: Reject missing or invalid permits
+    category: permit
+    rationale: Consequential actions require a valid broker-verifiable permit.
+    match:
+      - {field: action.consequential, operator: equals, value: true}
+      - {field: permit.valid, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-PERMIT-002
+    title: Reject expired permits
+    category: permit
+    rationale: Expired authorization cannot approve a new action.
+    match:
+      - {field: permit.expired, operator: equals, value: true}
+  - <<: *enforced
+    id: DUSK-PERMIT-003
+    title: Reject replayed permits
+    category: permit
+    rationale: Execution permits are single use.
+    match:
+      - {field: permit.replayed, operator: equals, value: true}
+  - <<: *enforced
+    id: DUSK-PERMIT-004
+    title: Reject permit and action mismatch
+    category: permit
+    rationale: A permit is bound to the exact tool and parameter digest.
+    match:
+      - {field: permit.present, operator: equals, value: true}
+      - {field: permit.action_matches, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-BROKER-001
+    title: Prevent direct broker bypass
+    category: broker
+    rationale: Protected systems must only be reached through the credential-holding broker.
+    match:
+      - {field: action.protected_target, operator: equals, value: true}
+      - {field: execution.via_broker, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-SECRET-001
+    title: Prevent secret-bearing file access
+    category: secrets
+    rationale: Agents must not read credential material directly.
+    match:
+      - {field: action.type, operator: in, value: [filesystem.read, filesystem.copy]}
+      - {field: resource.classification, operator: equals, value: secret}
+  - <<: *enforced
+    id: DUSK-SECRET-002
+    title: Prevent secret exfiltration
+    category: secrets
+    rationale: Secret values cannot cross an external trust boundary.
+    match:
+      - {field: data.contains_secret, operator: equals, value: true}
+      - {field: destination.external, operator: equals, value: true}
+  - <<: *enforced
+    id: DUSK-EXEC-001
+    title: Prevent destructive command execution
+    category: execution
+    rationale: Destructive operating-system actions require a safer controlled workflow.
+    match:
+      - {field: action.type, operator: equals, value: process.execute}
+      - {field: action.command_class, operator: in, value: [destructive, persistence, defense_evasion]}
+  - <<: *enforced
+    id: DUSK-FS-001
+    title: Prevent filesystem workspace escape
+    category: filesystem
+    rationale: Agent filesystem access is restricted to approved roots.
+    match:
+      - {field: action.type, operator: in, value: [filesystem.read, filesystem.write, filesystem.delete]}
+      - {field: resource.within_approved_root, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-NET-001
+    title: Prevent unrestricted network exposure
+    category: network
+    rationale: Agents cannot expose services to all internet addresses.
+    match:
+      - {field: action.type, operator: equals, value: network.firewall.update}
+      - {field: action.cidrs, operator: contains, value: 0.0.0.0/0}
+  - <<: *enforced
+    id: DUSK-NET-002
+    title: Prevent unapproved external destinations
+    category: network
+    rationale: External network destinations must be explicitly trusted.
+    match:
+      - {field: destination.external, operator: equals, value: true}
+      - {field: destination.approved, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-MCP-001
+    title: Prevent untrusted MCP tool invocation
+    category: mcp
+    rationale: Only registered MCP servers and approved tool schemas may execute.
+    match:
+      - {field: action.type, operator: equals, value: mcp.tool.call}
+      - {field: tool.trusted, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-CONSEQ-001
+    title: Require approval for sensitive external actions
+    category: consequential
+    severity: high
+    decision: REQUIRE_APPROVAL
+    rationale: Irreversible external side effects require informed human approval.
+    match:
+      - {field: action.category, operator: in, value: [communication, financial, legal, production, account]}
+      - {field: approval.valid, operator: not_true, value: true}
+
+  - &planned
+    id: DUSK-IAM-003
+    version: 1.0.0
+    title: Prevent identity impersonation
+    category: identity
+    severity: critical
+    decision: DENY
+    status: planned
+    owner: DUSK Security
+    rationale: An agent cannot act as another principal without delegated authorization.
+    frameworks: [OWASP-AGENTIC, NIST-AI-RMF]
+    match: []
+    prerequisites: [delegation chain, workload identity]
+    tests: []
+  - <<: *planned
+    id: DUSK-IAM-004
+    title: Require an initiating principal for privileged actions
+    prerequisites: [initiating principal, privilege classification]
+  - <<: *planned
+    id: DUSK-IAM-005
+    title: Prevent environment credential crossover
+    prerequisites: [credential environment binding]
+  - <<: *planned
+    id: DUSK-IAM-006
+    title: Require fresh step-up authorization
+    decision: REQUIRE_APPROVAL
+    prerequisites: [approval timestamp, action digest]
+  - <<: *planned
+    id: DUSK-PERMIT-005
+    title: Enforce maximum permit lifetime
+    category: permit
+    prerequisites: [permit issue time, permit expiry]
+  - <<: *planned
+    id: DUSK-BROKER-002
+    title: Prevent raw credential retrieval
+    category: broker
+    prerequisites: [broker operation classification]
+  - <<: *planned
+    id: DUSK-FS-002
+    title: Prevent authentication file modification
+    category: filesystem
+    prerequisites: [canonical path classification]
+  - <<: *planned
+    id: DUSK-FS-003
+    title: Prevent policy and audit-log tampering
+    category: filesystem
+    prerequisites: [protected DUSK resource registry]
+  - <<: *planned
+    id: DUSK-FS-004
+    title: Require approval for recursive deletion
+    category: filesystem
+    severity: high
+    decision: REQUIRE_APPROVAL
+    prerequisites: [filesystem operation impact]
+  - <<: *planned
+    id: DUSK-EXEC-002
+    title: Prevent unapproved interpreter execution
+    category: execution
+    prerequisites: [executable identity, interpreter allowlist]
+  - <<: *planned
+    id: DUSK-EXEC-003
+    title: Prevent download-to-execution chains
+    category: execution
+    prerequisites: [session event correlation]
+  - <<: *planned
+    id: DUSK-EXEC-004
+    title: Prevent sandbox escape primitives
+    category: execution
+    prerequisites: [host capability and mount telemetry]
+  - <<: *planned
+    id: DUSK-EXEC-005
+    title: Prevent security-control disablement
+    category: execution
+    prerequisites: [security control registry]
+  - <<: *planned
+    id: DUSK-NET-003
+    title: Prevent cloud metadata endpoint access
+    category: network
+    prerequisites: [resolved destination IP]
+  - <<: *planned
+    id: DUSK-NET-004
+    title: Prevent tunnels and reverse shells
+    category: network
+    prerequisites: [process and connection correlation]
+  - <<: *planned
+    id: DUSK-NET-005
+    title: Require approval for network-boundary changes
+    category: network
+    severity: high
+    decision: REQUIRE_APPROVAL
+    prerequisites: [network resource impact]
+  - <<: *planned
+    id: DUSK-CLOUD-001
+    title: Require approval for production deletion
+    category: cloud
+    severity: critical
+    decision: REQUIRE_APPROVAL
+    prerequisites: [environment identity, deletion impact]
+  - <<: *planned
+    id: DUSK-CLOUD-002
+    title: Prevent disabling encryption backups or audit logs
+    category: cloud
+    prerequisites: [cloud control semantics]
+  - <<: *planned
+    id: DUSK-CLOUD-003
+    title: Prevent public cloud resources
+    category: cloud
+    prerequisites: [cloud exposure semantics]
+  - <<: *planned
+    id: DUSK-DATA-001
+    title: Require approval for bulk data export
+    category: data
+    severity: high
+    decision: REQUIRE_APPROVAL
+    prerequisites: [record count, purpose binding]
+  - <<: *planned
+    id: DUSK-DATA-002
+    title: Prevent regulated data transfer
+    category: data
+    prerequisites: [data classification, destination jurisdiction]
+  - <<: *planned
+    id: DUSK-DATA-003
+    title: Require approval for sensitivity-amplifying joins
+    category: data
+    severity: high
+    decision: REQUIRE_APPROVAL
+    prerequisites: [dataset lineage, derived classification]
+  - <<: *planned
+    id: DUSK-DATA-004
+    title: Redact sensitive telemetry
+    category: data
+    decision: DENY
+    prerequisites: [telemetry field classification]
+  - <<: *planned
+    id: DUSK-COMMS-001
+    title: Bind approval to exact recipients and content
+    category: communication
+    prerequisites: [message digest, recipient digest]
+  - <<: *planned
+    id: DUSK-COMMS-002
+    title: Prevent undisclosed human impersonation
+    category: communication
+    prerequisites: [message authorship metadata]
+  - <<: *planned
+    id: DUSK-MCP-002
+    title: Prevent MCP tool-schema drift
+    category: mcp
+    prerequisites: [approved schema digest]
+  - <<: *planned
+    id: DUSK-MCP-003
+    title: Quarantine tool-description injection
+    category: mcp
+    prerequisites: [tool description trust analysis]
+  - <<: *planned
+    id: DUSK-MCP-004
+    title: Prevent excessive MCP authorization scopes
+    category: mcp
+    prerequisites: [requested and approved OAuth scopes]
+  - <<: *planned
+    id: DUSK-MCP-005
+    title: Prevent token passthrough
+    category: mcp
+    prerequisites: [token audience and forwarding telemetry]
+  - <<: *planned
+    id: DUSK-MCP-006
+    title: Treat tool-returned instructions as untrusted data
+    category: mcp
+    prerequisites: [provenance-labelled model context]
+  - <<: *planned
+    id: DUSK-MCP-007
+    title: Prevent unapproved dynamic tool installation
+    category: mcp
+    prerequisites: [tool registry mutation events]
+  - <<: *planned
+    id: DUSK-SC-001
+    title: Require approval for dependency installation
+    category: supply-chain
+    severity: high
+    decision: REQUIRE_APPROVAL
+    prerequisites: [package identity and provenance]
+  - <<: *planned
+    id: DUSK-SC-002
+    title: Prevent package hallucination and substitution
+    category: supply-chain
+    prerequisites: [trusted package registry metadata]
+  - <<: *planned
+    id: DUSK-SC-003
+    title: Prevent execution of unverified artifacts
+    category: supply-chain
+    prerequisites: [artifact digest and provenance]
+  - <<: *planned
+    id: DUSK-SC-004
+    title: Require immutable automation dependencies
+    category: supply-chain
+    prerequisites: [workflow and image reference parser]
+  - <<: *planned
+    id: DUSK-BEH-001
+    title: Detect discovery credential access and exfiltration sequence
+    category: behavior
+    prerequisites: [session event correlation, data-flow labels]
+  - <<: *planned
+    id: DUSK-BEH-002
+    title: Detect download permission-change execution sequence
+    category: behavior
+    prerequisites: [session event correlation, artifact identity]
+  - <<: *planned
+    id: DUSK-BEH-003
+    title: Detect sensitive-read encode-and-transmit sequence
+    category: behavior
+    prerequisites: [session event correlation, data lineage]
+  - <<: *planned
+    id: DUSK-BEH-004
+    title: Detect identity creation elevation and persistence sequence
+    category: behavior
+    prerequisites: [session event correlation, identity graph]
+  - <<: *planned
+    id: DUSK-BEH-005
+    title: Detect monitoring disablement before privileged action
+    category: behavior
+    prerequisites: [session event correlation, control registry]
+  - <<: *planned
+    id: DUSK-BEH-006
+    title: Detect iterative denied-action mutation
+    category: behavior
+    prerequisites: [session event correlation, semantic action digest]
+  - <<: *planned
+    id: DUSK-BEH-007
+    title: Detect objective drift
+    category: behavior
+    prerequisites: [signed task objective, action-purpose model]
+  - <<: *planned
+    id: DUSK-BEH-008
+    title: Detect abnormal velocity and destination fan-out
+    category: behavior
+    prerequisites: [session counters, time windows]
+  - <<: *planned
+    id: DUSK-BEH-009
+    title: Detect multi-agent policy splitting
+    category: behavior
+    prerequisites: [cross-agent correlation, shared objective ID]
+  - <<: *planned
+    id: DUSK-BEH-010
+    title: Prevent delegation-based policy bypass
+    category: behavior
+    prerequisites: [delegation graph, inherited constraints]
