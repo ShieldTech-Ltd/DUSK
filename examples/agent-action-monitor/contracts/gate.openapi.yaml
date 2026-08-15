@@ -80,7 +80,8 @@ components:
           type: string
           example: generic
         raw_ref:
-          type: [string, "null"]
+          type: string
+          nullable: true
           description: Opaque reference back to the original record (an id).
 
     Verdict:

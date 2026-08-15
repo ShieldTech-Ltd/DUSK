@@ -372,7 +372,12 @@ pip-audit -r requirements.txt
 pytest --cov=src/dusk --cov-report=term-missing
 ```
 
-CI runs on every push and pull request to `dev` and `main`. All gates must pass before merge.
+CI runs on every push and pull request to `dev` and `main`. The aggregate
+`security-gate` requires code-quality, vulnerability, contract, container, and
+authenticated sandbox checks to succeed before merge. Slower full-history and
+fresh-container scans run on a separate schedule. See the
+[CI/CD security gates](docs/ci-security.md) for the exact evidence, local
+commands, performance design, and release boundary.
 
 ## Governance and security
 
@@ -386,6 +391,7 @@ are documented in [the threat model](docs/threat-model.md).
 - [Security policy](SECURITY.md)
 - [Production hardening](docs/production-hardening.md)
 - [Security self-assessment](docs/security-self-assessment.md)
+- [CI/CD security gates](docs/ci-security.md)
 - [OWASP Incubator proposal](docs/owasp-project-proposal.md)
 - [OWASP application submission package](docs/owasp-application.md)
 - [Documentation license](LICENSE-docs.md)
