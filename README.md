@@ -417,6 +417,7 @@ are documented in [the threat model](docs/threat-model.md).
 - [CI/CD security gates](docs/ci-security.md)
 - [OWASP Incubator proposal](docs/owasp-project-proposal.md)
 - [OWASP application submission package](docs/owasp-application.md)
+- [OWASP technical evidence manifest](docs/owasp-technical-evidence.json)
 - [Documentation license](LICENSE-docs.md)
 
 ---

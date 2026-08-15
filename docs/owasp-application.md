@@ -116,6 +116,8 @@ endorsement of a commercial product or service.
 - [Roadmap](../README.md#roadmap)
 - [Superlinked SIE accepted example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor)
 - [Reproducible OWASP reviewer demo](../README.md#owasp-reviewer-demo)
+- [Machine-readable technical evidence](owasp-technical-evidence.json), checked
+  on every pull request by `scripts/check_owasp_readiness.py`
 - `v0.2.0` release evidence (add the URL only after the release exists)
 
 ## Submission authorization checklist
