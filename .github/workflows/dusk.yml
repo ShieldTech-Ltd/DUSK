@@ -195,6 +195,7 @@ jobs:
       - run: pip install -e "."
       - run: python scripts/check_config_docs.py
       - run: python scripts/check_release_version.py
+      - run: python scripts/check_owasp_readiness.py
 
   test:
     needs: [lint, typecheck, security, deadcode, secrets, doc-consistency]
@@ -349,6 +350,16 @@ jobs:
           path: examples/agent-action-monitor/ci-logs/
           if-no-files-found: warn
           retention-days: 14
+      - name: Verify OWASP demo with scanned images in watch mode
+        working-directory: examples/agent-action-monitor
+        env:
+          DUSK_GATE_API_KEY: ci-only-not-a-secret
+        run: sh ./scripts/run_owasp_demo.sh --no-build watch
+      - name: Verify OWASP demo with scanned images in enforce mode
+        working-directory: examples/agent-action-monitor
+        env:
+          DUSK_GATE_API_KEY: ci-only-not-a-secret
+        run: sh ./scripts/run_owasp_demo.sh --no-build enforce
 
   example-deadcode:
     runs-on: ubuntu-latest

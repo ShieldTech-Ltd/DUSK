@@ -71,7 +71,8 @@ The repository includes automated tests, coverage enforcement, strict typing,
 static security analysis, dependency auditing, secret scanning, contribution
 guidance, confidential vulnerability reporting, a threat model, and branch
 protection guidance. Release automation creates artifacts, an SBOM, checksums,
-and provenance.
+and provenance. A localhost-only Docker demo verifies both watch and enforce
+behavior, including whether a proposed action reached the mock target.
 
 ## Leadership and support
 
@@ -122,7 +123,9 @@ Requested type and level: Tool, Incubator
 - [ ] Current leader emails supplied privately in the service desk request
 - [ ] Each proposed leader has confirmed willingness to follow OWASP policies
 - [ ] Employer affiliations disclosed and leadership independence discussed
-- [ ] This readiness change merged through `dev` into the default branch
+- [ ] Application demo and readiness evidence merged through `dev` into the
+      default branch
+- [ ] v0.2.0 release and demo recording published
 - [ ] New Project Request submitted through the OWASP service desk
 
 The unchecked pre-submission items require maintainer confirmation or repository

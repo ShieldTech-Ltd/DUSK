@@ -21,6 +21,12 @@ does not claim that OWASP has approved, endorsed, or certified DUSK.
 
 **Documentation license:** Creative Commons Attribution-ShareAlike 4.0
 
+**Stable release:** Pending. Publish `v0.2.0` before filing the application.
+
+**Working demo:** Pending promotion to `main`. The current reviewer implementation
+is available on `dev` at
+https://github.com/ShieldTech-Ltd/DUSK/tree/dev/examples/agent-action-monitor.
+
 ## Project description
 
 DUSK is a vendor-neutral, open-source runtime behavioral detection and policy
@@ -67,6 +73,7 @@ where shared fixtures or integrations are useful.
 - Automated tests, coverage enforcement, typing, static analysis, dependency
   auditing, secret scanning, and container scanning
 - Release automation for packages, SBOM, checksums, and provenance
+- Reproducible watch and enforce demo with exact verdict and downstream checks
 - Deterministic core that does not require a commercial service
 - Optional integrations that do not control governance or core access
 
@@ -108,12 +115,17 @@ endorsement of a commercial product or service.
 - [Architecture](ARCHITECTURE.md)
 - [Roadmap](../README.md#roadmap)
 - [Superlinked SIE accepted example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor)
+- [Reproducible OWASP reviewer demo](../README.md#owasp-reviewer-demo)
+- [Machine-readable technical evidence](owasp-technical-evidence.json), checked
+  on every pull request by `scripts/check_owasp_readiness.py`
+- `v0.2.0` release evidence (add the URL only after the release exists)
 
 ## Submission authorization checklist
 
 Complete these private or external checks immediately before filing:
 
-- [ ] PR #106 is approved, merged into `dev`, verified, and promoted to `main`
+- [ ] The OWASP demo and application package are promoted from `dev` to `main`
+- [ ] The v0.2.0 release and demo recording are published
 - [ ] Both proposed leaders confirm active OWASP membership
 - [ ] Both proposed leaders approve the submission and OWASP policy obligations
 - [ ] Current leader emails are entered in the private request

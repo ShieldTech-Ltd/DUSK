@@ -36,6 +36,7 @@
 
 - [The problem](#the-problem)
 - [Detection in action](#detection-in-action)
+- [OWASP reviewer demo](#owasp-reviewer-demo)
 - [What it detects](#what-it-detects)
 - [Architecture](#architecture)
 - [Optional Superlinked SIE enrichment](#optional-superlinked-sie-enrichment)
@@ -97,6 +98,28 @@ GATE evaluated 18 action(s), refused 3.
 ```
 
 The gate scores 1.0 precision, 1.0 recall, and 0.0 false-positive rate on the bundled benchmark (`test_benchmark_precision_recall`).
+
+## OWASP reviewer demo
+
+The self-contained application demo runs a mock agent, the real DUSK HTTP
+gate, and a mock downstream target on a localhost-only Docker network. It needs
+no credential, paid service, model download, or production system.
+
+```bash
+cd examples/agent-action-monitor
+./scripts/run_owasp_demo.sh watch
+./scripts/run_owasp_demo.sh enforce
+```
+
+The script fails unless watch mode produces `ALLOW` and `WOULD-BLOCK`, enforce
+mode produces `ALLOW` and `BLOCK`, and only the expected actions reach the
+downstream target. See the
+[demo recording guide](docs/owasp-demo-recording.md) and the
+[accepted Superlinked example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor).
+
+The v0.2.0 release will attach a short recording as
+`dusk-owasp-demo-v0.2.0.mp4`. This is an Incubator demonstration, not evidence
+that DUSK is ready for an untrusted or production deployment.
 
 ### Network sweep detection
 
@@ -394,6 +417,7 @@ are documented in [the threat model](docs/threat-model.md).
 - [CI/CD security gates](docs/ci-security.md)
 - [OWASP Incubator proposal](docs/owasp-project-proposal.md)
 - [OWASP application submission package](docs/owasp-application.md)
+- [OWASP technical evidence manifest](docs/owasp-technical-evidence.json)
 - [Documentation license](LICENSE-docs.md)
 
 ---
