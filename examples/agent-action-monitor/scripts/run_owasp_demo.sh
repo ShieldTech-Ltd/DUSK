@@ -42,7 +42,7 @@ if [ "$BUILD" = true ]; then
   $COMPOSE build dusk-gate mock-prod agent-demo
 fi
 $COMPOSE up --detach --no-build --wait dusk-gate mock-prod
-$COMPOSE run --rm --no-build agent-demo \
+$COMPOSE run --rm --pull never agent-demo \
   python run_scenario.py --scenario both --expect-mode "$MODE"
 
 $COMPOSE exec -T \

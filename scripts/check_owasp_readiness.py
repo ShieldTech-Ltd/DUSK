@@ -23,6 +23,7 @@ REQUIRED_DEMO_MARKERS = (
     'if [ "${1:-}" = "--no-build" ]',
     "$COMPOSE build dusk-gate mock-prod agent-demo",
     "up --detach --no-build --wait",
+    "run --rm --pull never agent-demo",
     "trap cleanup EXIT",
 )
 
