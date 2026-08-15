@@ -1,0 +1,39 @@
+rules:
+  - id: dusk-python-subprocess-shell
+    languages: [python]
+    severity: ERROR
+    message: Avoid shell=True; pass an argument list to subprocess APIs.
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.$FUNC(..., shell=True, ...)
+          - pattern: $RUNNER(..., shell=True, ...)
+      - metavariable-regex:
+          metavariable: $RUNNER
+          regex: ^(run|call|check_call|check_output|Popen)$
+
+  - id: dusk-flask-debug-enabled
+    languages: [python]
+    severity: ERROR
+    message: Flask debug mode must not be enabled in committed runtime code.
+    pattern-either:
+      - pattern: $APP.run(..., debug=True, ...)
+      - pattern: $APP.config["DEBUG"] = True
+
+  - id: dusk-unsafe-yaml-load
+    languages: [python]
+    severity: ERROR
+    message: Use yaml.safe_load for data that is not fully trusted.
+    pattern: yaml.load(...)
+
+  - id: dusk-http-call-without-timeout
+    languages: [python]
+    severity: ERROR
+    message: Outbound HTTP calls need an explicit timeout.
+    patterns:
+      - pattern-either:
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: requests.put(...)
+          - pattern: requests.patch(...)
+          - pattern: requests.delete(...)
+      - pattern-not: requests.$METHOD(..., timeout=$TIMEOUT, ...)

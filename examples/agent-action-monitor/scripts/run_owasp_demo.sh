@@ -2,6 +2,12 @@
 
 set -eu
 
+BUILD=true
+if [ "${1:-}" = "--no-build" ]; then
+  BUILD=false
+  shift
+fi
+
 MODE="${1:-}"
 case "$MODE" in
   watch)
@@ -13,7 +19,7 @@ case "$MODE" in
     COMPOSE_FILES="-f compose.yml -f compose.enforce.yml"
     ;;
   *)
-    echo "usage: $0 watch|enforce" >&2
+    echo "usage: $0 [--no-build] watch|enforce" >&2
     exit 2
     ;;
 esac
@@ -22,19 +28,24 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 EXAMPLE_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 cd "$EXAMPLE_DIR"
 
+PROJECT_NAME="agent-action-monitor"
+COMPOSE="docker compose --project-name $PROJECT_NAME $COMPOSE_FILES"
+
 cleanup() {
-  docker compose $COMPOSE_FILES down --volumes --remove-orphans >/dev/null 2>&1 || true
+  $COMPOSE down --volumes --remove-orphans >/dev/null 2>&1 || true
 }
 trap cleanup EXIT HUP INT TERM
 
 # Remove state from earlier demo runs so the result is deterministic.
 cleanup
-docker compose $COMPOSE_FILES build dusk-gate mock-prod agent-demo
-docker compose $COMPOSE_FILES up --detach --no-build --wait dusk-gate mock-prod
-docker compose $COMPOSE_FILES run --rm agent-demo \
+if [ "$BUILD" = true ]; then
+  $COMPOSE build dusk-gate mock-prod agent-demo
+fi
+$COMPOSE up --detach --no-build --wait dusk-gate mock-prod
+$COMPOSE run --rm --no-build agent-demo \
   python run_scenario.py --scenario both --expect-mode "$MODE"
 
-docker compose $COMPOSE_FILES exec -T \
+$COMPOSE exec -T \
   -e EXPECTED_APPLIED="$EXPECTED_APPLIED" mock-prod python -c '
 import json
 import os

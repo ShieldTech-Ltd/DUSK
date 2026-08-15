@@ -118,7 +118,7 @@ Requested type and level: Tool, Incubator
 - [x] Security policy and private reporting path
 - [x] Explicit relationship to existing OWASP work
 - [x] Related OWASP projects reviewed and differentiation documented
-- [x] Each proposed leader has confirmed active Individual or Complimentary
+- [ ] Each proposed leader has confirmed active Individual or Complimentary
       Membership
 - [ ] Current leader emails supplied privately in the service desk request
 - [ ] Each proposed leader has confirmed willingness to follow OWASP policies
