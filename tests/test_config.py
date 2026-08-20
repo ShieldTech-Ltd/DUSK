@@ -132,3 +132,18 @@ def test_unknown_key_ignored(tmp_path: Path) -> None:
     yaml_path.write_text("sweep_threshold: 7\nnot_a_real_key: 1\n")
     config = load_config(str(yaml_path))
     assert config.sweep_threshold == 7
+
+
+def test_bool_typo_raises_config_error(_clean_env: None) -> None:
+    """A misspelled bool env override must raise ConfigError, not silently disable the field."""
+    os.environ["DUSK_ENFORCE"] = "ture"
+    with pytest.raises(ConfigError, match="boolean"):
+        load_config("nonexistent-dusk.yaml")
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off"])
+def test_explicit_false_bool_env_values_are_accepted(_clean_env: None, value: str) -> None:
+    """Canonical false values must be accepted and map to False without raising."""
+    os.environ["DUSK_ENFORCE"] = value
+    config = load_config("nonexistent-dusk.yaml")
+    assert config.enforce is False
