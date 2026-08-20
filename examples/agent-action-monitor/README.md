@@ -45,6 +45,13 @@ Two scenarios, both keyless by default:
 docker compose up
 ```
 
+If either default localhost port is already in use, select unused host ports
+without changing the container network:
+
+```bash
+DUSK_GATE_HOST_PORT=18000 MOCK_PROD_HOST_PORT=19000 docker compose up
+```
+
 Brings up the gate service (`dusk-gate`, the real `/v1/gate` HTTP endpoint), a
 dummy downstream target and bounded webhook sink (`mock-prod`), and the agent
 harness (`agent-demo`) on one internal network. The default stack uses the

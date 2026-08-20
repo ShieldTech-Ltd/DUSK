@@ -123,7 +123,7 @@ Requested type and level: Tool, Incubator
 - [ ] Current leader emails supplied privately in the service desk request
 - [ ] Each proposed leader has confirmed willingness to follow OWASP policies
 - [ ] Employer affiliations disclosed and leadership independence discussed
-- [ ] Application demo and readiness evidence merged through `dev` into the
+- [x] Application demo and readiness evidence merged through `dev` into the
       default branch
 - [ ] v0.2.0 release and demo recording published
 - [ ] New Project Request submitted through the OWASP service desk
