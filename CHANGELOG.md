@@ -53,9 +53,9 @@ No unreleased changes.
 
 ### Security
 
-- Rebased the gate container on the current digest-pinned Python 3.12
-  Bookworm image after CI identified fixable HIGH-severity util-linux
-  vulnerabilities in the previous Debian 13 base image.
+- Rebased the gate, agent demo, and mock downstream containers on current
+  digest-pinned Python Bookworm images after CI identified fixable
+  HIGH-severity util-linux vulnerabilities in the previous Debian 13 images.
 
 ### Changed
 - Reduced the default example to project-built, scanned services. SIE and n8n

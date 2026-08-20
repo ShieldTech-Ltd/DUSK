@@ -1,5 +1,5 @@
 # mock-prod: dummy downstream controller/DB target for the DUSK example.
-FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
+FROM python:3.11-slim-bookworm@sha256:2e32f7d302adc1c37428355c1e646897c0c53f4fd60b6a551245fb90ee129f91
 
 WORKDIR /app
 
