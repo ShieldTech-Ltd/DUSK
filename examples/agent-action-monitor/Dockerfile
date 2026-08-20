@@ -1,5 +1,5 @@
 # dusk-gate: the deterministic /v1/gate HTTP service and optional integration clients.
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+FROM python:3.12-slim-bookworm@sha256:a116514e19457bcb7af7efe9c3dd0b9b71e85b317694e7882a1c52aa15a78134
 
 WORKDIR /app
 

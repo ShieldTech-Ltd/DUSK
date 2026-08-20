@@ -51,6 +51,12 @@ No unreleased changes.
 - CONTRIBUTING.md documenting the branch model, issue-first rule, local checks,
   and how to add a detection.
 
+### Security
+
+- Rebased the gate container on the current digest-pinned Python 3.12
+  Bookworm image after CI identified fixable HIGH-severity util-linux
+  vulnerabilities in the previous Debian 13 base image.
+
 ### Changed
 - Reduced the default example to project-built, scanned services. SIE and n8n
   remain optional external integrations, and the deterministic gate plus
