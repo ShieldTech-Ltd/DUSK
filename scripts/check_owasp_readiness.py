@@ -12,7 +12,6 @@ MANIFEST = Path("docs/owasp-technical-evidence.json")
 
 FORBIDDEN_APPLICATION_CLAIMS = (
     "https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0",
-    "https://github.com/ShieldTech-Ltd/DUSK/tree/main/examples/agent-action-monitor",
     "- [x] Both proposed leaders confirm active OWASP membership",
 )
 REQUIRED_WORKFLOW_COMMANDS = (

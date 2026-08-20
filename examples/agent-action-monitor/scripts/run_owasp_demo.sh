@@ -1,4 +1,5 @@
 #!/bin/sh
+# Git checkouts must preserve LF endings so this script runs in POSIX shells.
 
 set -eu
 
