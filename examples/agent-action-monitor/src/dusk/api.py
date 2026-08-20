@@ -43,9 +43,21 @@ _baseline_load_error: str | None = None
 
 
 def _gate_request_is_authorized() -> bool:
-    """Return whether the request satisfies optional bearer authentication."""
+    """Return whether the request satisfies authentication requirements.
+
+    When DUSK_GATE_API_KEY is set, a matching Bearer token is required.
+    When it is not set, DUSK_GATE_ALLOW_ANONYMOUS must be explicitly set to
+    'true' to permit keyless access; the default is to reject, so a deployment
+    that forgets the key variable does not accidentally expose the gate.
+    """
     expected = os.getenv("DUSK_GATE_API_KEY", "")
     if not expected:
+        allow_anon = os.getenv("DUSK_GATE_ALLOW_ANONYMOUS", "").strip().lower()
+        if allow_anon != "true":
+            logger.warning(
+                "gate request rejected: set DUSK_GATE_API_KEY or DUSK_GATE_ALLOW_ANONYMOUS=true"
+            )
+            return False
         return True
 
     prefix = "Bearer "
@@ -239,13 +251,15 @@ def evaluate_gate_action() -> object:
 def health() -> object:
     gate_engine = _get_gate_engine()  # forces the baseline load attempt so it's reflected below
     if _baseline_load_error is not None:
-        # A non-200 response propagates the failure to the container health check.
-        return jsonify({"status": "degraded", "baseline_error": _baseline_load_error}), 503
+        logger.error("health degraded: baseline load failed: %s", _baseline_load_error)
+        return jsonify({"status": "degraded", "baseline_error": "BASELINE_LOAD_FAILED"}), 503
     offense_memory = gate_engine.offense_memory
     persist_error = offense_memory.last_persist_error if offense_memory is not None else None
     if persist_error is not None:
-        # The gate remains available, but repeat-offense durability is degraded.
-        return jsonify({"status": "degraded", "offense_memory_error": persist_error}), 503
+        logger.error("health degraded: offense memory persist failed: %s", persist_error)
+        return jsonify(
+            {"status": "degraded", "offense_memory_error": "OFFENSE_MEMORY_PERSIST_FAILED"}
+        ), 503
     return jsonify({"status": "ok"})
 
 

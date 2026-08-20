@@ -49,7 +49,7 @@
   ],
   "external_gates": [
     {"id": "leader-membership-and-consent", "status": "pending-maintainer-confirmation"},
-    {"id": "default-branch-promotion", "status": "pending-merge"},
+    {"id": "default-branch-promotion", "status": "implemented"},
     {"id": "release-and-demo-recording", "status": "pending-publication"},
     {"id": "owasp-service-desk-submission", "status": "pending-authorization"},
     {"id": "owasp-acceptance", "status": "not-requested"}

@@ -23,9 +23,8 @@ does not claim that OWASP has approved, endorsed, or certified DUSK.
 
 **Stable release:** Pending. Publish `v0.2.0` before filing the application.
 
-**Working demo:** Pending promotion to `main`. The current reviewer implementation
-is available on `dev` at
-https://github.com/ShieldTech-Ltd/DUSK/tree/dev/examples/agent-action-monitor.
+**Working demo:** The reviewer implementation is available on `main` at
+https://github.com/ShieldTech-Ltd/DUSK/tree/main/examples/agent-action-monitor.
 
 ## Project description
 
@@ -124,7 +123,7 @@ endorsement of a commercial product or service.
 
 Complete these private or external checks immediately before filing:
 
-- [ ] The OWASP demo and application package are promoted from `dev` to `main`
+- [x] The OWASP demo and application package are promoted from `dev` to `main`
 - [ ] The v0.2.0 release and demo recording are published
 - [ ] Both proposed leaders confirm active OWASP membership
 - [ ] Both proposed leaders approve the submission and OWASP policy obligations

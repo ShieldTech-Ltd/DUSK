@@ -24,6 +24,11 @@ Target duration: 90 seconds.
 6. Highlight clean `ALLOW`, poisoned `BLOCK`, and one applied action.
 7. Show the automatic cleanup and the commands needed to reproduce the run.
 
+If the default localhost ports are occupied, export
+`DUSK_GATE_HOST_PORT=18000` and `MOCK_PROD_HOST_PORT=19000` before both demo
+commands. State the override in the recording. It changes only the localhost
+host bindings, not the container network or verifier behavior.
+
 Do not edit the terminal output or splice in a successful result from another
 commit. If either verifier fails, fix the failure and record the complete run
 again.

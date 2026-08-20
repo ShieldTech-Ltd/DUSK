@@ -43,6 +43,10 @@ def _reset_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("DUSK_GATE_BASELINE_SOURCE", "generic")
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
     monkeypatch.delenv("DUSK_GATE_API_KEY", raising=False)
+    # Explicit opt-in for keyless test access -- mirrors the local demo compose
+    # setting. Tests that verify the fail-closed default override this via
+    # monkeypatch.delenv("DUSK_GATE_ALLOW_ANONYMOUS").
+    monkeypatch.setenv("DUSK_GATE_ALLOW_ANONYMOUS", "true")
     # Isolated per test by default so a refusal in one test never writes
     # into the repo's working directory; test_offense_memory_persists_*
     # overrides this explicitly to exercise the real default-path behaviour.
@@ -177,6 +181,38 @@ def test_health_reports_degraded_when_baseline_path_is_broken(client, monkeypatc
     body = r.get_json()
     assert body["status"] == "degraded"
     assert "baseline_error" in body
+
+
+def test_health_baseline_error_is_stable_code_not_raw_exception(client, monkeypatch) -> None:
+    """Health must return a stable code, not a raw exception string with paths."""
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", "/does/not/exist.json")
+    api.reset_gate_engine()
+    body = client.get("/health").get_json()
+    assert body["baseline_error"] == "BASELINE_LOAD_FAILED"
+
+
+def test_gate_requires_explicit_anonymous_opt_in_when_no_key_set(client, monkeypatch) -> None:
+    """Without DUSK_GATE_API_KEY, requests must be refused unless DUSK_GATE_ALLOW_ANONYMOUS=true."""
+    monkeypatch.delenv("DUSK_GATE_API_KEY", raising=False)
+    monkeypatch.delenv("DUSK_GATE_ALLOW_ANONYMOUS", raising=False)
+    r = client.post("/v1/gate", json=_action_payload(port=443))
+    assert r.status_code == 401
+
+
+def test_health_offense_memory_error_is_stable_code_not_raw_exception(
+    client, tmp_path, monkeypatch
+) -> None:
+    """Health offense_memory_error must be a stable reason code, not a raw exception string."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("blocking file", encoding="utf-8")
+    monkeypatch.setenv("DUSK_OFFENSE_MEMORY_PATH", str(blocker / "offense-memory.json"))
+    reset_config()
+    api.reset_gate_engine()
+    payload = _action_payload(agent_id="ghost-agent", target="fw-restricted")
+    client.post("/v1/gate", json=payload)
+    api._get_gate_engine().offense_memory.flush()
+    body = client.get("/health").get_json()
+    assert body["offense_memory_error"] == "OFFENSE_MEMORY_PERSIST_FAILED"
 
 
 def test_gate_still_serves_requests_when_baseline_is_broken(client, monkeypatch) -> None:

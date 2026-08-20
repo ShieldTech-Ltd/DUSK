@@ -15,6 +15,7 @@ services:
       DUSK_GATE_BASELINE_SOURCE: "generic"
       DUSK_DEMO_INTEGRATIONS: "false"
       DUSK_GATE_API_KEY: "${DUSK_GATE_API_KEY:-}"
+      DUSK_GATE_ALLOW_ANONYMOUS: "${DUSK_GATE_ALLOW_ANONYMOUS:-true}"
       DUSK_CORS_ALLOWED_ORIGINS: "${DUSK_CORS_ALLOWED_ORIGINS:-}"
       DUSK_SIE_ENDPOINT: "${DUSK_SIE_ENDPOINT:-}"
       SIE_API_KEY: "${SIE_API_KEY:-}"
@@ -35,7 +36,7 @@ services:
     depends_on:
       mock-prod: { condition: service_healthy }
     networks: [internal]
-    ports: ["127.0.0.1:8000:8000"] # local-only /v1/gate
+    ports: ["127.0.0.1:${DUSK_GATE_HOST_PORT:-8000}:8000"] # local-only /v1/gate
 
   mock-prod:
     build:
@@ -43,7 +44,7 @@ services:
     environment:
       MOCK_PROD_HOST: "0.0.0.0"
     networks: [internal]
-    ports: ["127.0.0.1:9000:9000"] # local-only target and webhook logs
+    ports: ["127.0.0.1:${MOCK_PROD_HOST_PORT:-9000}:9000"] # local-only target and webhook logs
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

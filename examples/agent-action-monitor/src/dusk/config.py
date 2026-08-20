@@ -176,9 +176,17 @@ def _coerce(field_type: Any, raw: Any, source: str) -> Any:  # noqa: ANN401
     Raises:
         ConfigError: If ``raw`` cannot be coerced to ``field_type``.
     """
+    if field_type is bool:
+        normalized = str(raw).strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise ConfigError(
+            f"Invalid boolean value for {source}: {raw!r}. "
+            f"Expected one of: true/false, 1/0, yes/no, on/off"
+        )
     try:
-        if field_type is bool:
-            return str(raw).strip().lower() in {"1", "true", "yes", "on"}
         if field_type is int:
             return int(raw)
         if field_type is float:
