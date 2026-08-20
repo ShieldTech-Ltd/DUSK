@@ -56,9 +56,8 @@ class Config:
         enforce: When ``True``, the ``/v1/gate`` HTTP service renders BLOCK
             for refused actions instead of WOULD-BLOCK. Watch mode (``False``)
             is the default.
-        sie_endpoint: Base URL of the self-hosted SIE container the gate
-            calls for encode/score/extract. No API key is needed for a
-            self-hosted instance.
+        sie_endpoint: Base URL of the optional SIE service used for
+            encode/score/extract. Authentication depends on that deployment.
         sie_encode_model: Catalog model id SIE uses for the encode primitive.
         sie_score_model: Catalog model id SIE uses for the score (rerank)
             primitive.
@@ -103,7 +102,7 @@ class Config:
     alert_log_path: str = "dusk-alerts.json"
     log_level: str = "WARNING"
     enforce: bool = False
-    sie_endpoint: str = "http://sie:8080"
+    sie_endpoint: str = ""
     sie_encode_model: str = "BAAI/bge-m3"
     sie_score_model: str = "BAAI/bge-reranker-v2-m3"
     sie_extract_model: str = "urchade/gliner_multi-v2.1"

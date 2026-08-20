@@ -30,7 +30,7 @@ human-review service.
 
 `examples/agent-action-monitor` owns the Flask `/v1/gate` service, Docker
 Compose stack, trusted sample baseline, prior-refusal memory, bounded in-process
-decision history, n8n webhooks, agent harness, and mock downstream target.
+decision history, outbound webhooks, agent harness, and mock downstream target.
 
 Superlinked SIE is a separate inference service. `score` and `extract` add
 semantic novelty and privileged-entity signals to behavioural analysis;

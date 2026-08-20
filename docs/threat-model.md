@@ -2,8 +2,9 @@
 
 This document maps each detection in DUSK to the adversarial techniques it is
 designed to catch, using MITRE ATT&CK for network-layer techniques and MITRE
-ATLAS for AI-specific attacks. It is written to a standard suitable for OWASP
-submission.
+ATLAS for AI-specific attacks. It also records how shipped controls relate to
+the OWASP Top 10 for Agentic Applications 2026 without claiming complete
+coverage or compliance.
 
 ## Threat landscape
 
@@ -70,7 +71,7 @@ fires when the 11th unique port is probed against the same destination.
 discovered open service. Watch for unusual connection establishment on the
 identified ports.
 
-## Detection 3: Telemetry Silence (v0.2)
+## Detection 3: Telemetry Silence (planned v0.3)
 
 | Field | Value |
 |---|---|
@@ -90,7 +91,7 @@ stops without a corresponding authorised maintenance window.
 forwarding from the core switch before a configuration change that would
 otherwise generate alerts.
 
-## Detection 4: Lateral Movement (v0.2)
+## Detection 4: Lateral Movement (planned v0.3)
 
 | Field | Value |
 |---|---|
@@ -111,11 +112,28 @@ same source.
 agent initiates an SSH connection to 10.0.99.10, a host it has never previously
 contacted.
 
-## Mapping to OWASP Top 10 for Agentic Applications
+## OWASP Top 10 for Agentic Applications 2026 mapping
 
-| OWASP risk | Dusk detection |
-|---|---|
-| Unbounded agent actions | Sweep, Boundary |
-| Prompt injection leading to malicious tool use | Sweep |
-| Excessive agent permissions | Lateral movement |
-| Agent communication interception | Telemetry silence |
+The OWASP Agentic Top 10 is a risk taxonomy, not a product certification.
+DUSK detects or mitigates consequences of selected risks. It does not prevent
+every root cause and does not claim coverage where a control is only planned.
+
+| ID | Official risk | DUSK relationship | Coverage |
+|---|---|---|---|
+| ASI01 | Agent Goal Hijack | The action gate detects goal drift when an agent proposes action types, targets, or values outside its trusted history. Sweep and boundary detections can observe network consequences. | Shipped, detective and optionally preventive at the action gate |
+| ASI02 | Tool Misuse & Exploitation | Per-agent action profiling flags novel tool effects and enforce mode can refuse the proposed action before a downstream integration applies it. | Shipped, partial |
+| ASI03 | Identity & Privilege Abuse | Role-assignment analysis detects newly introduced privileged values. DUSK consumes the reported agent identity but does not issue or authenticate identities. | Shipped detection, partial |
+| ASI04 | Agentic Supply Chain Vulnerabilities | Dependency auditing, secret scanning, SBOM generation, and release provenance protect DUSK's own supply chain. DUSK does not scan an agent's tool supply chain. | Project control only, product coverage out of scope |
+| ASI05 | Unexpected Code Execution | DUSK does not inspect or sandbox generated code. Network detections may observe later reconnaissance but are not an RCE prevention control. | Out of scope |
+| ASI06 | Memory & Context Poisoning | Live requests never update the trusted baseline, which prevents direct online baseline poisoning. Behavior caused by poisoned context can still appear as action drift. DUSK does not secure the agent's own memory. | Shipped defensive design, partial |
+| ASI07 | Insecure Inter-Agent Communication | DUSK records the source identity supplied by an integration but does not sign, encrypt, or authenticate inter-agent messages. | Out of scope |
+| ASI08 | Cascading Failures | Verdicts include predicted next-stage evidence, and enforce mode can stop one anomalous action before it propagates. Cross-system cascade analysis is not implemented. | Shipped containment point, partial |
+| ASI09 | Human-Agent Trust Exploitation | Deterministic reasons, blast-radius labels, and watch mode support human review. DUSK does not verify every agent explanation or user decision. | Shipped decision support, partial |
+| ASI10 | Rogue Agents | Per-agent behavioral deviation, repeat-offense memory, refusal, and quarantine workflows target agents acting outside established norms. | Shipped, partial |
+
+### Shipped and planned boundary
+
+Shipped controls are the action gate, network sweep detection, and boundary
+probe detection. Telemetry Silence and Lateral Movement are roadmap designs for
+v0.3 and must not be treated as current protection. Their sections remain here
+to support review of the planned detection model before implementation.

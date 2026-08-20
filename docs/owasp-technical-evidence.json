@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "project": "DUSK",
+  "scope": "Technical evidence for an OWASP Incubator tool project application",
+  "status": "technical-evidence-defined",
+  "evidence": [
+    {
+      "id": "open-governance",
+      "status": "implemented",
+      "paths": ["GOVERNANCE.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"]
+    },
+    {
+      "id": "open-licensing",
+      "status": "implemented",
+      "paths": ["LICENSE", "LICENSE-docs.md"]
+    },
+    {
+      "id": "security-process",
+      "status": "implemented",
+      "paths": ["SECURITY.md", "docs/threat-model.md", "docs/security-self-assessment.md"]
+    },
+    {
+      "id": "architecture-and-hardening-boundary",
+      "status": "documented",
+      "paths": ["docs/ARCHITECTURE.md", "docs/production-hardening.md"]
+    },
+    {
+      "id": "deterministic-policy-enforcement",
+      "status": "implemented",
+      "paths": ["src/dusk/policies/enterprise-v1.yaml", "docs/enterprise-policy-pack.md"]
+    },
+    {
+      "id": "reproducible-watch-and-enforce-demo",
+      "status": "implemented-and-ci-gated",
+      "paths": [
+        "examples/agent-action-monitor/compose.yml",
+        "examples/agent-action-monitor/compose.ci.yml",
+        "examples/agent-action-monitor/compose.enforce.yml",
+        "examples/agent-action-monitor/contracts/gate.openapi.yaml",
+        "examples/agent-action-monitor/scripts/run_owasp_demo.sh",
+        ".github/workflows/dusk.yml"
+      ]
+    },
+    {
+      "id": "ci-security-controls",
+      "status": "implemented",
+      "paths": [".github/workflows/dusk.yml", "docs/ci-security.md"]
+    }
+  ],
+  "external_gates": [
+    {"id": "leader-membership-and-consent", "status": "pending-maintainer-confirmation"},
+    {"id": "default-branch-promotion", "status": "pending-merge"},
+    {"id": "release-and-demo-recording", "status": "pending-publication"},
+    {"id": "owasp-service-desk-submission", "status": "pending-authorization"},
+    {"id": "owasp-acceptance", "status": "not-requested"}
+  ]
+}

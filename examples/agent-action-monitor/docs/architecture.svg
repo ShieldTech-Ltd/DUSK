@@ -147,9 +147,9 @@
 <text x="1308" y="689" text-anchor="middle" class="sec">5. ALERTS &amp; NOTIFICATIONS</text>
 <rect x="1122" y="711" width="372" height="46" rx="9" class="soft"/>
 <use href="#i-bell" x="1138" y="722" width="22" height="22" class="icon"/>
-<text x="1308" y="740" text-anchor="middle" class="body">n8n decision + report: every verdict</text>
+<text x="1308" y="740" text-anchor="middle" class="body">decision + report: every verdict</text>
 <rect x="1122" y="770" width="372" height="46" rx="9" class="soft"/>
-<text x="1308" y="799" text-anchor="middle" class="body">n8n alert: WOULD-BLOCK / BLOCK only</text>
+<text x="1308" y="799" text-anchor="middle" class="body">alert webhook: WOULD-BLOCK / BLOCK only</text>
 <text x="1308" y="835" text-anchor="middle" class="small muted">Bounded asynchronous delivery; never blocks the request.</text>
 <path d="M1041 474 H1080 V753 H1100" class="flow dash"/>
 
@@ -194,7 +194,7 @@
 <text x="140" y="949" text-anchor="middle" class="card">agent-demo</text><text x="140" y="969" text-anchor="middle" class="small">mock/optional Bedrock harness</text>
 <text x="385" y="949" text-anchor="middle" class="card">dusk-gate</text><text x="385" y="969" text-anchor="middle" class="small">Python 3.12 + Flask API</text>
 <text x="635" y="949" text-anchor="middle" class="card">sie</text><text x="635" y="969" text-anchor="middle" class="small">Pinned CPU-default image</text>
-<text x="885" y="949" text-anchor="middle" class="card">n8n</text><text x="885" y="969" text-anchor="middle" class="small">Three preloaded webhooks</text>
+<text x="885" y="949" text-anchor="middle" class="card">Webhook sink</text><text x="885" y="969" text-anchor="middle" class="small">Three bounded local endpoints</text>
 <text x="1135" y="949" text-anchor="middle" class="card">mock-prod</text><text x="1135" y="969" text-anchor="middle" class="small">Dummy downstream target</text>
 <text x="1388" y="949" text-anchor="middle" class="card">Volumes</text><text x="1388" y="969" text-anchor="middle" class="small">Model cache + offense memory</text>
 </svg>

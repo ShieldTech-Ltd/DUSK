@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import pytest
-from app import app, applied_log
+from app import app, applied_log, webhook_log
 
 
 @pytest.fixture(autouse=True)
 def _clear_log():
     applied_log.clear()
+    webhook_log.clear()
     yield
     applied_log.clear()
+    webhook_log.clear()
 
 
 @pytest.fixture
@@ -41,3 +43,35 @@ def test_apply_logs_the_action(client):
 def test_apply_rejects_non_object_body(client):
     resp = client.post("/apply", json=["not", "an", "object"])
     assert resp.status_code == 400
+
+
+def test_webhook_sink_records_bounded_metadata(client):
+    response = client.post(
+        "/webhook/decision",
+        json={"trace_id": "trace-1", "verdict": "ALLOW", "sensitive": "discarded"},
+    )
+
+    assert response.status_code == 200
+    assert webhook_log == [
+        {
+            "received_at": webhook_log[0]["received_at"],
+            "kind": "decision",
+            "trace_id": "trace-1",
+            "verdict": "ALLOW",
+        }
+    ]
+    assert "sensitive" not in webhook_log[0]
+
+
+def test_webhook_sink_rejects_unknown_kind_and_invalid_body(client):
+    assert client.post("/webhook/unknown", json={}).status_code == 404
+    assert client.post("/webhook/alert", json=[]).status_code == 400
+
+
+def test_webhook_sink_rejects_oversized_body(client):
+    response = client.post(
+        "/webhook/alert",
+        data=b"x" * (1024 * 1024 + 1),
+        content_type="application/json",
+    )
+    assert response.status_code == 413

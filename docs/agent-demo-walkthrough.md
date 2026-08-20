@@ -14,12 +14,13 @@ docker compose up
 ```
 
 This brings up `dusk-gate` (the real `/v1/gate` service, SIE-backed),
-`sie`, `n8n`, `mock-prod` (the dummy downstream target), and `agent-demo`.
+`sie`, `mock-prod` (the dummy downstream target and webhook sink), and
+`agent-demo`.
 
 Without Docker, run the pieces directly instead:
 
 ```bash
-# terminal 1: local stub gate (no SIE/n8n needed)
+# terminal 1: local stub gate (no SIE or webhook service needed)
 python agent-demo/stub_gate.py
 
 # terminal 2: mock-prod

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -41,6 +42,7 @@ def _reset_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", BASELINE_PATH)
     monkeypatch.setenv("DUSK_GATE_BASELINE_SOURCE", "generic")
     monkeypatch.delenv("DUSK_ENFORCE", raising=False)
+    monkeypatch.delenv("DUSK_GATE_API_KEY", raising=False)
     # Isolated per test by default so a refusal in one test never writes
     # into the repo's working directory; test_offense_memory_persists_*
     # overrides this explicitly to exercise the real default-path behaviour.
@@ -122,6 +124,33 @@ def test_gate_rejects_oversized_body(client) -> None:
     oversized = "x" * (2 * 1024 * 1024)
     r = client.post("/v1/gate", data=oversized, content_type="application/json")
     assert r.status_code == 413
+
+
+def test_gate_requires_configured_bearer_token(client, monkeypatch) -> None:
+    gate_key = secrets.token_urlsafe(32)
+    monkeypatch.setenv("DUSK_GATE_API_KEY", gate_key)
+
+    missing = client.post("/v1/gate", json=_action_payload(port=443))
+    incorrect = client.post(
+        "/v1/gate",
+        json=_action_payload(port=443),
+        headers={"Authorization": f"Bearer {gate_key}-incorrect"},
+    )
+    accepted = client.post(
+        "/v1/gate",
+        json=_action_payload(port=443),
+        headers={"Authorization": f"Bearer {gate_key}"},
+    )
+
+    assert missing.status_code == 401
+    assert missing.headers["WWW-Authenticate"] == "Bearer"
+    assert incorrect.status_code == 401
+    assert accepted.status_code == 200
+
+
+def test_health_does_not_require_gate_token(client, monkeypatch) -> None:
+    monkeypatch.setenv("DUSK_GATE_API_KEY", secrets.token_urlsafe(32))
+    assert client.get("/health").status_code == 200
 
 
 def test_gate_without_baseline_defaults_to_unknown_agent(client, monkeypatch) -> None:

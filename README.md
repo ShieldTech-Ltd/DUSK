@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TFT444/DUSK/actions/workflows/dusk.yml"><img src="https://github.com/TFT444/DUSK/actions/workflows/dusk.yml/badge.svg?branch=dev" alt="CI"></a>
+  <a href="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml"><img src="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml/badge.svg?branch=dev" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python"></a>
   <a href="https://attack.mitre.org/"><img src="https://img.shields.io/badge/MITRE-ATT%26CK%20%2B%20ATLAS-red.svg" alt="MITRE ATT&CK + ATLAS"></a>
-  <a href="https://github.com/TFT444/DUSK"><img src="https://img.shields.io/badge/status-active-brightgreen.svg" alt="Status"></a>
+  <a href="https://github.com/ShieldTech-Ltd/DUSK"><img src="https://img.shields.io/badge/status-active-brightgreen.svg" alt="Status"></a>
 </p>
 
 <p align="center">
@@ -20,13 +20,14 @@
 
 ---
 
-> **Independently validated in the last 30 days**
+> **Recent research motivating this work**
 >
-> [Anthropic Frontier Red Team (3 Jun 2026)](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) -- autonomous killchain orchestration is the #1 AI threat; MITRE ATT&CK has no taxonomy for it yet.
+> [Anthropic Frontier Red Team (3 Jun 2026)](https://www.anthropic.com/research/frontier-red-team-mapping-ai-enabled-cyber-threats) discusses autonomous cyber operations and the limits of existing taxonomies.
 >
-> [Google DeepMind AI Control Roadmap (18 Jun 2026)](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- runtime behavioural monitoring is the missing security layer.
+> [Google DeepMind AI Control Roadmap (18 Jun 2026)](https://deepmind.google/blog/securing-the-future-of-ai-agents/) discusses runtime controls for increasingly capable agents.
 >
-> **DUSK is the open-source implementation of that missing layer.**
+> These publications motivate DUSK's direction. They are not endorsements or
+> independent validation of this project.
 
 ---
 
@@ -35,11 +36,13 @@
 
 - [The problem](#the-problem)
 - [Detection in action](#detection-in-action)
+- [OWASP reviewer demo](#owasp-reviewer-demo)
 - [What it detects](#what-it-detects)
 - [Architecture](#architecture)
-- [Superlinked SIE gate service](#superlinked-sie-gate-service)
+- [Optional Superlinked SIE enrichment](#optional-superlinked-sie-enrichment)
 - [Quickstart](#quickstart)
 - [Roadmap](#roadmap)
+- [Governance and security](#governance-and-security)
 - [Where DUSK sits](#where-dusk-sits-in-the-enterprise-stack)
 - [References](#references)
 
@@ -49,7 +52,9 @@
 
 ## The problem
 
-Every security control built so far assumes the decision-maker is a human. AI agents are not human. They act at machine speed, they hold valid credentials, and almost nothing watches what they actually do with those credentials.
+Many established security controls focus on identity, permissions, or known
+signatures. AI agents add machine-speed decisions and valid-credential misuse,
+which create a need for action-level behavioral monitoring.
 
 An LLM gateway such as AWS Bedrock tells you what an agent is permitted to request. A SIEM such as Microsoft Sentinel tells you what infrastructure events occurred. Neither tells you whether an agent is behaving normally -- or whether it has been compromised mid-task by a prompt injection, a scope drift, or an impersonation.
 
@@ -61,7 +66,8 @@ At agentic scale, that blind spot is where the damage happens:
 | Agent impersonation | A compromised agent feeds false instructions to another as if from the orchestrator | No inter-agent verification or signing |
 | Scope creep | An agent with read scope begins writing and deleting | Each permission check passes; only the behavioral pattern is wrong |
 
-DUSK closes this gap. It is **complementary** to every platform above, not a competitor.
+DUSK addresses part of this gap and is designed to complement identity,
+gateway, network, and SIEM controls.
 
 ---
 
@@ -92,6 +98,28 @@ GATE evaluated 18 action(s), refused 3.
 ```
 
 The gate scores 1.0 precision, 1.0 recall, and 0.0 false-positive rate on the bundled benchmark (`test_benchmark_precision_recall`).
+
+## OWASP reviewer demo
+
+The self-contained application demo runs a mock agent, the real DUSK HTTP
+gate, and a mock downstream target on a localhost-only Docker network. It needs
+no credential, paid service, model download, or production system.
+
+```bash
+cd examples/agent-action-monitor
+./scripts/run_owasp_demo.sh watch
+./scripts/run_owasp_demo.sh enforce
+```
+
+The script fails unless watch mode produces `ALLOW` and `WOULD-BLOCK`, enforce
+mode produces `ALLOW` and `BLOCK`, and only the expected actions reach the
+downstream target. See the
+[demo recording guide](docs/owasp-demo-recording.md) and the
+[accepted Superlinked example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor).
+
+The v0.2.0 release will attach a short recording as
+`dusk-owasp-demo-v0.2.0.mp4`. This is an Incubator demonstration, not evidence
+that DUSK is ready for an untrusted or production deployment.
 
 ### Network sweep detection
 
@@ -183,9 +211,15 @@ SIEM rules fire on known-bad signatures. A behavioral baseline fires on anything
 
 ---
 
-## Superlinked SIE gate service
+## Optional Superlinked SIE enrichment
 
-The agent action gate is also shipped as a self-contained HTTP service (`POST /v1/gate`) inside [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with [Superlinked SIE](https://github.com/superlinked/sie) wired in for behavioural similarity: `encode` (embedding an action against an agent's history), `score` (cross-encoder rerank), and `extract` (zero-shot privileged-term detection), each verified against a live hosted SIE cluster and each an additive signal on top of the deterministic core -- disabling SIE degrades detection quality, never breaks the gate.
+The agent action gate is also shipped as a self-contained HTTP service
+(`POST /v1/gate`) inside
+[`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md).
+[Superlinked SIE](https://github.com/superlinked/sie) can optionally enrich
+behavioral similarity through encode, score, and extract operations. Every SIE
+signal is additive to the deterministic core, so the default local stack needs
+no SIE runtime or outbound model download.
 
 ```bash
 cd examples/agent-action-monitor
@@ -198,14 +232,20 @@ curl -X POST http://localhost:8000/v1/gate \
        "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
 ```
 
-The full runnable example -- gate service, self-hosted SIE, n8n, a mock downstream target, and a Bedrock-or-mock agent harness demonstrating a clean action allowed and a hijacked one refused before it reaches anything -- lives entirely at [`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md), with its own `pyproject.toml`, `src/dusk/`, and Docker Compose stack. It is prepared for contribution to the [`superlinked/sie`](https://github.com/superlinked/sie) example gallery. This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates a batch of actions offline instead (see Usage below).
+The full runnable example includes the gate service, a local
+webhook sink, a mock downstream target, and a Bedrock-or-mock agent harness. An
+importable n8n workflow remains available for operators who provide a separately
+maintained n8n deployment. The example lives entirely at
+[`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md).
+This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates
+a batch of actions offline instead.
 
 ---
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/TFT444/DUSK.git
+git clone https://github.com/ShieldTech-Ltd/DUSK.git
 cd DUSK
 pip install -e ".[dev]"
 
@@ -327,11 +367,10 @@ src/dusk/
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
   trace/                Superlinked SIE client (vector.py) + trace models, offline CLI path
-examples/agent-action-monitor/  Self-contained Superlinked SIE example -- own
-                                 pyproject.toml, src/dusk/ (gate + api.py + n8n
-                                 client), Docker/compose stack, agent-demo/,
-                                 mock-prod/, contracts/, n8n/. Not shared with
-                                 this repo's root; see its own README.
+examples/agent-action-monitor/  Self-contained Superlinked SIE example with its
+                                 own package, gate API, webhook client, hardened
+                                 Docker stack, agent demo, mock target, contract,
+                                 and optional n8n workflow asset.
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
   scenarios/            pcap generators for network fixture data
@@ -356,7 +395,30 @@ pip-audit -r requirements.txt
 pytest --cov=src/dusk --cov-report=term-missing
 ```
 
-CI runs on every push and pull request to `dev` and `main`. All gates must pass before merge.
+CI runs on every push and pull request to `dev` and `main`. The aggregate
+`security-gate` requires code-quality, vulnerability, contract, container, and
+authenticated sandbox checks to succeed before merge. Slower full-history and
+fresh-container scans run on a separate schedule. See the
+[CI/CD security gates](docs/ci-security.md) for the exact evidence, local
+commands, performance design, and release boundary.
+
+## Governance and security
+
+DUSK is preparing for an OWASP Incubator application as a tool project. It does
+not claim complete OWASP Agentic Top 10 coverage or product
+certification. The exact shipped, partial, planned, and out-of-scope mappings
+are documented in [the threat model](docs/threat-model.md).
+
+- [Governance and proposed project leaders](GOVERNANCE.md)
+- [Contribution and DCO requirements](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Production hardening](docs/production-hardening.md)
+- [Security self-assessment](docs/security-self-assessment.md)
+- [CI/CD security gates](docs/ci-security.md)
+- [OWASP Incubator proposal](docs/owasp-project-proposal.md)
+- [OWASP application submission package](docs/owasp-application.md)
+- [OWASP technical evidence manifest](docs/owasp-technical-evidence.json)
+- [Documentation license](LICENSE-docs.md)
 
 ---
 
@@ -366,25 +428,21 @@ CI runs on every push and pull request to `dev` and `main`. All gates must pass 
 
 | Layer | What it does | Status |
 |---|---|---|
-| v0.1 -- Network detection | Sweep (T1046) and boundary probe (T1590) over packet captures | Released |
-| v1.1 -- Action ingest | Normalise agent control-plane actions into a controller-agnostic AgentAction event | Landed |
-| v1.2 -- Baseline | Per-agent behavioral baseline: action types, target classes, token vocabulary, change values | Landed |
-| v1.3 -- Analyse | Weighted anomaly scoring, MITRE ATT&CK + ATLAS mapping, blast radius, next-stage prediction | Landed |
-| v1.4 -- Verdict gate | ALLOW / WOULD-BLOCK / BLOCK with full reasoning. Watch mode by default; enforce mode on trust. | Landed |
-| v1.5 -- Gate service + SIE | `/v1/gate` HTTP endpoint over the gate; Superlinked SIE encode, score, and extract wired in as additive signals, validated against a live hosted cluster. Self-contained Docker Compose stack in `examples/agent-action-monitor/`. | Landed |
+| v0.1 | Sweep (T1046) and boundary probe (T1590) over packet captures | Released |
+| v0.2 | Action ingest, per-agent baseline, deterministic analysis, verdict gate, healing workflow, and optional SIE-enriched HTTP example | Release prepared |
 
 ### In progress
 
 | Layer | What it does |
 |---|---|
-| v2 -- Data plane | Reposition packet and flow detections as a confirmation layer |
+| v0.3 | Telemetry silence and lateral movement detection, plus stronger data-plane confirmation |
 
 ### Direction
 
 | Layer | What it does |
 |---|---|
-| v3 -- Reasoning layer | Inspect agent decision and tool-call reasoning to catch intent before the action is formed |
-| v4 -- Isolation | Automated containment: quarantine a suspicious agent while preserving audit evidence |
+| Future reasoning layer | Inspect agent decision and tool-call reasoning to catch intent before the action is formed |
+| Future isolation | Automated containment with durable, externally enforced quarantine and preserved audit evidence |
 
 DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate action can disrupt a network, so the gate observes and reports until its baseline is trusted in a given environment.
 
@@ -396,16 +454,17 @@ DUSK ships in watch mode first. An inline gate that wrongly blocks a legitimate 
 - [Google DeepMind: securing AI agents](https://deepmind.google/blog/securing-the-future-of-ai-agents/) -- the case for behavior-level controls on agents
 - [MITRE ATT&CK](https://attack.mitre.org/) -- enterprise and network techniques
 - [MITRE ATLAS](https://atlas.mitre.org/) -- adversarial threats to AI systems
-- [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [Superlinked SIE gate service](#superlinked-sie-gate-service) above)
-- [n8n](https://n8n.io/) -- SOAR workflow automation, three named webhooks fired from `/v1/gate`
-- [OWASP Top 10 for Agentic Applications](https://owasp.org/projects/) -- agentic application security
+- [Superlinked SIE](https://github.com/superlinked/sie) -- self-hosted inference engine powering the gate service's encode, score, and extract primitives (see [optional Superlinked SIE enrichment](#optional-superlinked-sie-enrichment) above)
+- [n8n](https://n8n.io/) -- optional external workflow automation target for the three named webhooks
+- [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) -- canonical agentic risk taxonomy
 - Threat model and MITRE mappings: [docs/threat-model.md](docs/threat-model.md)
 
 ---
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) for details.
+Code is Apache-2.0. Documentation is CC BY-SA 4.0. See [LICENSE](LICENSE) and
+[LICENSE-docs.md](LICENSE-docs.md) for details.
 
 ---
 
