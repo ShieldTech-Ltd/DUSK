@@ -45,12 +45,29 @@
       "id": "ci-security-controls",
       "status": "implemented",
       "paths": [".github/workflows/dusk.yml", "docs/ci-security.md"]
+    },
+    {
+      "id": "application-readiness-tracking",
+      "status": "documented",
+      "paths": [
+        "docs/owasp-readiness-tracker.md",
+        "docs/github-owasp-settings.md"
+      ]
     }
   ],
   "external_gates": [
-    {"id": "leader-membership-and-consent", "status": "pending-maintainer-confirmation"},
+    {"id": "leader-membership", "status": "confirmed-privately"},
+    {"id": "leader-consent-and-private-details", "status": "pending-private-submission"},
     {"id": "default-branch-promotion", "status": "implemented"},
-    {"id": "release-and-demo-recording", "status": "pending-publication"},
+    {"id": "release-artifacts", "status": "published-and-verified"},
+    {
+      "id": "demo-recording",
+      "status": "published-and-verified",
+      "url": "https://github.com/ShieldTech-Ltd/DUSK/releases/download/v0.2.0/dusk-owasp-demo-v0.2.0.mp4",
+      "sha256": "73bea21549c8595b7b82814d21031cb7e075d18368f5cd358d0bc931de95960b"
+    },
+    {"id": "pull-request-configuration", "status": "maintainer-reviewed-no-change"},
+    {"id": "public-repository-metadata", "status": "pending-configuration"},
     {"id": "owasp-service-desk-submission", "status": "pending-authorization"},
     {"id": "owasp-acceptance", "status": "not-requested"}
   ]

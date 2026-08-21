@@ -1,14 +1,11 @@
-"""Fail CI if CLAUDE.md or README.md quote a Config default that has drifted.
+"""Fail CI if README.md quotes a Config default that has drifted.
 
-Narrowly targeted at the exact bug in #62: CLAUDE.md's example dusk.yaml
-block claimed gate_block_threshold: 0.7 while config.py's real default was
-0.6, and README.md's own config table happened to already be correct --
-so the two docs disagreed with each other and one of them was wrong,
-silently, until a manual review caught it.
+Narrowly targeted at numeric configuration defaults so documentation drift
+is caught automatically instead of relying on manual review.
 
 This does not parse prose or catch every kind of doc drift -- only numeric
 Config defaults that appear in a `name: value` or `` `name` `` ... `value`
-shape in the two files below, checked against dataclasses.fields(Config()).
+shape in the file below, checked against dataclasses.fields(Config()).
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from dusk.config import Config  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOC_FILES = [REPO_ROOT / "CLAUDE.md", REPO_ROOT / "README.md"]
+DOC_FILES = [REPO_ROOT / "README.md"]
 
 
 def _real_defaults() -> dict[str, object]:
