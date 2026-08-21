@@ -118,10 +118,10 @@ downstream target. See the
 [accepted Superlinked example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor).
 
 The signed [v0.2.0 release](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0)
-contains the wheel, source archive, SBOM, checksums, and build provenance. A
-short recording named `dusk-owasp-demo-v0.2.0.mp4` is still pending. This is an
-Incubator demonstration, not evidence that DUSK is ready for an untrusted or
-production deployment.
+contains the wheel, source archive, SBOM, checksums, and build provenance. The
+[90-second reviewer recording](https://github.com/ShieldTech-Ltd/DUSK/releases/download/v0.2.0/dusk-owasp-demo-v0.2.0.mp4)
+shows both modes from that release. This is an Incubator demonstration, not
+evidence that DUSK is ready for an untrusted or production deployment.
 
 ### Network sweep detection
 
