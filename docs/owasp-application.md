@@ -122,6 +122,7 @@ endorsement of a commercial product or service.
 - [Application readiness tracker](owasp-readiness-tracker.md)
 - [GitHub administrator settings](github-owasp-settings.md)
 - [v0.2.0 release evidence](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0)
+- [v0.2.0 reviewer recording](https://github.com/ShieldTech-Ltd/DUSK/releases/download/v0.2.0/dusk-owasp-demo-v0.2.0.mp4)
 
 ## Submission authorization checklist
 
@@ -129,7 +130,7 @@ Complete these private or external checks immediately before filing:
 
 - [x] The OWASP demo and application package are promoted from `dev` to `main`
 - [x] The signed v0.2.0 release and technical artifacts are published
-- [ ] The v0.2.0 demo recording is published and linked
+- [x] The v0.2.0 demo recording is published and linked
 - [x] The maintainers reviewed the existing pull request system and chose to
       preserve it for the application
 - [ ] The GitHub repository has a concise description and relevant topics

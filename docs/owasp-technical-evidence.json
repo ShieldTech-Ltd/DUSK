@@ -60,7 +60,12 @@
     {"id": "leader-consent-and-private-details", "status": "pending-private-submission"},
     {"id": "default-branch-promotion", "status": "implemented"},
     {"id": "release-artifacts", "status": "published-and-verified"},
-    {"id": "demo-recording", "status": "pending-publication"},
+    {
+      "id": "demo-recording",
+      "status": "published-and-verified",
+      "url": "https://github.com/ShieldTech-Ltd/DUSK/releases/download/v0.2.0/dusk-owasp-demo-v0.2.0.mp4",
+      "sha256": "73bea21549c8595b7b82814d21031cb7e075d18368f5cd358d0bc931de95960b"
+    },
     {"id": "pull-request-configuration", "status": "maintainer-reviewed-no-change"},
     {"id": "public-repository-metadata", "status": "pending-configuration"},
     {"id": "owasp-service-desk-submission", "status": "pending-authorization"},

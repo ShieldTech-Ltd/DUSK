@@ -20,8 +20,8 @@ The application should not be filed until every item in the mandatory gate
 below is complete.
 
 The most important remaining work is operational rather than architectural:
-publish the recording, complete the public GitHub metadata and security
-settings, and provide the required private leader details in the application.
+complete the public GitHub metadata and security settings, and provide the
+required private leader details in the application.
 
 ## Mandatory submission gate
 
@@ -38,7 +38,7 @@ settings, and provide the required private leader details in the application.
 | Reproducible reviewer demo | Complete | [Demo instructions](../README.md#owasp-reviewer-demo) and CI watch and enforce jobs |
 | Version and package build | Complete | `v0.2.0` version consistency passed; wheel and source archive built and passed Twine metadata validation on 21 August 2026 |
 | Stable release with SBOM, checksums, and provenance | Complete | [v0.2.0](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0) uses a verified signed tag on `abb983e`; release workflow, checksums, and provenance verification passed |
-| Public demo recording from the release tag | Blocked | Follow the [recording guide](owasp-demo-recording.md), attach `dusk-owasp-demo-v0.2.0.mp4`, and link it from the README |
+| Public demo recording from the release tag | Complete | [90-second v0.2.0 reviewer recording](https://github.com/ShieldTech-Ltd/DUSK/releases/download/v0.2.0/dusk-owasp-demo-v0.2.0.mp4) |
 | Pull request configuration | Maintainer decision | Preserve the current pull request system; no change is required for the Incubator application |
 | Professional GitHub metadata | Administrator action | Apply the exact [repository profile settings](github-owasp-settings.md#1-repository-profile) |
 | GitHub community support | Administrator action | Enable Discussions and create the documented `Q&A` and `Ideas` categories |
@@ -96,8 +96,8 @@ This table records the evidence verified on 21 August 2026.
 | SBOM | Release SBOM attached | Yes |
 | Checksums | Checksums attached and verified | Yes |
 | Provenance | Build provenance available for published artifacts | Yes |
-| Demo recording | `dusk-owasp-demo-v0.2.0.mp4` attached | No |
-| README | Release and recording links updated | No |
+| Demo recording | `dusk-owasp-demo-v0.2.0.mp4` attached | Yes |
+| README | Release and recording links updated | Yes |
 
 ## Final sign-off
 
