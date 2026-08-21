@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-OWNER="${OWNER:-TFT444}"
+OWNER="${OWNER:-ShieldTech-Ltd}"
 REPO="${REPO:-DUSK}"
 BRANCH="${BRANCH:-main}"
 
