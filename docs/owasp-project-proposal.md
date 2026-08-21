@@ -118,14 +118,18 @@ Requested type and level: Tool, Incubator
 - [x] Security policy and private reporting path
 - [x] Explicit relationship to existing OWASP work
 - [x] Related OWASP projects reviewed and differentiation documented
-- [ ] Each proposed leader has confirmed active Individual or Complimentary
+- [x] Each proposed leader has confirmed active Individual or Complimentary
       Membership
 - [ ] Current leader emails supplied privately in the service desk request
 - [ ] Each proposed leader has confirmed willingness to follow OWASP policies
 - [ ] Employer affiliations disclosed and leadership independence discussed
 - [x] Application demo and readiness evidence merged through `dev` into the
       default branch
-- [ ] v0.2.0 release and demo recording published
+- [x] Professional readiness tracker with repository and private gates
+- [x] Signed v0.2.0 release and technical artifacts published
+- [ ] v0.2.0 demo recording published and linked
+- [x] Existing pull request configuration reviewed and intentionally preserved
+- [ ] Public repository description and topics configured
 - [ ] New Project Request submitted through the OWASP service desk
 
 The unchecked pre-submission items require maintainer confirmation or repository

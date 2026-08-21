@@ -21,7 +21,9 @@ does not claim that OWASP has approved, endorsed, or certified DUSK.
 
 **Documentation license:** Creative Commons Attribution-ShareAlike 4.0
 
-**Stable release:** Pending. Publish `v0.2.0` before filing the application.
+**Stable release:** [v0.2.0](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0),
+published from a signed tag on the reviewed `main` commit with a wheel, source
+archive, SBOM, checksums, and build provenance.
 
 **Working demo:** The reviewer implementation is available on `main` at
 https://github.com/ShieldTech-Ltd/DUSK/tree/main/examples/agent-action-monitor.
@@ -117,15 +119,22 @@ endorsement of a commercial product or service.
 - [Reproducible OWASP reviewer demo](../README.md#owasp-reviewer-demo)
 - [Machine-readable technical evidence](owasp-technical-evidence.json), checked
   on every pull request by `scripts/check_owasp_readiness.py`
-- `v0.2.0` release evidence (add the URL only after the release exists)
+- [Application readiness tracker](owasp-readiness-tracker.md)
+- [GitHub administrator settings](github-owasp-settings.md)
+- [v0.2.0 release evidence](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0)
 
 ## Submission authorization checklist
 
 Complete these private or external checks immediately before filing:
 
 - [x] The OWASP demo and application package are promoted from `dev` to `main`
-- [ ] The v0.2.0 release and demo recording are published
-- [ ] Both proposed leaders confirm active OWASP membership
+- [x] The signed v0.2.0 release and technical artifacts are published
+- [ ] The v0.2.0 demo recording is published and linked
+- [x] The maintainers reviewed the existing pull request system and chose to
+      preserve it for the application
+- [ ] The GitHub repository has a concise description and relevant topics
+- [ ] GitHub Discussions and the documented security settings are enabled
+- [x] Both proposed leaders confirm active OWASP membership
 - [ ] Both proposed leaders approve the submission and OWASP policy obligations
 - [ ] Current leader emails are entered in the private request
 - [ ] Employer affiliations and the leadership independence plan are included
