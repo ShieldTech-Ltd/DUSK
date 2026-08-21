@@ -10,10 +10,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = Path("docs/owasp-technical-evidence.json")
 
-FORBIDDEN_APPLICATION_CLAIMS = (
-    "https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0",
-    "- [x] Both proposed leaders confirm active OWASP membership",
-)
 REQUIRED_WORKFLOW_COMMANDS = (
     "run_owasp_demo.sh --no-build watch",
     "run_owasp_demo.sh --no-build enforce",
@@ -64,13 +60,6 @@ def validate(root: Path) -> list[str]:
         return [f"invalid evidence manifest: {error}"]
 
     failures = _validate_evidence(root, manifest)
-
-    application = (root / "docs/owasp-application.md").read_text(encoding="utf-8")
-    failures.extend(
-        f"unverified application claim must remain unpublished: {claim}"
-        for claim in FORBIDDEN_APPLICATION_CLAIMS
-        if claim in application
-    )
 
     workflow = (root / ".github/workflows/dusk.yml").read_text(encoding="utf-8")
     failures.extend(

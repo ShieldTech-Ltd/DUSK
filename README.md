@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml"><img src="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml/badge.svg?branch=dev" alt="CI"></a>
+  <a href="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml"><img src="https://github.com/ShieldTech-Ltd/DUSK/actions/workflows/dusk.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python"></a>
   <a href="https://attack.mitre.org/"><img src="https://img.shields.io/badge/MITRE-ATT%26CK%20%2B%20ATLAS-red.svg" alt="MITRE ATT&CK + ATLAS"></a>
@@ -117,9 +117,11 @@ downstream target. See the
 [demo recording guide](docs/owasp-demo-recording.md) and the
 [accepted Superlinked example](https://github.com/superlinked/sie/tree/main/examples/agent-action-monitor).
 
-The v0.2.0 release will attach a short recording as
-`dusk-owasp-demo-v0.2.0.mp4`. This is an Incubator demonstration, not evidence
-that DUSK is ready for an untrusted or production deployment.
+The signed [v0.2.0 release](https://github.com/ShieldTech-Ltd/DUSK/releases/tag/v0.2.0)
+contains the wheel, source archive, SBOM, checksums, and build provenance. A
+short recording named `dusk-owasp-demo-v0.2.0.mp4` is still pending. This is an
+Incubator demonstration, not evidence that DUSK is ready for an untrusted or
+production deployment.
 
 ### Network sweep detection
 
@@ -277,7 +279,7 @@ dusk actions --file <path> --source azure --json
 # Network layer
 dusk scan --file <capture.pcap>
 dusk scan --file <path> --json
-dusk watch --interface <iface>      # live capture (coming in v0.2)
+dusk watch --interface <iface>      # live capture (planned for v0.3)
 ```
 
 `--verbose` raises the root logger to DEBUG and writes structured log lines to stderr, keeping machine output on stdout clean.
@@ -417,6 +419,8 @@ are documented in [the threat model](docs/threat-model.md).
 - [CI/CD security gates](docs/ci-security.md)
 - [OWASP Incubator proposal](docs/owasp-project-proposal.md)
 - [OWASP application submission package](docs/owasp-application.md)
+- [OWASP application readiness tracker](docs/owasp-readiness-tracker.md)
+- [GitHub administrator settings for OWASP readiness](docs/github-owasp-settings.md)
 - [OWASP technical evidence manifest](docs/owasp-technical-evidence.json)
 - [Documentation license](LICENSE-docs.md)
 
@@ -428,8 +432,8 @@ are documented in [the threat model](docs/threat-model.md).
 
 | Layer | What it does | Status |
 |---|---|---|
-| v0.1 | Sweep (T1046) and boundary probe (T1590) over packet captures | Released |
-| v0.2 | Action ingest, per-agent baseline, deterministic analysis, verdict gate, healing workflow, and optional SIE-enriched HTTP example | Release prepared |
+| v0.1 | Sweep (T1046) and boundary probe (T1590) over packet captures | Implemented, historical release not published |
+| v0.2 | Action ingest, per-agent baseline, deterministic analysis, verdict gate, healing workflow, and optional SIE-enriched HTTP example | Released |
 
 ### In progress
 
@@ -469,5 +473,5 @@ Code is Apache-2.0. Documentation is CC BY-SA 4.0. See [LICENSE](LICENSE) and
 ---
 
 <p align="center">
-  Built by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a> and <a href="https://github.com/ritiksah141">Ritik Sah</a> · ShieldTech Ltd · London
+  Maintained by <a href="https://linkedin.com/in/tanvir-farhad-466940307">Tanvir Farhad</a> and <a href="https://github.com/ritiksah141">Ritik Sah</a>
 </p>

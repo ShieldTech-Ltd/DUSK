@@ -53,7 +53,7 @@ jobs:
           fi
 
       - name: Install release and test tooling
-        run: python -m pip install --upgrade build pip-audit
+        run: python -m pip install --upgrade build pip-audit twine
       - name: Verify release version
         run: python scripts/check_release_version.py "$GITHUB_REF_NAME"
       - name: Run root tests
@@ -89,6 +89,8 @@ jobs:
 
       - name: Build source and wheel artifacts
         run: python -m build
+      - name: Validate release artifact metadata
+        run: python -m twine check dist/*.whl dist/*.tar.gz
       - name: Generate CycloneDX SBOM
         run: pip-audit -r requirements.txt --format cyclonedx-json --output dist/dusk-sbom.json
       - name: Generate checksums

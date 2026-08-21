@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dusk-security"
 version = "0.2.0"
-description = "Behavioral threat detection for agentic networks, catch AI agent attacks before they complete."
+description = "Vendor-neutral behavioral detection and policy gating for autonomous AI agent actions."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -17,6 +17,7 @@ classifiers = [
     "Intended Audience :: Information Technology",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Security",
     "Topic :: System :: Networking :: Monitoring",
 ]
@@ -44,8 +45,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tft444/dusk"
-Repository = "https://github.com/tft444/dusk"
+Homepage = "https://github.com/ShieldTech-Ltd/DUSK"
+Repository = "https://github.com/ShieldTech-Ltd/DUSK"
+Documentation = "https://github.com/ShieldTech-Ltd/DUSK#readme"
+Issues = "https://github.com/ShieldTech-Ltd/DUSK/issues"
+Security = "https://github.com/ShieldTech-Ltd/DUSK/security/policy"
 
 [project.scripts]
 dusk = "dusk.cli:main"
