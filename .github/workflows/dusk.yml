@@ -179,10 +179,8 @@ jobs:
           DUSK_ENFORCE=false DUSK_GATE_API_KEY=contract-check \
             docker compose -f compose.yml -f compose.ci.yml config --quiet
 
-  # Narrow, purpose-built check for the exact bug in #62: CLAUDE.md quoted
-  # gate_block_threshold: 0.7 while config.py's real default was 0.6.
-  # Compares every numeric Config default against what CLAUDE.md/README.md
-  # actually say, not a general prose linter.
+  # Narrow, purpose-built check that compares every numeric Config default
+  # against the values documented in README.md, not a general prose linter.
   doc-consistency:
     runs-on: ubuntu-latest
     steps:

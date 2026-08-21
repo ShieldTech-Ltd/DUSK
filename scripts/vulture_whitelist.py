@@ -11,9 +11,8 @@ Categories:
 - Public API consumed by examples/agent-action-monitor/ (a separate package
   vulture can't see when scoped to this repo's own src/), not by anything in
   this repo's own src/ or tests/.
-- v0.2 stub classes (sensor/, detections/, respond/) that CLAUDE.md protects
-  from casual edits ("DO NOT TOUCH") and that are deliberately registered
-  but not yet wired into the live engine -- see tests/test_stubs.py.
+- v0.2 stub classes (sensor/, detections/, respond/) that are deliberately
+  registered but not yet wired into the live engine -- see tests/test_stubs.py.
 - config.py's set_config(): a real public setter with no caller in this
   repo yet (tests use monkeypatch/env vars instead), kept for parity with
   get_config()/reset_config() as the documented override path.
