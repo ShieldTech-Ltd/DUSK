@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -74,11 +76,39 @@ def fire_alert(payload: dict[str, object], config: Config | None = None) -> None
     _submit(cfg.n8n_alert_url, "alert", payload, cfg)
 
 
+def _is_safe_webhook_url(url: str) -> bool:
+    """Return False for loopback, link-local, and RFC1918 destinations.
+
+    Only inspects the literal host in the URL; does not perform DNS resolution.
+    Hostnames that are not parseable as IP addresses are allowed through since
+    we cannot resolve them here without a network call.
+    """
+    try:
+        host = urllib.parse.urlparse(url).hostname or ""
+    except ValueError:
+        return False
+    if host.lower() == "localhost":
+        return False
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return not (addr.is_private or addr.is_loopback or addr.is_link_local)
+
+
 def _send(url: str, label: str, payload: dict[str, object]) -> None:
     if not url:
         return
     if not url.startswith(("https://", "http://")):
         logger.warning("n8n webhook (%s) has unsupported scheme, skipping", label)
+        return
+    if not _is_safe_webhook_url(url):
+        logger.warning(
+            "n8n webhook (%s) blocked: destination is a loopback, link-local, or "
+            "RFC1918 address (%s); set a public webhook URL",
+            label,
+            url,
+        )
         return
     try:
         body = json.dumps(payload).encode()

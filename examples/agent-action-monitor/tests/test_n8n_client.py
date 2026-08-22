@@ -163,6 +163,56 @@ def test_webhook_backlog_bound_survives_a_real_burst(monkeypatch: pytest.MonkeyP
     release.set()
 
 
+def test_send_rejects_rfc1918_10_block(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        with caplog.at_level("WARNING"):
+            n8n_client._send("http://10.0.0.1/hook", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+    assert any(
+        "internal" in r.message.lower() or "blocked" in r.message.lower() for r in caplog.records
+    )
+
+
+def test_send_rejects_rfc1918_172_block(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        n8n_client._send("http://172.20.0.5/hook", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+
+
+def test_send_rejects_rfc1918_192_168_block(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        n8n_client._send("http://192.168.1.100/hook", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+
+
+def test_send_rejects_loopback_127(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        n8n_client._send("http://127.0.0.1/hook", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+
+
+def test_send_rejects_localhost_hostname(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        n8n_client._send("http://localhost/hook", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+
+
+def test_send_rejects_link_local_169_254(caplog: pytest.LogCaptureFixture) -> None:
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        n8n_client._send("http://169.254.169.254/latest/meta-data/", "alert", {"a": 1})
+    mock_urlopen.assert_not_called()
+
+
+def test_send_allows_public_ip() -> None:
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_response
+    with patch("urllib.request.urlopen", return_value=mock_context) as mock_urlopen:
+        n8n_client._send("https://8.8.8.8/hook", "alert", {"a": 1})
+    mock_urlopen.assert_called_once()
+
+
 def test_webhook_concurrency_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     """Firing many webhooks in a burst must not spawn one OS thread per call."""
     import threading
