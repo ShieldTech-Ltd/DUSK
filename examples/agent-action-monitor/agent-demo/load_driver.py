@@ -58,6 +58,21 @@ def run_load(concurrency: int, total: int, poisoned_ratio: float) -> LoadResult:
     return result
 
 
+def check_latency_limits(
+    result: LoadResult, *, p50_limit_ms: float, p95_limit_ms: float
+) -> str | None:
+    """Return a failure message if p50 or p95 exceeds the given limits, else None."""
+    if not result.latencies_ms:
+        return None
+    p50 = result.percentile(0.50)
+    p95 = result.percentile(0.95)
+    if p50 > p50_limit_ms:
+        return f"p50 {p50:.1f} ms exceeds limit of {p50_limit_ms:.1f} ms"
+    if p95 > p95_limit_ms:
+        return f"p95 {p95:.1f} ms exceeds limit of {p95_limit_ms:.1f} ms"
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="DUSK agent-demo load driver")
     parser.add_argument("--concurrency", type=int, default=10, help="Concurrent requests.")
@@ -67,6 +82,18 @@ def main() -> int:
         type=float,
         default=0.2,
         help="Fraction of requests using the poisoned scenario (default 0.2).",
+    )
+    parser.add_argument(
+        "--p50-limit-ms",
+        type=float,
+        default=0,
+        help="Fail if p50 latency exceeds this value in ms (0 = no limit).",
+    )
+    parser.add_argument(
+        "--p95-limit-ms",
+        type=float,
+        default=0,
+        help="Fail if p95 latency exceeds this value in ms (0 = no limit).",
     )
     args = parser.parse_args()
 
@@ -83,7 +110,20 @@ def main() -> int:
     print(f"p99:      {result.percentile(0.99):.1f} ms")
     print(f"max:      {max(result.latencies_ms, default=0.0):.1f} ms")
 
-    return 1 if result.errors else 0
+    if result.errors:
+        return 1
+
+    if args.p50_limit_ms > 0 or args.p95_limit_ms > 0:
+        failure = check_latency_limits(
+            result,
+            p50_limit_ms=args.p50_limit_ms or float("inf"),
+            p95_limit_ms=args.p95_limit_ms or float("inf"),
+        )
+        if failure:
+            print(f"\nFAIL latency: {failure}")
+            return 1
+
+    return 0
 
 
 if __name__ == "__main__":

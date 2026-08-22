@@ -36,6 +36,10 @@ build. Treat those advisories as accepted residual risk only after review,
 rebuild images when fixes become available, and use an organization-approved
 base image when policy requires a zero-finding report.
 
+## Webhook destinations
+
+`DUSK_N8N_ALERT_URL`, `DUSK_N8N_REPORT_URL`, and `DUSK_N8N_DECISION_URL` must resolve to public, trusted hosts. The gate rejects loopback addresses (`127.x.x.x`, `::1`, `localhost`), link-local addresses (`169.254.x.x`), and RFC1918 private ranges (`10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`) at send time and logs a warning without making a network call. Set these variables to a real n8n instance or a monitored alerting endpoint. Leave them empty to disable that webhook entirely.
+
 ## Authentication
 
 When `DUSK_GATE_API_KEY` is set, `/v1/gate` requires this header:
