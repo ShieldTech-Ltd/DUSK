@@ -35,3 +35,11 @@ $COMPOSE down --volumes --remove-orphans >/dev/null 2>&1 || true
 $COMPOSE up --detach --no-build --wait dusk-gate mock-prod
 python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
   | tee "$LOG_DIR/$MODE-evidence.json"
+
+# Load phase: 100 mixed requests at concurrency 10.
+# p50 must stay under 50 ms and p95 under 200 ms.
+# The load driver exits 1 on any request error or latency breach.
+(cd agent-demo && python load_driver.py \
+  --concurrency 10 --total 100 --poisoned-ratio 0.2 \
+  --p50-limit-ms 50 --p95-limit-ms 200) \
+  | tee "$LOG_DIR/$MODE-load.log"

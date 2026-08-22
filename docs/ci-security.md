@@ -55,6 +55,12 @@ health checks, and verifies:
 - blocked actions leave downstream state unchanged
 - no SIE endpoint is needed because deterministic fallback remains available
 
+After the verdict verification phase, the sandbox runs a load phase: 100
+mixed requests at concurrency 10, with a p50 limit of 50 ms and a p95 limit
+of 200 ms. The load driver exits non-zero on any request error or latency
+breach, which fails the CI job. Load logs are saved alongside the evidence
+artifact.
+
 The shell wrapper always captures logs and removes containers, networks, and
 volumes. It deliberately uses `--no-build`; callers must build or pull the
 images they intend to test before invoking it.
