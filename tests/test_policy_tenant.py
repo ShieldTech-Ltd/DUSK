@@ -121,6 +121,34 @@ class TestTenant001CrossTenantRead:
         # matched_rules proves the rule fired (not a silent allow)
         assert any(r.id == "DUSK-TENANT-001" for r in result.matched_rules)
 
+    def test_unrelated_action_type_does_not_match_tenant_001(self) -> None:
+        """TENANT-001 is scoped to read actions; unrelated actions must not match it."""
+        context = {
+            "action": {"type": "email.send"},
+            "identity": {"tenant_id": "tenant-a"},
+            "tenant": {"resource_owner": "tenant-b"},
+        }
+        result = _enterprise_pack().evaluate(context)
+        assert "DUSK-TENANT-001" not in {r.id for r in result.matched_rules}, (
+            "TENANT-001 must not fire on email.send — it is scoped to read actions only"
+        )
+
+    def test_cross_tenant_write_attributed_to_tenant_002_not_tenant_001(self) -> None:
+        """Cross-tenant writes must match TENANT-002 only, not TENANT-001."""
+        context = {
+            "action": {"type": "resource.write"},
+            "identity": {"tenant_id": "tenant-a"},
+            "tenant": {"resource_owner": "tenant-b"},
+        }
+        result = _enterprise_pack().evaluate(context)
+        matched = {r.id for r in result.matched_rules}
+        assert "DUSK-TENANT-001" not in matched, (
+            "TENANT-001 (read rule) must not fire on resource.write"
+        )
+        assert "DUSK-TENANT-002" in matched, (
+            "TENANT-002 (write rule) must fire on cross-tenant resource.write"
+        )
+
     def test_watch_mode_does_not_fire(self, tmp_path: Path) -> None:
         rule = _tenant_rule_base(
             "DUSK-TENANT-001",
@@ -249,7 +277,7 @@ class TestTenant002CrossTenantWrite:
         )
         pack = _single_rule_pack(tmp_path, rule)
         context = {
-            "action": {"type": "resource.write"},
+            "action": {"type": "resource.write", "consequential": False},
             "identity": {"tenant_id": "tenant-a"},
             "tenant": {"resource_owner": "tenant-b"},
         }
@@ -576,7 +604,7 @@ class TestTenant005CrossTenantAudit:
         )
         pack = _single_rule_pack(tmp_path, rule)
         context = {
-            "action": {"type": "audit.read"},
+            "action": {"type": "audit.read", "consequential": False},
             "identity": {"tenant_id": "tenant-a"},
             "tenant": {"resource_owner": "tenant-b"},
         }
