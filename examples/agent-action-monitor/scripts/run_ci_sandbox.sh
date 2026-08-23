@@ -37,7 +37,7 @@ python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
   | tee "$LOG_DIR/$MODE-evidence.json"
 
 # Load phase: 100 mixed requests at concurrency 10.
-# p50 must stay under 50 ms and p95 under 200 ms.
+# p50 must stay under 100 ms and p95 under 200 ms.
 # The load driver exits 1 on any request error or latency breach.
 # Do NOT pipe through tee: POSIX sh reports the last command's exit code
 # (tee's, which is always 0), not the load driver's. Redirect to file first,
