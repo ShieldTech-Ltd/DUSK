@@ -70,10 +70,13 @@ class SIEClient:
     def _post(self, path: str, body: dict[str, Any], timeout_s: float | None) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
         data = json.dumps(body).encode("utf-8")
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         effective_timeout = timeout_s if timeout_s is not None else self._timeout_s

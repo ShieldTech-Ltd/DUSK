@@ -40,6 +40,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "agent-demo", "mock-prod"]
+pythonpath = ["src"]
 env = ["PYTHONIOENCODING=utf-8"]
 
 [tool.ruff]

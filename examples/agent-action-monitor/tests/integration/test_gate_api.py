@@ -448,15 +448,20 @@ def test_role_escalation_to_admin_has_high_blast_radius(client) -> None:
     assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
 
 
-def test_unknown_agent_nonprivileged_role_remains_below_block_threshold(client) -> None:
-    """D-05: unknown agent + non-privileged role scores below the 0.6 block threshold.
+def test_unknown_agent_any_role_assignment_is_refused(client) -> None:
+    """D-05: unknown agent performing any role_assignment is refused (issue #135).
 
-    Issue #135 originally named this 'test_unknown_agent_any_role_assignment_is_refused'.
-    Empirical measurement: unknown agent + 'viewer' role + non-sensitive target scores
-    exactly 0.5 (_W_UNKNOWN_AGENT=0.5). This is below gate_block_threshold=0.6, so
-    the gate returns ALLOW. The test name was corrected to match the implementation.
-    See issue #135 for the conflict analysis between the original requirement name and
-    the observed scoring behaviour.
+    Prior to the _W_UNKNOWN_ROLE_ASSIGNMENT fix, an unknown agent assigning a
+    non-sensitive role ("viewer") scored exactly 0.5 (_W_UNKNOWN_AGENT only),
+    which is below gate_block_threshold=0.6 and produced ALLOW.  Issue #135
+    requires that ALL unknown-agent role_assignments be refused regardless of
+    role name.  The fix adds _W_UNKNOWN_ROLE_ASSIGNMENT=0.15, making the
+    minimum score for this path 0.65 (> 0.6).
+
+    Scoring with viewer + non-sensitive target:
+      _W_UNKNOWN_AGENT=0.50  (agent not in baseline)
+      _W_UNKNOWN_ROLE_ASSIGNMENT=0.15  (any role_assignment from unknown agent)
+      = 0.65 > gate_block_threshold=0.60 -> WOULD-BLOCK
     """
     r = client.post(
         "/v1/gate",
@@ -468,11 +473,11 @@ def test_unknown_agent_nonprivileged_role_remains_below_block_threshold(client) 
     )
     data = r.get_json()
     assert r.status_code == 200
-    assert data["verdict"] == "ALLOW", (
-        f"Unknown agent + non-privileged role must score below 0.6 and ALLOW; "
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}, (
+        f"Unknown agent + any role_assignment must be refused (issue #135); "
         f"got {data['verdict']}; score={data['score']}"
     )
-    assert data["score"] < 0.6, f"Score must be below gate_block_threshold=0.6, got {data['score']}"
+    assert data["score"] >= 0.6, f"Score must reach gate_block_threshold=0.6, got {data['score']}"
 
 
 def test_role_escalation_to_root_has_high_blast_radius(client) -> None:
