@@ -137,6 +137,7 @@ rules:
     category: tenant
     rationale: An agent cannot read a resource owned by a tenant other than its authenticated tenant.
     match:
+      - {field: action.type, operator: in, value: [resource.read, resource.get, resource.list]}
       - {field: identity.tenant_id, operator: exists, value: true}
       - {field: tenant.resource_owner, operator: exists, value: true}
       - {field: tenant.resource_owner, operator: not_equals, value: "$identity.tenant_id"}
