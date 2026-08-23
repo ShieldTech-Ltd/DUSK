@@ -364,10 +364,11 @@ def test_permit_008_downstream_state_unchanged_after_deny() -> None:
 def test_broker_002_deny_raw_credential_retrieval() -> None:
     """Broker operation classified as raw credential retrieval must be DENY."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "broker_acknowledged": False,
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
@@ -389,14 +390,31 @@ def test_broker_002_allow_when_broker_acknowledged() -> None:
 def test_broker_002_bypass_missing_broker_acknowledged_denied() -> None:
     """Attacker omits broker_acknowledged — not_true fires."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             # broker_acknowledged absent
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert "DUSK-BROKER-002" in {rule.id for rule in result.matched_rules}
+
+
+def test_broker_002_bypass_omit_broker_id_with_protected_target_denied() -> None:
+    """Omitting broker_id on a protected target must DENY (not_true fires on absent ack)."""
+    context = {
+        "action": {"protected_target": True},
+        "execution": {
+            # broker_id deliberately absent — old gate would have let this through
+        },
+    }
+    result = load_enterprise_pack().evaluate(context)
+    assert result.decision is Decision.DENY
+    assert "DUSK-BROKER-002" in {rule.id for rule in result.matched_rules}, (
+        "Protected target without any broker acknowledgement must be denied "
+        "regardless of whether broker_id is present"
+    )
 
 
 def test_broker_002_missing_evidence_fails_closed() -> None:
@@ -420,7 +438,7 @@ def test_broker_002_downstream_state_unchanged_after_deny() -> None:
 
     execution = {"broker_id": "broker-x", "broker_acknowledged": False}
     original = copy.deepcopy(execution)
-    context = {"execution": execution}
+    context = {"action": {"protected_target": True}, "execution": execution}
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert execution == original
@@ -435,11 +453,12 @@ def test_broker_002_downstream_state_unchanged_after_deny() -> None:
 def test_broker_003_deny_when_audience_mismatches() -> None:
     """Credential issued for audience-A used in audience-B action => DENY."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "credential_audience": "service-a",
             "action_audience": "service-b",
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
@@ -462,11 +481,12 @@ def test_broker_003_allow_when_audience_matches() -> None:
 def test_broker_003_bypass_different_service_with_same_prefix_denied() -> None:
     """Audience with a shared prefix is still a mismatch — must DENY."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "credential_audience": "service-a",
             "action_audience": "service-a-admin",
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
@@ -499,7 +519,7 @@ def test_broker_003_downstream_state_unchanged_after_deny() -> None:
         "action_audience": "b",
     }
     original = copy.deepcopy(execution)
-    context = {"execution": execution}
+    context = {"action": {"protected_target": True}, "execution": execution}
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert execution == original
@@ -519,6 +539,7 @@ def test_broker_004_deny_when_credential_outlives_action() -> None:
     to compare credential_expiry against action_expiry at evaluation time.
     """
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "credential_expiry": 9000,
@@ -546,6 +567,7 @@ def test_broker_004_allow_when_credential_within_action_lifetime() -> None:
 def test_broker_004_bypass_credential_expiry_slightly_above_action_denied() -> None:
     """credential_expiry just above action_expiry still triggers BROKER-004."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "credential_expiry": 3601,
@@ -579,7 +601,7 @@ def test_broker_004_downstream_state_unchanged_after_deny() -> None:
 
     execution = {"broker_id": "broker-001", "credential_expiry": 9999, "action_expiry": 100}
     original = copy.deepcopy(execution)
-    context = {"execution": execution}
+    context = {"action": {"protected_target": True}, "execution": execution}
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert execution == original
@@ -599,11 +621,12 @@ def test_broker_005_deny_when_action_submitted_before_broker_decision() -> None:
     decision so broker acknowledgement has not yet been recorded.
     """
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-001",
             "broker_decision_time": 1000,
             "action_request_time": 500,  # before broker decided
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
@@ -644,11 +667,12 @@ def test_broker_005_race_condition_bypass_attempt() -> None:
     catches the ordering violation.
     """
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "broker-malicious",
             "broker_decision_time": 2000,
             "action_request_time": 0,  # submitted at epoch — far before any decision
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
@@ -681,7 +705,7 @@ def test_broker_005_downstream_state_unchanged_after_deny() -> None:
         "action_request_time": 1,
     }
     original = copy.deepcopy(execution)
-    context = {"execution": execution}
+    context = {"action": {"protected_target": True}, "execution": execution}
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert execution == original
@@ -735,7 +759,10 @@ def test_permit_008_only_fires_when_enforced() -> None:
 
 def test_broker_002_only_fires_when_enforced() -> None:
     """BROKER-002 fires in the denial context when enforced."""
-    context = {"execution": {"broker_id": "b", "broker_acknowledged": False}}
+    context = {
+        "action": {"protected_target": True},
+        "execution": {"broker_id": "b", "broker_acknowledged": False},
+    }
     result = load_enterprise_pack().evaluate(context)
     assert "DUSK-BROKER-002" in {rule.id for rule in result.matched_rules}
 
@@ -743,11 +770,12 @@ def test_broker_002_only_fires_when_enforced() -> None:
 def test_broker_003_only_fires_when_enforced() -> None:
     """BROKER-003 fires in the denial context when enforced."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "b",
             "credential_audience": "svc-a",
             "action_audience": "svc-b",
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert "DUSK-BROKER-003" in {rule.id for rule in result.matched_rules}
@@ -756,6 +784,7 @@ def test_broker_003_only_fires_when_enforced() -> None:
 def test_broker_004_only_fires_when_enforced() -> None:
     """BROKER-004 fires in the denial context when enforced."""
     context = {
+        "action": {"protected_target": True},
         "execution": {"broker_id": "b", "credential_expiry": 9999, "action_expiry": 100},
     }
     result = load_enterprise_pack().evaluate(context)
@@ -765,11 +794,12 @@ def test_broker_004_only_fires_when_enforced() -> None:
 def test_broker_005_only_fires_when_enforced() -> None:
     """BROKER-005 fires in the denial context when enforced."""
     context = {
+        "action": {"protected_target": True},
         "execution": {
             "broker_id": "b",
             "broker_decision_time": 1000,
             "action_request_time": 1,
-        }
+        },
     }
     result = load_enterprise_pack().evaluate(context)
     assert "DUSK-BROKER-005" in {rule.id for rule in result.matched_rules}
