@@ -191,9 +191,17 @@ def test_invalid_catalogues_fail_closed(tmp_path: Path, mutation: object, messag
 
 
 def test_decision_evidence_contains_versions_and_no_context() -> None:
+    # Use a valid domain ("identity") so strict context validation passes.
+    # The unique sentinel value verifies that context field values are never
+    # echoed in the audit output.
     result = (
         load_enterprise_pack()
-        .evaluate({"permit": {"expired": True}, "secret": "must-not-appear"})
+        .evaluate(
+            {
+                "permit": {"expired": True},
+                "identity": {"agent_id": "must-not-appear"},
+            }
+        )
         .to_dict()
     )
     assert result["policy_version"] == "1.0.0"
