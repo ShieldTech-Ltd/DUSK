@@ -9,7 +9,10 @@ name: Real-Agent Sandbox
 #
 # Hard constraints enforced here:
 #   - No credentials are printed, echoed, or surfaced in logs.
-#   - Missing credentials cause tests to skip, never to fail with a secret error.
+#   - Missing credentials cause the workflow to fail at the credential preflight
+#     step; they do NOT silently cause tests to skip and show green.
+#   - Required secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DUSK_GATE_API_KEY.
+#   - AWS_SESSION_TOKEN is optional (for role-assumed or temporary credentials).
 #   - This workflow NEVER pushes to main or dev and NEVER merges anything.
 
 on:
@@ -51,6 +54,22 @@ jobs:
           pip install -e ".[dev]"
           pip install -r agent-demo/requirements.txt
 
+      - name: Credential preflight
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+        run: |
+          missing=""
+          [ -z "$AWS_ACCESS_KEY_ID" ]     && missing="$missing AWS_ACCESS_KEY_ID"
+          [ -z "$AWS_SECRET_ACCESS_KEY" ] && missing="$missing AWS_SECRET_ACCESS_KEY"
+          [ -z "$DUSK_GATE_API_KEY" ]     && missing="$missing DUSK_GATE_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "ERROR: the following required secrets are not configured:$missing"
+            echo "Set them in the 'real-agent' GitHub environment and re-run."
+            exit 1
+          fi
+
       - name: Start gate and mock-prod via Docker Compose
         env:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
@@ -58,13 +77,20 @@ jobs:
         run: |
           docker compose -f compose.yml -f compose.ci.yml up -d dusk-gate mock-prod
           # Wait for gate health endpoint (up to 30 s)
-          for i in $(seq 1 15); do
+          _gate_healthy=false
+          for _ in $(seq 1 15); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "Gate is healthy"
+              _gate_healthy=true
               break
             fi
             sleep 2
           done
+          if [ "$_gate_healthy" != "true" ]; then
+            echo "ERROR: gate did not become healthy after 30 s" >&2
+            docker compose -f compose.yml -f compose.ci.yml logs dusk-gate >&2 || true
+            exit 1
+          fi
 
       - name: Run real-LLM gate tests
         env:

@@ -125,10 +125,20 @@ def test_main_exits_nonzero_on_latency_breach():
         slow.record("ALLOW", 400.0)  # p50 = 400 ms >> 50 ms limit
 
     with patch("load_driver.run_load", return_value=slow):
-        with patch("sys.argv", [
-            "load_driver.py", "--total", "10", "--concurrency", "2",
-            "--p50-limit-ms", "50", "--p95-limit-ms", "200",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "load_driver.py",
+                "--total",
+                "10",
+                "--concurrency",
+                "2",
+                "--p50-limit-ms",
+                "50",
+                "--p95-limit-ms",
+                "200",
+            ],
+        ):
             code = main()
     assert code == 1
 
