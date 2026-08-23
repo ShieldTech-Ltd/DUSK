@@ -140,14 +140,34 @@ def test_not_applicable_evidence_does_not_trigger_fail_closed() -> None:
     assert result.decision is Decision.ALLOW
 
 
-def test_missing_evidence_key_defaults_to_confirmed() -> None:
-    """A domain dict with no _evidence key is treated as CONFIRMED."""
+def test_missing_evidence_key_defaults_to_confirmed_for_non_consequential() -> None:
+    """Absent _evidence on a non-consequential action is treated as CONFIRMED (backward compat)."""
     context = {
-        "action": {"consequential": True},  # no _evidence key
-        "permit": {"expired": False},  # no _evidence key
+        "action": {"type": "filesystem.read"},  # consequential absent == non-consequential
+        "resource": {"within_approved_root": True, "classification": "internal"},
     }
     result = load_enterprise_pack().evaluate(context)
     assert result.evidence_degraded is False
+
+
+def test_consequential_action_with_absent_evidence_defaults_to_unknown() -> None:
+    """Absent _evidence on a consequential action defaults to UNKNOWN (strict mode).
+
+    Callers that set action.consequential=True but omit _evidence metadata
+    must not receive a false ALLOW.  The engine must treat the missing key
+    as UNKNOWN and trigger the fail-closed DENY path.
+    """
+    context = {
+        "action": {"consequential": True},  # _evidence deliberately absent
+        "permit": {"valid": True, "expired": False},  # _evidence deliberately absent
+    }
+    result = load_enterprise_pack().evaluate(context)
+    assert result.evidence_degraded is True, (
+        "Absent _evidence on a consequential evaluation must set evidence_degraded"
+    )
+    assert result.decision is Decision.DENY, (
+        "Fail-closed must trigger DENY when evidence is absent on a consequential action"
+    )
 
 
 def test_non_consequential_action_with_unknown_evidence_is_not_failed_closed() -> None:
