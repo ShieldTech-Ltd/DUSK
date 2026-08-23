@@ -31,6 +31,9 @@ state/
 tests/fixtures/*.pcap
 tests/fixtures/*.json
 tests/fixtures/*.jsonl
+# Hand-crafted focused baselines for Sprint 2 integration tests (not generated)
+!tests/fixtures/actions_role_baseline.json
+!tests/fixtures/actions_data_agent_baseline.json
 
 # Local secrets; keep the documented template
 .env
