@@ -208,6 +208,7 @@ rules:
     title: Prevent service account interactive login
     rationale: Service accounts must authenticate non-interactively; interactive sessions indicate credential misuse.
     match:
+      - {field: identity.type, operator: equals, value: service_account}
       - {field: identity.interactive, operator: equals, value: true}
     prerequisites: []
     tests: [allow, deny, bypass, missing-evidence, watch, enforce]

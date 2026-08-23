@@ -780,6 +780,7 @@ class TestIAM010ServiceAccountInteractiveLogin:
         context = {
             "identity": {
                 "subject": "sa-svc@example.com",
+                "type": "service_account",
                 "interactive": True,
             },
             "action": {"type": "auth.login"},
@@ -831,6 +832,7 @@ class TestIAM010ServiceAccountInteractiveLogin:
         context = {
             "identity": {
                 "subject": "sa-svc@example.com",
+                "type": "service_account",
                 "interactive": True,
             },
             "action": {"type": "auth.login", "consequential": False},
@@ -838,6 +840,21 @@ class TestIAM010ServiceAccountInteractiveLogin:
         result = _eval(context)
         assert self.rule_id in _matched_ids(result)
         assert result.decision is Decision.DENY
+
+    def test_human_interactive_login_does_not_match(self):
+        """Human interactive login must NOT fire IAM-010 (no service_account type)."""
+        context = {
+            "identity": {
+                "subject": "human@example.com",
+                "type": "human",
+                "interactive": True,
+            },
+            "action": {"type": "auth.login"},
+        }
+        result = _eval(context)
+        assert self.rule_id not in _matched_ids(result), (
+            "IAM-010 must not fire for human identities — only service accounts"
+        )
 
     def test_enforce_mode_unknown_evidence_plus_consequential(self):
         """Consequential=True + UNKNOWN evidence => DENY even if interactive=False."""
