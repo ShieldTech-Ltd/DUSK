@@ -236,19 +236,25 @@ def _validate_context_domains(context: Mapping[str, object]) -> None:
         )
 
 
-def _domain_evidence(domain: object) -> EvidenceState:
+def _domain_evidence(domain: object, *, strict: bool = False) -> EvidenceState:
     """Read the ``_evidence`` key from a domain dict.
 
-    Returns ``CONFIRMED`` when the key is absent (backward-compatible
-    default for callers that do not yet supply evidence metadata).
-    Returns ``UNKNOWN`` when the key is present but not a recognised
-    ``EvidenceState`` value, so unrecognised strings fail closed.
+    When ``strict=True`` (used for consequential evaluations), an absent
+    ``_evidence`` key is treated as ``UNKNOWN`` rather than ``CONFIRMED``.
+    This closes the gap where callers omit evidence metadata and receive
+    a false ``ALLOW`` on a consequential action.
+
+    When ``strict=False`` (default, non-consequential evaluations), an
+    absent key returns ``CONFIRMED`` for backward compatibility.
+
+    An unrecognised ``_evidence`` string always returns ``UNKNOWN`` so
+    that callers cannot smuggle a bypass value through an unknown state.
     """
     if not isinstance(domain, Mapping):
-        return EvidenceState.CONFIRMED
+        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
     raw = domain.get("_evidence")
     if raw is None:
-        return EvidenceState.CONFIRMED
+        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
     if isinstance(raw, EvidenceState):
         return raw
     try:
@@ -258,9 +264,15 @@ def _domain_evidence(domain: object) -> EvidenceState:
 
 
 def _evidence_is_degraded(context: Mapping[str, object]) -> bool:
-    """Return True when any context domain carries non-safe evidence."""
+    """Return True when any context domain carries non-safe evidence.
+
+    Uses strict mode for consequential actions: absent ``_evidence`` keys
+    are treated as ``UNKNOWN`` so that callers cannot bypass fail-closed
+    evaluation by omitting evidence metadata.
+    """
+    strict = _is_consequential(context)
     return any(
-        _domain_evidence(v) not in _SAFE_EVIDENCE
+        _domain_evidence(v, strict=strict) not in _SAFE_EVIDENCE
         for v in context.values()
         if isinstance(v, Mapping)
     )
