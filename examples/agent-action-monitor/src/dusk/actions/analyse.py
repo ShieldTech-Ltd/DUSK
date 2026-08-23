@@ -25,6 +25,13 @@ _W_NEW_TOKENS = 0.2
 _W_NEW_CHANGE_VALUES = 0.25
 _W_UNKNOWN_AGENT = 0.5
 _W_SENSITIVE = 0.35
+#: Additional weight when an unknown agent performs any role_assignment, regardless
+#: of whether the role name is in _SENSITIVE_VALUES.  Without this, an unknown
+#: agent assigning a non-sensitive role (e.g. "viewer") scores exactly 0.5 --
+#: below the 0.6 gate_block_threshold -- and receives an ALLOW verdict.  Issue
+#: #135 requires that ALL unknown-agent role_assignments be refused, so this
+#: addend pushes the minimum score to 0.65 (> 0.6) for any such action.
+_W_UNKNOWN_ROLE_ASSIGNMENT = 0.15
 #: Extra contribution when SIE's reranker finds no close match in the
 #: agent's raw history, even though the deterministic feature checks above
 #: found nothing new. Only fires when SIE is configured and reachable; the
@@ -282,6 +289,26 @@ def _repeat_offense_signal(
     return contribution, reason
 
 
+def _score_unknown_agent(action: AgentAction, features: dict[str, Any]) -> tuple[float, list[str]]:
+    """Return (score, reasons) for an agent with no established baseline."""
+    score = _W_UNKNOWN_AGENT
+    reasons: list[str] = [
+        f"agent '{action.agent_id}' has no established baseline; "
+        f"its behaviour cannot be vouched for"
+    ]
+    if action.action_type == "role_assignment":
+        score += _W_UNKNOWN_ROLE_ASSIGNMENT
+        reasons.append(
+            "IAM role assignment from an unrecognised agent is always suspicious "
+            "regardless of the role name (issue #135)"
+        )
+    sensitive = (features["tokens"] | features["change_values"]) & _SENSITIVE
+    if sensitive:
+        score += _W_SENSITIVE
+        reasons.append(f"action touches sensitive terms {sorted(sensitive)}")
+    return score, reasons
+
+
 def analyse(
     baseline: Baseline,
     action: AgentAction,
@@ -315,15 +342,9 @@ def analyse(
     score = 0.0
 
     if profile is None or profile.count == 0:
-        score += _W_UNKNOWN_AGENT
-        reasons.append(
-            f"agent '{action.agent_id}' has no established baseline; "
-            f"its behaviour cannot be vouched for"
-        )
-        sensitive = (features["tokens"] | features["change_values"]) & _SENSITIVE
-        if sensitive:
-            score += _W_SENSITIVE
-            reasons.append(f"action touches sensitive terms {sorted(sensitive)}")
+        s, r = _score_unknown_agent(action, features)
+        score += s
+        reasons.extend(r)
     else:
         if features["action_type"] not in profile.action_types:
             score += _W_NEW_ACTION_TYPE
