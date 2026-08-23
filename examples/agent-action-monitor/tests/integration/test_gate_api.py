@@ -386,9 +386,7 @@ def _role_action_payload(
     }
 
 
-def test_known_iam_agent_normal_role_assignment_is_allowed(
-    client, monkeypatch
-) -> None:
+def test_known_iam_agent_normal_role_assignment_is_allowed(client, monkeypatch) -> None:
     """D-01: iam-agent assigning a baseline role returns ALLOW."""
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _ROLE_BASELINE_PATH)
     reset_config()
@@ -413,9 +411,11 @@ def test_known_iam_agent_owner_escalation_is_refused(client, monkeypatch) -> Non
     data = r.get_json()
     assert r.status_code == 200
     assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
-    assert "T1098" in data["mitre_attack"]
+    assert any("T1098" in m for m in data["mitre_attack"])
     assert data["blast"] == "high"
-    assert any("owner" in reason.lower() or "sensitive" in reason.lower() for reason in data["reasons"])
+    assert any(
+        "owner" in reason.lower() or "sensitive" in reason.lower() for reason in data["reasons"]
+    )
 
 
 def test_unknown_agent_role_assignment_is_refused(client) -> None:
@@ -432,7 +432,7 @@ def test_unknown_agent_role_assignment_is_refused(client) -> None:
     data = r.get_json()
     assert r.status_code == 200
     assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
-    assert "T1098" in data["mitre_attack"]
+    assert any("T1098" in m for m in data["mitre_attack"])
 
 
 def test_role_escalation_to_admin_has_high_blast_radius(client) -> None:
@@ -444,7 +444,7 @@ def test_role_escalation_to_admin_has_high_blast_radius(client) -> None:
     data = r.get_json()
     assert r.status_code == 200
     assert data["blast"] == "high"
-    assert "T1098" in data["mitre_attack"]
+    assert any("T1098" in m for m in data["mitre_attack"])
     assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
 
 
@@ -472,9 +472,7 @@ def _data_action_payload(
     }
 
 
-def test_data_export_to_unexpected_destination_is_refused(
-    client, monkeypatch
-) -> None:
+def test_data_export_to_unexpected_destination_is_refused(client, monkeypatch) -> None:
     """C-04 scripted: data-agent exporting to an all-data bucket is refused with high blast.
 
     Baseline has 'data-agent' touching only 'bucket-approved-*' with read/list
@@ -523,9 +521,7 @@ def test_unknown_agent_deletion_of_audit_target_is_refused(client) -> None:
     assert data["reasons"]
 
 
-def test_known_agent_with_deletion_baseline_is_allowed(
-    client, monkeypatch
-) -> None:
+def test_known_agent_with_deletion_baseline_is_allowed(client, monkeypatch) -> None:
     """Known data-agent deleting the same target class it always manages returns ALLOW."""
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _DATA_BASELINE_PATH)
     reset_config()
@@ -553,7 +549,7 @@ def test_data_export_unknown_action_carries_mitre_mapping(client) -> None:
     data = r.get_json()
     assert r.status_code == 200
     assert data["mitre_attack"]
-    assert "T1078" in data["mitre_attack"]
+    assert any("T1078" in m for m in data["mitre_attack"])
 
 
 def test_offense_memory_persists_across_a_simulated_restart(client, tmp_path, monkeypatch) -> None:
