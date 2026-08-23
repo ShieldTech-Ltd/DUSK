@@ -131,6 +131,88 @@ rules:
     match:
       - {field: action.category, operator: in, value: [communication, financial, legal, production, account]}
       - {field: approval.valid, operator: not_true, value: true}
+  - <<: *enforced
+    id: DUSK-TENANT-001
+    title: Prevent cross-tenant resource read
+    category: tenant
+    rationale: An agent cannot read a resource owned by a tenant other than its authenticated tenant.
+    match:
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: not_equals, value: "$identity.tenant_id"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-002
+    title: Prevent cross-tenant resource write
+    category: tenant
+    rationale: An agent cannot write or modify a resource owned by a tenant other than its authenticated tenant.
+    match:
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: not_equals, value: "$identity.tenant_id"}
+      - {field: action.type, operator: in, value: [resource.write, resource.update, resource.delete, resource.patch]}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-003
+    title: Prevent cross-tenant search or vector retrieval
+    category: tenant
+    rationale: Vector and keyword search must be scoped to the authenticated tenant's retrieval filter.
+    match:
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: tenant.retrieval_filter_tenant, operator: exists, value: true}
+      - {field: tenant.retrieval_filter_tenant, operator: not_equals, value: "$identity.tenant_id"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-004
+    title: Prevent cross-tenant cache or memory access
+    category: tenant
+    rationale: Cache and memory storage partitions must match the identity partition of the acting agent.
+    match:
+      - {field: tenant.storage_partition, operator: exists, value: true}
+      - {field: tenant.identity_partition, operator: exists, value: true}
+      - {field: tenant.storage_partition, operator: not_equals, value: "$tenant.identity_partition"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-005
+    title: Prevent cross-tenant audit access
+    category: tenant
+    rationale: Audit records can only be read by the tenant that owns them.
+    match:
+      - {field: action.type, operator: equals, value: audit.read}
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: exists, value: true}
+      - {field: tenant.resource_owner, operator: not_equals, value: "$identity.tenant_id"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-006
+    title: Prevent shared credential use across tenants
+    category: tenant
+    rationale: A credential must only be used within the tenant it was issued for.
+    match:
+      - {field: identity.tenant_id, operator: exists, value: true}
+      - {field: tenant.credential_bound_tenant, operator: exists, value: true}
+      - {field: tenant.credential_bound_tenant, operator: not_equals, value: "$identity.tenant_id"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-007
+    title: Prevent project boundary crossover
+    category: tenant
+    rationale: An agent identity must not access resources that belong to a different project boundary.
+    match:
+      - {field: tenant.project, operator: exists, value: true}
+      - {field: tenant.identity_project, operator: exists, value: true}
+      - {field: tenant.project, operator: not_equals, value: "$tenant.identity_project"}
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-TENANT-008
+    title: Prevent production and non-production environment crossover
+    category: tenant
+    rationale: A non-production identity must never access production resources.
+    match:
+      - {field: tenant.environment, operator: equals, value: production}
+      - {field: tenant.identity_environment, operator: exists, value: true}
+      - {field: tenant.identity_environment, operator: not_equals, value: production}
+    tests: [allow, deny, bypass, missing-evidence]
 
   - &iam_enforced
     id: DUSK-IAM-003
