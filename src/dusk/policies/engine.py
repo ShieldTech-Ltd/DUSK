@@ -13,7 +13,16 @@ import yaml
 
 _SEVERITIES = {"low", "medium", "high", "critical"}
 _STATUSES = {"proposed", "planned", "implemented", "validated", "enforced"}
-_OPERATORS = {"equals", "in", "contains", "exists", "not_equals", "not_true"}
+_OPERATORS = {
+    "equals",
+    "in",
+    "contains",
+    "exists",
+    "not_equals",
+    "not_true",
+    "greater_than",
+    "less_than",
+}
 _MISSING = object()
 _RULE_FIELDS = {
     "id",
@@ -412,6 +421,17 @@ def _resolve(context: Mapping[str, object], path: str) -> object:
     return value
 
 
+def _compare_numeric(actual: object, expected: object, op: str) -> bool:
+    """Numeric greater_than / less_than comparison; missing or non-numeric values do not fire."""
+    if actual is _MISSING:
+        return False
+    try:
+        a, e = float(actual), float(expected)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return a > e if op == "greater_than" else a < e
+
+
 def _compare(actual: object, condition: Condition, context: Mapping[str, object]) -> bool:
     expected = condition.value
     if isinstance(expected, str) and expected.startswith("$"):
@@ -428,6 +448,8 @@ def _compare(actual: object, condition: Condition, context: Mapping[str, object]
         return isinstance(actual, (str, list, tuple, set)) and expected in actual
     if condition.operator == "in":
         return isinstance(expected, list) and actual in expected
+    if condition.operator in {"greater_than", "less_than"}:
+        return _compare_numeric(actual, expected, condition.operator)
     return False
 
 
