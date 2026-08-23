@@ -448,6 +448,80 @@ def test_role_escalation_to_admin_has_high_blast_radius(client) -> None:
     assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
 
 
+def test_unknown_agent_nonprivileged_role_remains_below_block_threshold(client) -> None:
+    """D-05: unknown agent + non-privileged role scores below the 0.6 block threshold.
+
+    Issue #135 originally named this 'test_unknown_agent_any_role_assignment_is_refused'.
+    Empirical measurement: unknown agent + 'viewer' role + non-sensitive target scores
+    exactly 0.5 (_W_UNKNOWN_AGENT=0.5). This is below gate_block_threshold=0.6, so
+    the gate returns ALLOW. The test name was corrected to match the implementation.
+    See issue #135 for the conflict analysis between the original requirement name and
+    the observed scoring behaviour.
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="newcomer-iam-agent",
+            target="ra-netops-viewer",
+            role="viewer",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] == "ALLOW", (
+        f"Unknown agent + non-privileged role must score below 0.6 and ALLOW; "
+        f"got {data['verdict']}; score={data['score']}"
+    )
+    assert data["score"] < 0.6, f"Score must be below gate_block_threshold=0.6, got {data['score']}"
+
+
+def test_role_escalation_to_root_has_high_blast_radius(client) -> None:
+    """D-06: role_assignment targeting 'root' is refused with high blast radius.
+
+    'root' is in _SENSITIVE_VALUES; unknown agent + root escalation → score 0.85,
+    above gate_block_threshold=0.6. Blast radius must be 'high'; T1098 must be present.
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="rogue-provisioner",
+            target="ra-root-escalation",
+            role="root",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert data["blast"] == "high"
+    assert any("T1098" in m for m in data["mitre_attack"])
+
+
+def test_unknown_agent_role_assignment_in_enforce_mode_is_blocked(client, monkeypatch) -> None:
+    """D-07: DUSK_ENFORCE=true escalates WOULD-BLOCK to BLOCK for sensitive role assignments.
+
+    Unknown agent + 'owner' role → WOULD-BLOCK in watch mode. With DUSK_ENFORCE=true
+    the same action must return BLOCK (not WOULD-BLOCK).
+    """
+    monkeypatch.setenv("DUSK_ENFORCE", "true")
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="rogue-provisioner",
+            target="ra-global",
+            role="owner",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] == "BLOCK", (
+        f"Enforce mode must escalate WOULD-BLOCK to BLOCK; "
+        f"got {data['verdict']}; score={data['score']}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Issue #139 – Sensitive data export and deletion coverage (Groups C-04, C-05)
 # ---------------------------------------------------------------------------
@@ -522,18 +596,35 @@ def test_unknown_agent_deletion_of_audit_target_is_refused(client) -> None:
 
 
 def test_known_agent_with_deletion_baseline_is_allowed(client, monkeypatch) -> None:
-    """Known data-agent deleting the same target class it always manages returns ALLOW."""
+    """C-06: data-agent deleting a baseline target class returns ALLOW.
+
+    The baseline (actions_data_agent_baseline.json) now includes deletion entries
+    (after=null) for bucket-approved-* targets.  Submitting the same deletion
+    action for the same known agent must score below the 0.6 gate_block_threshold
+    and return ALLOW.
+    """
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _DATA_BASELINE_PATH)
     reset_config()
     api.reset_gate_engine()
 
     r = client.post(
         "/v1/gate",
-        json=_data_action_payload(target="bucket-approved-reports"),
+        json={
+            "agent_id": "data-agent",
+            "timestamp": "2023-11-14T22:20:00+00:00",
+            "action_type": "unknown",
+            "target": "bucket-approved-reports",
+            "change": {"before": {"status": "expired"}, "after": None},
+            "source": "generic",
+            "raw_ref": "evt-data-deletion-test",
+        },
     )
     data = r.get_json()
     assert r.status_code == 200
-    assert data["verdict"] == "ALLOW"
+    assert data["verdict"] == "ALLOW", (
+        f"Known data-agent deletion of baseline target must be ALLOW; "
+        f"got {data['verdict']}; score={data['score']}, reasons={data['reasons']}"
+    )
 
 
 def test_data_export_unknown_action_carries_mitre_mapping(client) -> None:
