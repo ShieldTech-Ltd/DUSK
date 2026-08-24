@@ -25,6 +25,8 @@ For every rule we provide:
 
 from __future__ import annotations
 
+import pytest
+
 from dusk.policies import Decision, load_enterprise_pack
 
 # ---------------------------------------------------------------------------
@@ -709,6 +711,68 @@ def test_broker_005_downstream_state_unchanged_after_deny() -> None:
     result = load_enterprise_pack().evaluate(context)
     assert result.decision is Decision.DENY
     assert execution == original
+
+
+@pytest.mark.parametrize(
+    "execution",
+    [
+        {
+            "via_broker": True,
+            "broker_acknowledged": True,
+            "action_audience": "service-a",
+        },
+        {
+            "via_broker": True,
+            "broker_acknowledged": True,
+            "credential_audience": "service-a",
+        },
+    ],
+)
+def test_broker_003_missing_audience_input_fails_closed(
+    execution: dict[str, object],
+) -> None:
+    context = {"action": {"protected_target": True}, "execution": execution}
+
+    result = load_enterprise_pack().evaluate(context)
+
+    assert result.decision is Decision.DENY
+    assert "DUSK-BROKER-003" in {rule.id for rule in result.matched_rules}
+
+
+@pytest.mark.parametrize(
+    "execution",
+    [
+        {"via_broker": True, "broker_acknowledged": True, "action_expiry": 100},
+        {"via_broker": True, "broker_acknowledged": True, "credential_expiry": 100},
+    ],
+)
+def test_broker_004_missing_lifetime_input_fails_closed(
+    execution: dict[str, object],
+) -> None:
+    context = {"action": {"protected_target": True}, "execution": execution}
+
+    result = load_enterprise_pack().evaluate(context)
+
+    assert result.decision is Decision.DENY
+    assert "DUSK-BROKER-004" in {rule.id for rule in result.matched_rules}
+
+
+@pytest.mark.parametrize(
+    "execution",
+    [
+        {"via_broker": True, "broker_acknowledged": True, "broker_decision_time": 100},
+        {"via_broker": True, "broker_acknowledged": True, "action_request_time": 100},
+    ],
+)
+def test_broker_005_missing_ordering_input_fails_closed(
+    execution: dict[str, object],
+) -> None:
+    context = {"action": {"protected_target": True}, "execution": execution}
+
+    result = load_enterprise_pack().evaluate(context)
+
+    assert result.decision is Decision.DENY
+    assert "DUSK-BROKER-005" in {rule.id for rule in result.matched_rules}
 
 
 # ---------------------------------------------------------------------------
