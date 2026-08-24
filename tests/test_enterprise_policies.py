@@ -74,7 +74,7 @@ def test_cross_tenant_rule_compares_runtime_fields() -> None:
 
 def test_clean_action_is_allowed() -> None:
     context = {
-        "action": {"type": "filesystem.read"},
+        "action": {"type": "filesystem.read", "consequential": False},
         "resource": {"within_approved_root": True, "classification": "internal"},
     }
     assert load_enterprise_pack().evaluate(context).decision is Decision.ALLOW
@@ -160,7 +160,10 @@ def test_clean_action_is_allowed() -> None:
         ),
         (
             "DUSK-CONSEQ-001",
-            {"action": {"category": "financial"}, "approval": {"valid": False}},
+            {
+                "action": {"category": "financial", "consequential": False},
+                "approval": {"valid": False},
+            },
             Decision.REQUIRE_APPROVAL,
         ),
     ],
@@ -191,9 +194,17 @@ def test_invalid_catalogues_fail_closed(tmp_path: Path, mutation: object, messag
 
 
 def test_decision_evidence_contains_versions_and_no_context() -> None:
+    # Use a valid domain ("identity") so strict context validation passes.
+    # The unique sentinel value verifies that context field values are never
+    # echoed in the audit output.
     result = (
         load_enterprise_pack()
-        .evaluate({"permit": {"expired": True}, "secret": "must-not-appear"})
+        .evaluate(
+            {
+                "permit": {"expired": True},
+                "identity": {"agent_id": "must-not-appear"},
+            }
+        )
         .to_dict()
     )
     assert result["policy_version"] == "1.0.0"
