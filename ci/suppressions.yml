@@ -1,2 +1,7 @@
 version: 1
-suppressions: []
+suppressions:
+  - control: CTR-010
+    finding: CVE-2025-6297
+    reason: Debian bookworm classifies the dpkg issue as won't-fix; no fixed package exists.
+    owner: Security Engineering
+    expires: 2026-09-30
