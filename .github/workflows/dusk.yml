@@ -113,6 +113,12 @@ jobs:
           python scripts/ci/run_group.py --results results/containers
           --controls CTR-001 CTR-002 CTR-003 CTR-004 CTR-005 CTR-006 CTR-007 CTR-008 CTR-009 CTR-010 --
           sh scripts/ci/container_controls.sh
+      - name: OWASP watch scenario using scanned images
+        working-directory: examples/agent-action-monitor
+        run: sh scripts/run_owasp_demo.sh --no-build watch
+      - name: OWASP enforce scenario using scanned images
+        working-directory: examples/agent-action-monitor
+        run: sh scripts/run_owasp_demo.sh --no-build enforce
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with: {name: container-results, path: results/, if-no-files-found: error, retention-days: 30}
