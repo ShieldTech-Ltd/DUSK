@@ -17,7 +17,7 @@ controls:
   - {id: PR-014, description: Ruff bugbear and security, tool: ruff, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-015, description: Ruff formatting, tool: ruff, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-016, description: Cyclomatic complexity, tool: ruff-c90, lane: pr, blocking: true, applicability: code_changes}
-  - {id: PR-017, description: Annotation coverage, tool: interrogate, lane: pr, blocking: true, applicability: code_changes}
+  - {id: PR-017, description: Annotation coverage, tool: ruff-ann, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-018, description: Suppression validation, tool: suppression-check, lane: pr, blocking: true, applicability: always}
   - {id: PR-019, description: Dead code, tool: vulture, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-020, description: Stale TODO policy, tool: repository-checks, lane: pr, blocking: true, applicability: always}
@@ -29,7 +29,7 @@ controls:
   - {id: PR-026, description: Configuration schema, tool: pytest, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-027, description: Policy schema, tool: pytest, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-028, description: Documentation drift, tool: check_config_docs.py, lane: pr, blocking: true, applicability: always}
-  - {id: PR-029, description: Public API compatibility, tool: griffe, lane: pr, blocking: true, applicability: code_changes}
+  - {id: PR-029, description: Public API compatibility, tool: public-api-check, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-030, description: Root unit tests, tool: pytest, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-031, description: Example unit tests, tool: pytest, lane: pr, blocking: true, applicability: code_changes}
   - {id: PR-032, description: API integration, tool: pytest, lane: pr, blocking: true, applicability: code_changes}
@@ -100,7 +100,7 @@ controls:
   - {id: REL-002, description: Version and tag agreement, tool: check_release_version.py, lane: release, blocking: true, applicability: always}
   - {id: REL-003, description: Clean wheel and sdist, tool: build, lane: release, blocking: true, applicability: always}
   - {id: REL-004, description: Distribution metadata validation, tool: twine, lane: release, blocking: true, applicability: always}
-  - {id: REL-005, description: Reproducible artifact builds, tool: diffoscope, lane: release, blocking: true, applicability: always}
+  - {id: REL-005, description: Reproducible artifact builds, tool: sha256sum, lane: release, blocking: true, applicability: always}
   - {id: REL-006, description: CycloneDX and SPDX SBOMs, tool: cyclonedx-syft, lane: release, blocking: true, applicability: always}
   - {id: REL-007, description: SHA-256 checksums, tool: sha256sum, lane: release, blocking: true, applicability: always}
   - {id: REL-008, description: Build provenance verification, tool: gh-attestation, lane: release, blocking: true, applicability: always}
