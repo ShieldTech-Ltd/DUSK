@@ -47,8 +47,8 @@ LOAD_LOG="$LOG_DIR/$MODE-load.log"
 if ! $COMPOSE run --rm --no-deps agent-demo \
   python load_driver.py \
     --concurrency 10 --total 100 --poisoned-ratio 0.2 \
-    --p50-limit-ms 100 --p95-limit-ms 200
-  > "$LOAD_LOG" 2>&1
+    --p50-limit-ms 100 --p95-limit-ms 200 \
+    > "$LOAD_LOG" 2>&1
 then
   cat "$LOAD_LOG"
   echo "load phase failed; see $LOAD_LOG" >&2
