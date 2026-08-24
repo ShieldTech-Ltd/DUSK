@@ -279,11 +279,16 @@ def _evidence_is_degraded(context: Mapping[str, object]) -> bool:
 
 
 def _is_consequential(context: Mapping[str, object]) -> bool:
-    """Return True when the ``action.consequential`` field is exactly ``True``."""
+    """Treat an action as consequential unless it is explicitly classified safe.
+
+    Missing or non-boolean classification is untrusted at the enforcement
+    boundary.  Callers that need backward-compatible evaluation must opt in
+    explicitly with ``action.consequential=False``.
+    """
     action = context.get("action")
     if not isinstance(action, Mapping):
         return False
-    return action.get("consequential") is True
+    return action.get("consequential") is not False
 
 
 # ---------------------------------------------------------------------------

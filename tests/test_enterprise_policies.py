@@ -74,7 +74,7 @@ def test_cross_tenant_rule_compares_runtime_fields() -> None:
 
 def test_clean_action_is_allowed() -> None:
     context = {
-        "action": {"type": "filesystem.read"},
+        "action": {"type": "filesystem.read", "consequential": False},
         "resource": {"within_approved_root": True, "classification": "internal"},
     }
     assert load_enterprise_pack().evaluate(context).decision is Decision.ALLOW
@@ -160,7 +160,10 @@ def test_clean_action_is_allowed() -> None:
         ),
         (
             "DUSK-CONSEQ-001",
-            {"action": {"category": "financial"}, "approval": {"valid": False}},
+            {
+                "action": {"category": "financial", "consequential": False},
+                "approval": {"valid": False},
+            },
             Decision.REQUIRE_APPROVAL,
         ),
     ],
