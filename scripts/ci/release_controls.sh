@@ -19,6 +19,8 @@ dist_one="$PWD/dist-one"
 dist_two="$PWD/dist-two"
 (cd "$build_root/one" && python -m build --outdir "$dist_one")
 (cd "$build_root/two" && python -m build --outdir "$dist_two")
+python scripts/ci/normalize_sdist.py dist-one/*.tar.gz "$SOURCE_DATE_EPOCH"
+python scripts/ci/normalize_sdist.py dist-two/*.tar.gz "$SOURCE_DATE_EPOCH"
 python -m twine check dist-one/*
 mkdir -p dist
 cp dist-one/* dist/
