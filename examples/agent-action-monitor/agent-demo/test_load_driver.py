@@ -95,3 +95,71 @@ def test_check_latency_limits_returns_none_when_no_results():
 
     result = LoadResult()
     assert check_latency_limits(result, p50_limit_ms=50, p95_limit_ms=200) is None
+
+
+@patch("load_driver.run_scenario")
+def test_main_exits_nonzero_when_any_request_errors(mock_run_scenario):
+    from load_driver import main
+
+    mock_run_scenario.side_effect = ConnectionError("gate unreachable")
+    with patch("sys.argv", ["load_driver.py", "--total", "5", "--concurrency", "2"]):
+        code = main()
+    assert code == 1
+
+
+@patch("load_driver.run_scenario")
+def test_main_exits_zero_on_clean_run(mock_run_scenario):
+    from load_driver import main
+
+    mock_run_scenario.return_value = {"verdict": "ALLOW", "applied": True, "action": {}}
+    with patch("sys.argv", ["load_driver.py", "--total", "5", "--concurrency", "2"]):
+        code = main()
+    assert code == 0
+
+
+def test_main_exits_nonzero_on_latency_breach():
+    from load_driver import LoadResult, main
+
+    slow = LoadResult()
+    for _ in range(10):
+        slow.record("ALLOW", 400.0)  # p50 = 400 ms >> 50 ms limit
+
+    with patch("load_driver.run_load", return_value=slow):
+        with patch(
+            "sys.argv",
+            [
+                "load_driver.py",
+                "--total",
+                "10",
+                "--concurrency",
+                "2",
+                "--p50-limit-ms",
+                "50",
+                "--p95-limit-ms",
+                "200",
+            ],
+        ):
+            code = main()
+    assert code == 1
+
+
+def test_main_writes_evidence_when_load_phase_fails():
+    """run_load output is always printed even when the driver exits nonzero."""
+    from load_driver import LoadResult, main
+
+    result_with_errors = LoadResult()
+    result_with_errors.record(None, 10.0)  # one error
+
+    captured: list[str] = []
+    original_print = __builtins__["print"] if isinstance(__builtins__, dict) else print
+
+    def capturing_print(*args, **kwargs):
+        captured.append(" ".join(str(a) for a in args))
+        original_print(*args, **kwargs)
+
+    with patch("load_driver.run_load", return_value=result_with_errors):
+        with patch("builtins.print", side_effect=capturing_print):
+            with patch("sys.argv", ["load_driver.py", "--total", "1", "--concurrency", "1"]):
+                code = main()
+    assert code == 1
+    assert any("errors" in line for line in captured)

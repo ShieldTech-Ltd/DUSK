@@ -363,6 +363,291 @@ def test_repeated_refused_action_scores_at_least_as_high_the_second_time(client)
     assert any(first["trace_id"] in reason for reason in second["reasons"])
 
 
+# ---------------------------------------------------------------------------
+# Issue #135 – IAM and role escalation scenarios (Groups D-01 through D-04)
+# ---------------------------------------------------------------------------
+
+_ROLE_BASELINE_PATH = str(FIXTURES / "actions_role_baseline.json")
+
+
+def _role_action_payload(
+    agent_id: str = "iam-agent",
+    target: str = "ra-netops-viewer",
+    **after: object,
+) -> dict[str, object]:
+    return {
+        "agent_id": agent_id,
+        "timestamp": "2023-11-14T22:20:00+00:00",
+        "action_type": "role_assignment",
+        "target": target,
+        "change": {"before": None, "after": dict(after) if after else None},
+        "source": "generic",
+        "raw_ref": "evt-iam-test",
+    }
+
+
+def test_known_iam_agent_normal_role_assignment_is_allowed(client, monkeypatch) -> None:
+    """D-01: iam-agent assigning a baseline role returns ALLOW."""
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _ROLE_BASELINE_PATH)
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post("/v1/gate", json=_role_action_payload(role="viewer"))
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] == "ALLOW"
+
+
+def test_known_iam_agent_owner_escalation_is_refused(client, monkeypatch) -> None:
+    """D-02: iam-agent assigning 'owner' is refused; T1098 in MITRE; blast_radius high."""
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _ROLE_BASELINE_PATH)
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(target="ra-corp-escalation", role="owner"),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert any("T1098" in m for m in data["mitre_attack"])
+    assert data["blast"] == "high"
+    assert any(
+        "owner" in reason.lower() or "sensitive" in reason.lower() for reason in data["reasons"]
+    )
+
+
+def test_unknown_agent_role_assignment_is_refused(client) -> None:
+    """D-03: unknown agent performing privileged role_assignment is refused.
+
+    An unknown agent scores 0.5 (unknown-agent weight). Adding a privileged
+    role like 'owner' (a sensitive value, +0.35) pushes the total to 0.85,
+    which is above the 0.6 gate_block_threshold.
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(agent_id="rogue-provisioner", target="ra-global", role="owner"),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert any("T1098" in m for m in data["mitre_attack"])
+
+
+def test_role_escalation_to_admin_has_high_blast_radius(client) -> None:
+    """D-04: change payload containing 'admin' yields blast_radius high and T1098."""
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(agent_id="rogue-agent", target="ra-global", role="admin"),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["blast"] == "high"
+    assert any("T1098" in m for m in data["mitre_attack"])
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+
+
+def test_unknown_agent_any_role_assignment_is_refused(client) -> None:
+    """D-05: unknown agent performing any role_assignment is refused (issue #135).
+
+    Prior to the _W_UNKNOWN_ROLE_ASSIGNMENT fix, an unknown agent assigning a
+    non-sensitive role ("viewer") scored exactly 0.5 (_W_UNKNOWN_AGENT only),
+    which is below gate_block_threshold=0.6 and produced ALLOW.  Issue #135
+    requires that ALL unknown-agent role_assignments be refused regardless of
+    role name.  The fix adds _W_UNKNOWN_ROLE_ASSIGNMENT=0.15, making the
+    minimum score for this path 0.65 (> 0.6).
+
+    Scoring with viewer + non-sensitive target:
+      _W_UNKNOWN_AGENT=0.50  (agent not in baseline)
+      _W_UNKNOWN_ROLE_ASSIGNMENT=0.15  (any role_assignment from unknown agent)
+      = 0.65 > gate_block_threshold=0.60 -> WOULD-BLOCK
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="newcomer-iam-agent",
+            target="ra-netops-viewer",
+            role="viewer",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}, (
+        f"Unknown agent + any role_assignment must be refused (issue #135); "
+        f"got {data['verdict']}; score={data['score']}"
+    )
+    assert data["score"] >= 0.6, f"Score must reach gate_block_threshold=0.6, got {data['score']}"
+
+
+def test_role_escalation_to_root_has_high_blast_radius(client) -> None:
+    """D-06: role_assignment targeting 'root' is refused with high blast radius.
+
+    'root' is in _SENSITIVE_VALUES; unknown agent + root escalation → score 0.85,
+    above gate_block_threshold=0.6. Blast radius must be 'high'; T1098 must be present.
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="rogue-provisioner",
+            target="ra-root-escalation",
+            role="root",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert data["blast"] == "high"
+    assert any("T1098" in m for m in data["mitre_attack"])
+
+
+def test_unknown_agent_role_assignment_in_enforce_mode_is_blocked(client, monkeypatch) -> None:
+    """D-07: DUSK_ENFORCE=true escalates WOULD-BLOCK to BLOCK for sensitive role assignments.
+
+    Unknown agent + 'owner' role → WOULD-BLOCK in watch mode. With DUSK_ENFORCE=true
+    the same action must return BLOCK (not WOULD-BLOCK).
+    """
+    monkeypatch.setenv("DUSK_ENFORCE", "true")
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post(
+        "/v1/gate",
+        json=_role_action_payload(
+            agent_id="rogue-provisioner",
+            target="ra-global",
+            role="owner",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] == "BLOCK", (
+        f"Enforce mode must escalate WOULD-BLOCK to BLOCK; "
+        f"got {data['verdict']}; score={data['score']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #139 – Sensitive data export and deletion coverage (Groups C-04, C-05)
+# ---------------------------------------------------------------------------
+
+_DATA_BASELINE_PATH = str(FIXTURES / "actions_data_agent_baseline.json")
+
+
+def _data_action_payload(
+    agent_id: str = "data-agent",
+    target: str = "bucket-approved-reports",
+    action_type: str = "unknown",
+    **after: object,
+) -> dict[str, object]:
+    return {
+        "agent_id": agent_id,
+        "timestamp": "2023-11-14T22:20:00+00:00",
+        "action_type": action_type,
+        "target": target,
+        "change": {"before": None, "after": dict(after) if after else None},
+        "source": "generic",
+        "raw_ref": "evt-data-test",
+    }
+
+
+def test_data_export_to_unexpected_destination_is_refused(client, monkeypatch) -> None:
+    """C-04 scripted: data-agent exporting to an all-data bucket is refused with high blast.
+
+    Baseline has 'data-agent' touching only 'bucket-approved-*' with read/list
+    ops.  A new target 'bucket-all-customer-data' introduces new tokens (all,
+    customer, data) and 'all' is in _SENSITIVE_TOKENS (+0.35 sensitive signal).
+    Combined with new-tokens (+0.2) and new-change-values (+0.25) the score
+    reaches 0.80, above the 0.6 gate_block_threshold.
+    """
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _DATA_BASELINE_PATH)
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post(
+        "/v1/gate",
+        json=_data_action_payload(
+            target="bucket-all-customer-data",
+            destination="s3://external-corp/exfil/",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert data["blast"] == "high"
+
+
+def test_unknown_agent_deletion_of_audit_target_is_refused(client) -> None:
+    """C-05 scripted: unknown agent deleting a restricted audit target is refused.
+
+    Unknown agent scores 0.5 (_W_UNKNOWN_AGENT). The target 'audit-log-restricted'
+    contains 'restricted' which is in _SENSITIVE_TOKENS, pushing the total to 0.85
+    and above the 0.6 gate_block_threshold. Blast radius is 'high' due to the
+    sensitive token presence.
+    """
+    r = client.post(
+        "/v1/gate",
+        json=_data_action_payload(
+            agent_id="unknown-cleanup-bot",
+            target="audit-log-restricted",
+            action_type="unknown",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    assert data["blast"] == "high"
+    assert data["reasons"]
+
+
+def test_known_agent_with_deletion_baseline_is_allowed(client, monkeypatch) -> None:
+    """C-06: data-agent deleting a baseline target class returns ALLOW.
+
+    The baseline (actions_data_agent_baseline.json) now includes deletion entries
+    (after=null) for bucket-approved-* targets.  Submitting the same deletion
+    action for the same known agent must score below the 0.6 gate_block_threshold
+    and return ALLOW.
+    """
+    monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", _DATA_BASELINE_PATH)
+    reset_config()
+    api.reset_gate_engine()
+
+    r = client.post(
+        "/v1/gate",
+        json={
+            "agent_id": "data-agent",
+            "timestamp": "2023-11-14T22:20:00+00:00",
+            "action_type": "unknown",
+            "target": "bucket-approved-reports",
+            "change": {"before": {"status": "expired"}, "after": None},
+            "source": "generic",
+            "raw_ref": "evt-data-deletion-test",
+        },
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["verdict"] == "ALLOW", (
+        f"Known data-agent deletion of baseline target must be ALLOW; "
+        f"got {data['verdict']}; score={data['score']}, reasons={data['reasons']}"
+    )
+
+
+def test_data_export_unknown_action_carries_mitre_mapping(client) -> None:
+    """Export action on unknown agent returns a MITRE technique (T1078 for unknown type)."""
+    r = client.post(
+        "/v1/gate",
+        json=_data_action_payload(
+            agent_id="exfil-agent",
+            target="bucket-all-data",
+            action_type="unknown",
+        ),
+    )
+    data = r.get_json()
+    assert r.status_code == 200
+    assert data["mitre_attack"]
+    assert any("T1078" in m for m in data["mitre_attack"])
+
+
 def test_offense_memory_persists_across_a_simulated_restart(client, tmp_path, monkeypatch) -> None:
     """The durability requirement: block an agent, restart the process, confirm
     the next similar action still scores higher because of the earlier block."""
