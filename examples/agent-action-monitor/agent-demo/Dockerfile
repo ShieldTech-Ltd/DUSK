@@ -3,9 +3,13 @@
 # Build context is this example's own root (see compose.yml) since
 # harness.py needs the dusk package (BedrockAdapter) installed alongside
 # its own deps.
-FROM python:3.11-slim-bookworm@sha256:2e32f7d302adc1c37428355c1e646897c0c53f4fd60b6a551245fb90ee129f91
+FROM python:3.13.11-slim-bookworm@sha256:20080e807bfc404f8450b185cf0fc95d553462673598549613735f70a5b4d5d0
 
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
@@ -20,7 +24,8 @@ RUN pip install --no-cache-dir -r agent-demo/requirements.txt \
 
 USER agentdemo
 
-COPY agent-demo/bedrock_client.py agent-demo/mock_bedrock.py agent-demo/harness.py agent-demo/run_scenario.py ./
+COPY agent-demo/bedrock_client.py agent-demo/mock_bedrock.py agent-demo/harness.py \
+    agent-demo/load_driver.py agent-demo/run_scenario.py ./
 
 ENV PYTHONDONTWRITEBYTECODE=1
 
