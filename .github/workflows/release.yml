@@ -39,17 +39,25 @@ jobs:
           sh scripts/ci/release_controls.sh "$RELEASE_REF"
       - id: attest
         continue-on-error: true
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.2.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/*.whl
             dist/*.tar.gz
             dist/*.json
             dist/SHA256SUMS
-      - env: {OUTCOME: "${{ steps.attest.outcome }}"}
+      - env:
+          OUTCOME: "${{ steps.attest.outcome }}"
+          GH_TOKEN: "${{ github.token }}"
         run: |
-          status=$(test "$OUTCOME" = success && echo PASS || echo FAIL)
-          python scripts/ci/control.py record --control REL-008 --status "$status" --output results/release/REL-008.json --details "attestation $OUTCOME"
+          status=FAIL
+          if test "$OUTCOME" = success; then
+            status=PASS
+            for artifact in dist/*; do
+              gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY" || status=FAIL
+            done
+          fi
+          python scripts/ci/control.py record --control REL-008 --status "$status" --output results/release/REL-008.json --details "attestation creation=$OUTCOME verification=$status"
           test "$status" = PASS
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
