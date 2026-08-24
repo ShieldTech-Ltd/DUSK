@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+tag=$1
+tag_ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")
+object_type=$(printf '%s' "$tag_ref" | jq -r '.object.type')
+object_sha=$(printf '%s' "$tag_ref" | jq -r '.object.sha')
+test "$object_type" = tag
+test "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.verification.verified')" = true
+git fetch origin main
+git merge-base --is-ancestor "$(git rev-list -n 1 "$tag")" origin/main
+python scripts/check_release_version.py "$tag"
+export SOURCE_DATE_EPOCH
+SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$tag")
+python -m build --outdir dist-one
+python -m build --outdir dist-two
+python -m twine check dist-one/*
+mkdir -p dist
+cp dist-one/* dist/
+(cd dist-one && sha256sum *) > /tmp/one.sha256
+(cd dist-two && sha256sum *) > /tmp/two.sha256
+diff /tmp/one.sha256 /tmp/two.sha256
+pip-audit -r requirements.txt --format cyclonedx-json --output dist/dusk.cdx.json
+docker run --rm -v "$PWD:/src" anchore/syft:v1.18.1 dir:/src -o spdx-json=/src/dist/dusk.spdx.json
+(cd dist && sha256sum ./*.whl ./*.tar.gz ./*.json > SHA256SUMS && sha256sum --check SHA256SUMS)
