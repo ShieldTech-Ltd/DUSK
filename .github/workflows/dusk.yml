@@ -7,6 +7,8 @@ permissions:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+env:
+  PYTHONPATH: "."
 
 jobs:
   correctness:
@@ -22,7 +24,9 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             examples/agent-action-monitor/pyproject.toml
-      - run: pip install -e ".[dev]" -e "examples/agent-action-monitor[dev]" vulture openapi-spec-validator==0.9.0
+      - run: >-
+          pip install -e ".[dev]" vulture openapi-spec-validator==0.9.0
+          flask flask-cors gunicorn python-dotenv requests
       - name: Run integrity, quality, contracts, and tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

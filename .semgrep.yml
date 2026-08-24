@@ -65,4 +65,4 @@ rules:
     message: Do not return raw exception details to callers.
     pattern-either:
       - pattern: return jsonify(..., error=str($EXC), ...)
-      - pattern: return { ..., "error": str($EXC), ... }
+      - pattern: 'return { ..., "error": str($EXC), ... }'
