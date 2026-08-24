@@ -61,29 +61,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: {python-version: "3.12"}
       - run: pip install PyYAML
-      - name: Run OpenSSF Scorecard
-        id: scorecard
-        continue-on-error: true
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
-        with:
-          results_file: deep-evidence/scorecard/scorecard.json
-          results_format: json
-          # The action's supported input correctly maps a fine-grained PAT to
-          # Scorecard. GITHUB_TOKEN remains an intentional fail-closed fallback.
-          repo_token: "${{ secrets.SCORECARD_TOKEN || github.token }}"
-          publish_results: false
-      - name: Record Scorecard control
-        env:
-          SCORECARD_OUTCOME: "${{ steps.scorecard.outcome }}"
-        run: |
-          mkdir -p results/deep-scorecard
-          status=FAIL
-          test "$SCORECARD_OUTCOME" = success && status=PASS
-          python scripts/ci/control.py record \
-            --control SEC-029 --status "$status" \
-            --output results/deep-scorecard/SEC-029.json \
-            --details "official_action=v2.4.4 outcome=$SCORECARD_OUTCOME"
-          test "$SCORECARD_OUTCOME" = success
+      - env:
+          # The official action entrypoint consumes INPUT_REPO_TOKEN internally.
+          # The GITHUB_TOKEN fallback deliberately fails classic protection reads.
+          SCORECARD_TOKEN: "${{ secrets.SCORECARD_TOKEN || github.token }}"
+        run: sh scripts/ci/deep_controls.sh scorecard
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: {name: deep-scorecard-results, path: results/, if-no-files-found: error, retention-days: 30}

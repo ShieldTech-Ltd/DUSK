@@ -88,9 +88,24 @@ auth_mutation() {
 }
 
 scorecard() {
-  docker run --rm -e GITHUB_AUTH_TOKEN \
-    ghcr.io/ossf/scorecard/v5@sha256:8ca7dd6933ea9b3c0c0c0f0fc773952aefb47bf08c43c1c646befe9ab28e4f28 \
-    --repo "github.com/$GITHUB_REPOSITORY" --format json > "$evidence/scorecard.json"
+  # Invoke the official action entrypoint directly so its documented
+  # INPUT_REPO_TOKEN mapping works on manual feature-branch validation too.
+  # GITHUB_REF is set to the repository default because the action wrapper
+  # otherwise rejects non-default refs; file_mode=git still scans this checkout.
+  INPUT_REPO_TOKEN=$SCORECARD_TOKEN
+  export INPUT_REPO_TOKEN
+  docker run --rm \
+    -e INPUT_REPO_TOKEN \
+    -e INPUT_RESULTS_FILE=/github/workspace/"$evidence"/scorecard.json \
+    -e INPUT_RESULTS_FORMAT=json \
+    -e INPUT_PUBLISH_RESULTS=false \
+    -e INPUT_FILE_MODE=git \
+    -e GITHUB_REPOSITORY \
+    -e GITHUB_REF=refs/heads/main \
+    -e GITHUB_EVENT_NAME=schedule \
+    -e GITHUB_WORKSPACE=/github/workspace \
+    -v "$PWD:/github/workspace" -w /github/workspace \
+    ghcr.io/ossf/scorecard-action@sha256:ae5104dd3cc28466ebeb11144354be4cac4b7ff829654f9fab89021d71c46670
 }
 
 case "$group" in
