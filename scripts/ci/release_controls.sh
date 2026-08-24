@@ -20,5 +20,7 @@ cp dist-one/* dist/
 (cd dist-two && sha256sum *) > /tmp/two.sha256
 diff /tmp/one.sha256 /tmp/two.sha256
 pip-audit -r requirements.txt --format cyclonedx-json --output dist/dusk.cdx.json
-docker run --rm -v "$PWD:/src" anchore/syft:v1.18.1 dir:/src -o spdx-json=/src/dist/dusk.spdx.json
+docker run --rm -v "$PWD:/src" \
+  anchore/syft@sha256:b8c170b8e51bfc4779ec3ef4399942c57290f5ce76a9c3af564c9d00d4946a6b \
+  dir:/src -o spdx-json=/src/dist/dusk.spdx.json
 (cd dist && sha256sum ./*.whl ./*.tar.gz ./*.json > SHA256SUMS && sha256sum --check SHA256SUMS)

@@ -25,7 +25,8 @@ for image_id in "$gate_id" "$agent_id" "$mock_id"; do
     --severity HIGH,CRITICAL --scanners vuln,secret,misconfig "$image_id"
   name=$(printf '%s' "$image_id" | cut -c8-19)
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$PWD/container-evidence:/out" anchore/syft:v1.18.1 \
+    -v "$PWD/container-evidence:/out" \
+    anchore/syft@sha256:b8c170b8e51bfc4779ec3ef4399942c57290f5ce76a9c3af564c9d00d4946a6b \
     "$image_id" -o cyclonedx-json="/out/$name.cdx.json"
   docker run --rm -v "$PWD/container-evidence:/out" anchore/grype:v0.86.1 \
     "sbom:/out/$name.cdx.json" --config /out/grype.yaml --fail-on high
