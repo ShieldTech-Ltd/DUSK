@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 import logging
 import os
 import threading
@@ -9,6 +8,8 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+from dusk.auth import gate_request_is_authorized
 
 if TYPE_CHECKING:
     from dusk.actions.verdict import ActionGate
@@ -40,31 +41,6 @@ _gate_lock = threading.Lock()
 
 #: Baseline failure exposed by the health endpoint.
 _baseline_load_error: str | None = None
-
-
-def _gate_request_is_authorized() -> bool:
-    """Return whether the request satisfies authentication requirements.
-
-    When DUSK_GATE_API_KEY is set, a matching Bearer token is required.
-    When it is not set, DUSK_GATE_ALLOW_ANONYMOUS must be explicitly set to
-    'true' to permit keyless access; the default is to reject, so a deployment
-    that forgets the key variable does not accidentally expose the gate.
-    """
-    expected = os.getenv("DUSK_GATE_API_KEY", "")
-    if not expected:
-        allow_anon = os.getenv("DUSK_GATE_ALLOW_ANONYMOUS", "").strip().lower()
-        if allow_anon != "true":
-            logger.warning(
-                "gate request rejected: set DUSK_GATE_API_KEY or DUSK_GATE_ALLOW_ANONYMOUS=true"
-            )
-            return False
-        return True
-
-    prefix = "Bearer "
-    presented = request.headers.get("Authorization", "")
-    if not presented.startswith(prefix):
-        return False
-    return hmac.compare_digest(presented[len(prefix) :], expected)
 
 
 def _load_gate_engine() -> ActionGate:
@@ -183,7 +159,7 @@ def evaluate_gate_action() -> object:
     """
     from dusk.actions.event import AgentAction
 
-    if not _gate_request_is_authorized():
+    if not gate_request_is_authorized(request.headers.get("Authorization", "")):
         auth_response = jsonify({"error": "authentication required"})
         auth_response.headers["WWW-Authenticate"] = "Bearer"
         return auth_response, 401

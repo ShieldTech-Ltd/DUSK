@@ -5,11 +5,14 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import IntEnum, StrEnum
+from enum import IntEnum
 from importlib.resources import files
 from pathlib import Path
 
 import yaml
+
+from dusk.policies.evidence import EvidenceState as EvidenceState
+from dusk.policies.evidence import classify_evidence
 
 _SEVERITIES = {"low", "medium", "high", "critical"}
 _STATUSES = {"proposed", "planned", "implemented", "validated", "enforced"}
@@ -60,44 +63,6 @@ class Decision(IntEnum):
     ALLOW = 0
     REQUIRE_APPROVAL = 1
     DENY = 2
-
-
-class EvidenceState(StrEnum):
-    """Quality of evidence backing a policy context domain.
-
-    Each domain dict in the evaluation context may carry an ``_evidence``
-    key set to one of these values.  Absent ``_evidence`` defaults to
-    ``CONFIRMED`` for backward compatibility.
-
-    States:
-        CONFIRMED:      Evidence comes from a trusted, fresh, unambiguous
-                        source and can be relied upon for enforcement.
-        UNKNOWN:        Evidence source is missing, unreachable, or its
-                        trustworthiness cannot be determined.  Must never
-                        be treated as confirmed safety.
-        STALE:          Evidence was once confirmed but has aged past the
-                        acceptable freshness window.
-        CONFLICTED:     Two or more trusted sources disagree on the value.
-        NOT_APPLICABLE: The domain is intentionally absent for this action
-                        type (e.g. no ``permit`` domain for a read-only op).
-                        Treated as safe; does not trigger fail-closed.
-    """
-
-    CONFIRMED = "CONFIRMED"
-    UNKNOWN = "UNKNOWN"
-    STALE = "STALE"
-    CONFLICTED = "CONFLICTED"
-    NOT_APPLICABLE = "NOT_APPLICABLE"
-
-
-# Evidence states that are considered safe.  Any other state on a
-# consequential action triggers the fail-closed DENY path.
-_SAFE_EVIDENCE: frozenset[EvidenceState] = frozenset(
-    {
-        EvidenceState.CONFIRMED,
-        EvidenceState.NOT_APPLICABLE,
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -196,8 +161,8 @@ class PolicyPack:
         )
         decision = max((rule.decision for rule in matched), default=self.default_decision)
 
-        degraded = _evidence_is_degraded(context)
-        if degraded and _is_consequential(context):
+        consequential, degraded = classify_evidence(context)
+        if degraded and consequential:
             decision = Decision.DENY
 
         return PolicyResult(
@@ -223,7 +188,7 @@ def load_enterprise_pack() -> PolicyPack:
 
 
 # ---------------------------------------------------------------------------
-# Internal: context validation and evidence helpers
+# Internal: context validation
 # ---------------------------------------------------------------------------
 
 
@@ -234,61 +199,6 @@ def _validate_context_domains(context: Mapping[str, object]) -> None:
             f"unknown context domain(s): {sorted(unknown)}; "
             f"permitted domains: {sorted(_CONTEXT_DOMAINS)}"
         )
-
-
-def _domain_evidence(domain: object, *, strict: bool = False) -> EvidenceState:
-    """Read the ``_evidence`` key from a domain dict.
-
-    When ``strict=True`` (used for consequential evaluations), an absent
-    ``_evidence`` key is treated as ``UNKNOWN`` rather than ``CONFIRMED``.
-    This closes the gap where callers omit evidence metadata and receive
-    a false ``ALLOW`` on a consequential action.
-
-    When ``strict=False`` (default, non-consequential evaluations), an
-    absent key returns ``CONFIRMED`` for backward compatibility.
-
-    An unrecognised ``_evidence`` string always returns ``UNKNOWN`` so
-    that callers cannot smuggle a bypass value through an unknown state.
-    """
-    if not isinstance(domain, Mapping):
-        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
-    raw = domain.get("_evidence")
-    if raw is None:
-        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
-    if isinstance(raw, EvidenceState):
-        return raw
-    try:
-        return EvidenceState(raw)
-    except ValueError:
-        return EvidenceState.UNKNOWN
-
-
-def _evidence_is_degraded(context: Mapping[str, object]) -> bool:
-    """Return True when any context domain carries non-safe evidence.
-
-    Uses strict mode for consequential actions: absent ``_evidence`` keys
-    are treated as ``UNKNOWN`` so that callers cannot bypass fail-closed
-    evaluation by omitting evidence metadata.
-    """
-    strict = _is_consequential(context)
-    return any(
-        _domain_evidence(v, strict=strict) not in _SAFE_EVIDENCE
-        for v in context.values()
-        if isinstance(v, Mapping)
-    )
-
-
-def _is_consequential(context: Mapping[str, object]) -> bool:
-    """Treat an action as consequential unless it is explicitly classified safe.
-
-    Missing or non-boolean classification is untrusted at the enforcement
-    boundary.  Callers that need backward-compatible evaluation must opt in
-    explicitly with ``action.consequential=False``.
-    """
-    action = context.get("action")
-    if not isinstance(action, Mapping):
-        return False
-    return action.get("consequential") is not False
 
 
 # ---------------------------------------------------------------------------
