@@ -18,7 +18,11 @@ APPLICABILITY = {"always", "code_changes", "dependency_changes", "non_docs"}
 
 def load_catalogue(path: Path) -> dict[str, dict[str, Any]]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or raw.get("version") != 1 or not isinstance(raw.get("controls"), list):
+    if (
+        not isinstance(raw, dict)
+        or raw.get("version") != 1
+        or not isinstance(raw.get("controls"), list)
+    ):
         raise ValueError("catalogue must have version 1 and a controls list")
     controls: dict[str, dict[str, Any]] = {}
     required = {"id", "description", "tool", "lane", "blocking", "applicability"}
@@ -39,7 +43,9 @@ def load_catalogue(path: Path) -> dict[str, dict[str, Any]]:
 
 
 def docs_only(paths: list[str]) -> bool:
-    return bool(paths) and all(p.endswith((".md", ".rst", ".txt")) or p.startswith("docs/") for p in paths)
+    return bool(paths) and all(
+        p.endswith((".md", ".rst", ".txt")) or p.startswith("docs/") for p in paths
+    )
 
 
 def record(args: argparse.Namespace, controls: dict[str, dict[str, Any]]) -> None:
@@ -66,7 +72,9 @@ def record(args: argparse.Namespace, controls: dict[str, dict[str, Any]]) -> Non
     destination.write_text(json.dumps(evidence, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def aggregate(args: argparse.Namespace, controls: dict[str, dict[str, Any]]) -> None:
+def aggregate(  # noqa: C901
+    args: argparse.Namespace, controls: dict[str, dict[str, Any]]
+) -> None:
     expected = {key for key, item in controls.items() if item["lane"] == args.lane}
     seen: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
@@ -91,11 +99,18 @@ def aggregate(args: argparse.Namespace, controls: dict[str, dict[str, Any]]) -> 
             errors.append(f"failed control: {control_id}")
         elif status == "NOT_APPLICABLE":
             item = controls[control_id]
-            if item["applicability"] != "non_docs" or not docs_only(result.get("changed_files", [])):
+            if item["applicability"] != "non_docs" or not docs_only(
+                result.get("changed_files", [])
+            ):
                 errors.append(f"unauthorized NOT_APPLICABLE: {control_id}")
     for missing in sorted(expected - seen.keys()):
         errors.append(f"missing result: {missing}")
-    summary = {"lane": args.lane, "expected": len(expected), "received": len(seen), "errors": errors}
+    summary = {
+        "lane": args.lane,
+        "expected": len(expected),
+        "received": len(seen),
+        "errors": errors,
+    }
     print(json.dumps(summary, indent=2))
     if errors:
         raise SystemExit(1)
