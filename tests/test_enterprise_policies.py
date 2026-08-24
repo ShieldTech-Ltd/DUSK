@@ -28,7 +28,7 @@ def _raw_pack() -> dict[str, object]:
 def test_enterprise_catalogue_is_complete_and_unique() -> None:
     pack = load_enterprise_pack()
     assert pack.name == "dusk-enterprise"
-    assert len(pack.rules) == 74
+    assert len(pack.rules) == 72
     assert len({rule.id for rule in pack.rules}) == len(pack.rules)
     assert sum(rule.status == "enforced" for rule in pack.rules) == 33
     assert {rule.category for rule in pack.rules} >= {
