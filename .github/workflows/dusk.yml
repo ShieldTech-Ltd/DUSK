@@ -68,18 +68,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: {python-version: "3.12", cache: pip, cache-dependency-path: requirements.txt}
       - run: >-
-          pip install bandit[toml] pip-audit semgrep==1.172.0 detect-secrets
+          pip install bandit[toml] pip-audit semgrep==1.172.0 detect-secrets pytest PyYAML
           actionlint-py==1.7.12.24 zizmor==1.29.0
       - name: Run SAST, secret, dependency, and workflow policy checks
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python scripts/ci/run_group.py --results results/security
-          --controls SEC-002 SEC-003 SEC-004 SEC-005 SEC-006 SEC-007 SEC-008 SEC-009 SEC-010 SEC-011
-          SEC-012 SEC-013 SEC-014 SEC-017 SEC-018 SEC-020 SEC-021 SEC-022 SEC-023 SEC-024 SEC-025
-          SEC-026 PR-045 PR-046 PR-047 PR-048 --
-          sh scripts/ci/pr_security.sh "$BASE_SHA" "$HEAD_SHA"
+        run: sh scripts/ci/pr_security.sh "$BASE_SHA" "$HEAD_SHA"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: {name: security-results, path: results/, if-no-files-found: error, retention-days: 30}
