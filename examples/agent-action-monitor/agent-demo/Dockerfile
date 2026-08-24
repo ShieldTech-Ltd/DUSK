@@ -24,7 +24,8 @@ RUN pip install --no-cache-dir -r agent-demo/requirements.txt \
 
 USER agentdemo
 
-COPY agent-demo/bedrock_client.py agent-demo/mock_bedrock.py agent-demo/harness.py agent-demo/run_scenario.py ./
+COPY agent-demo/bedrock_client.py agent-demo/mock_bedrock.py agent-demo/harness.py \
+    agent-demo/load_driver.py agent-demo/run_scenario.py ./
 
 ENV PYTHONDONTWRITEBYTECODE=1
 

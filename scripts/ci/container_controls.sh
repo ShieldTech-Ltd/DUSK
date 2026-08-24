@@ -47,4 +47,5 @@ done
 (cd "$example" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh watch)
 (cd "$example" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh enforce)
 test "$gate_id" = "$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")"
+test "$agent_id" = "$(docker image inspect --format '{{.Id}}' "$project-agent-demo")"
 test "$mock_id" = "$(docker image inspect --format '{{.Id}}' "$project-mock-prod")"
