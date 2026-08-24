@@ -11,8 +11,14 @@ git merge-base --is-ancestor "$(git rev-list -n 1 "$tag")" origin/main
 python scripts/check_release_version.py "$tag"
 export SOURCE_DATE_EPOCH
 SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$tag^{}")
-python -m build --outdir dist-one
-python -m build --outdir dist-two
+build_root=$(mktemp -d)
+mkdir -p "$build_root/one" "$build_root/two"
+git archive HEAD | tar -x -C "$build_root/one"
+git archive HEAD | tar -x -C "$build_root/two"
+dist_one="$PWD/dist-one"
+dist_two="$PWD/dist-two"
+(cd "$build_root/one" && python -m build --outdir "$dist_one")
+(cd "$build_root/two" && python -m build --outdir "$dist_two")
 python -m twine check dist-one/*
 mkdir -p dist
 cp dist-one/* dist/
