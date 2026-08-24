@@ -2,7 +2,9 @@
 set -eu
 base_sha=${1:-HEAD^}
 head_sha=${2:-HEAD}
-bandit -r src examples/agent-action-monitor/src -ll
+bandit -r src examples/agent-action-monitor/src examples/agent-action-monitor/agent-demo \
+  examples/agent-action-monitor/mock-prod examples/agent-action-monitor/scripts/verify_ci_sandbox.py \
+  -ll -x '*/test_*.py'
 semgrep scan --config .semgrep.yml --error --metrics=off src examples/agent-action-monitor
 detect-secrets scan --baseline .secrets.baseline
 pip-audit -r requirements.txt

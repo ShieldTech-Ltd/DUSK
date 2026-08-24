@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Require every direct dependency to be represented in a hash-locked input."""
 
-from pathlib import Path
 import re
-
+from pathlib import Path
 
 ENTRY = re.compile(r"(?m)^[A-Za-z0-9_.-]+==[^\s\\]+")
 
