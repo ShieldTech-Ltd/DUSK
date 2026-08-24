@@ -9,7 +9,7 @@ docker run --rm -v "$PWD:/src" -w /src \
   ghcr.io/google/osv-scanner@sha256:385ff9dd9d50a573766fc226f24da1d61cd5843542ff7e04c563561bbd918e30 \
   scan source --lockfile=requirements.txt:/src/ci/requirements.lock \
   --lockfile=requirements.txt:/src/ci/example-requirements.lock
-pip-licenses --allow-only='Apache Software License;Apache-2.0;BSD License;BSD-2-Clause;BSD-3-Clause;GNU General Public License v2 (GPLv2);MIT;MIT License;MPL-2.0;Mozilla Public License 2.0 (MPL 2.0);Python Software Foundation License;ISC License (ISCL)'
+pip-licenses --allow-only='Apache Software License;Apache-2.0;BSD License;BSD-2-Clause;BSD-3-Clause;GNU General Public License v2 (GPLv2);MIT;MIT License;MPL-2.0;Mozilla Public License 2.0 (MPL 2.0);PSF-2.0;Python Software Foundation License;ISC License (ISCL)'
 HYPOTHESIS_PROFILE=ci pytest -q
 pytest -q examples/agent-action-monitor
 mutmut run --max-children 2 --paths-to-mutate src/dusk/policies/engine.py || test $? -eq 1
