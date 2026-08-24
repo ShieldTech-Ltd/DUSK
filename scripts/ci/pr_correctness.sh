@@ -19,5 +19,5 @@ DUSK_ENFORCE=false DUSK_GATE_API_KEY=contract-check \
 python scripts/check_config_docs.py
 python scripts/check_release_version.py
 python scripts/check_owasp_readiness.py
-pytest -n auto --cov=src/dusk --cov-branch --cov-fail-under=70
-PYTHONPATH=examples/agent-action-monitor/src pytest -n auto examples/agent-action-monitor
+pytest -n auto --dist loadscope --cov=src/dusk --cov-branch --cov-fail-under=70
+PYTHONPATH=examples/agent-action-monitor/src pytest -n auto --dist loadscope examples/agent-action-monitor
