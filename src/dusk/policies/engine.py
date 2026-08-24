@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
-from enum import IntEnum
+from dataclasses import dataclass, field
+from enum import IntEnum, StrEnum
 from importlib.resources import files
 from pathlib import Path
 
 import yaml
 
 _SEVERITIES = {"low", "medium", "high", "critical"}
-_STATUSES = {"enforced", "planned"}
+_STATUSES = {"proposed", "planned", "implemented", "validated", "enforced"}
 _OPERATORS = {"equals", "in", "contains", "exists", "not_equals", "not_true"}
 _MISSING = object()
 _RULE_FIELDS = {
@@ -31,6 +31,28 @@ _RULE_FIELDS = {
     "tests",
 }
 
+# Top-level domain keys permitted in a policy context (issue #144).
+# Unknown keys are rejected at the enforcement boundary to prevent
+# callers from inadvertently smuggling credential-shaped data through
+# the evaluator or relying on undefined field semantics.
+_CONTEXT_DOMAINS: frozenset[str] = frozenset(
+    {
+        "action",
+        "identity",
+        "tenant",
+        "session",
+        "objective",
+        "delegation",
+        "tool",
+        "resource",
+        "data",
+        "destination",
+        "permit",
+        "approval",
+        "execution",
+    }
+)
+
 
 class Decision(IntEnum):
     """Policy result ordered by enforcement priority."""
@@ -38,6 +60,44 @@ class Decision(IntEnum):
     ALLOW = 0
     REQUIRE_APPROVAL = 1
     DENY = 2
+
+
+class EvidenceState(StrEnum):
+    """Quality of evidence backing a policy context domain.
+
+    Each domain dict in the evaluation context may carry an ``_evidence``
+    key set to one of these values.  Absent ``_evidence`` defaults to
+    ``CONFIRMED`` for backward compatibility.
+
+    States:
+        CONFIRMED:      Evidence comes from a trusted, fresh, unambiguous
+                        source and can be relied upon for enforcement.
+        UNKNOWN:        Evidence source is missing, unreachable, or its
+                        trustworthiness cannot be determined.  Must never
+                        be treated as confirmed safety.
+        STALE:          Evidence was once confirmed but has aged past the
+                        acceptable freshness window.
+        CONFLICTED:     Two or more trusted sources disagree on the value.
+        NOT_APPLICABLE: The domain is intentionally absent for this action
+                        type (e.g. no ``permit`` domain for a read-only op).
+                        Treated as safe; does not trigger fail-closed.
+    """
+
+    CONFIRMED = "CONFIRMED"
+    UNKNOWN = "UNKNOWN"
+    STALE = "STALE"
+    CONFLICTED = "CONFLICTED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+# Evidence states that are considered safe.  Any other state on a
+# consequential action triggers the fail-closed DENY path.
+_SAFE_EVIDENCE: frozenset[EvidenceState] = frozenset(
+    {
+        EvidenceState.CONFIRMED,
+        EvidenceState.NOT_APPLICABLE,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -70,16 +130,32 @@ class Rule:
 
 @dataclass(frozen=True)
 class PolicyResult:
-    """Aggregate policy decision and matched rules."""
+    """Aggregate policy decision and matched rules.
+
+    Attributes:
+        decision:          The highest-priority decision across matched rules.
+        policy_version:    Semantic version of the pack that produced this result.
+        matched_rules:     Enforced rules whose conditions were satisfied.
+        evidence_degraded: True when at least one context domain carried
+                           UNKNOWN, STALE, or CONFLICTED evidence.  Callers
+                           must record this in audit evidence.
+    """
 
     decision: Decision
     policy_version: str
     matched_rules: tuple[Rule, ...]
+    evidence_degraded: bool = field(default=False)
 
     def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serialisable audit record.
+
+        Only rule metadata is included.  Context field values are never
+        echoed to prevent credential or sensitive payload leakage.
+        """
         return {
             "decision": self.decision.name,
             "policy_version": self.policy_version,
+            "evidence_degraded": self.evidence_degraded,
             "matched_rules": [
                 {
                     "id": rule.id,
@@ -105,13 +181,31 @@ class PolicyPack:
     rules: tuple[Rule, ...]
 
     def evaluate(self, context: Mapping[str, object]) -> PolicyResult:
+        """Evaluate ``context`` against all enforced rules.
+
+        Raises:
+            ValueError: if ``context`` contains keys outside
+                ``_CONTEXT_DOMAINS``.
+        """
+        _validate_context_domains(context)
+
         matched = tuple(
             rule
             for rule in self.rules
             if rule.status == "enforced" and _matches(rule.conditions, context)
         )
         decision = max((rule.decision for rule in matched), default=self.default_decision)
-        return PolicyResult(decision=decision, policy_version=self.version, matched_rules=matched)
+
+        degraded = _evidence_is_degraded(context)
+        if degraded and _is_consequential(context):
+            decision = Decision.DENY
+
+        return PolicyResult(
+            decision=decision,
+            policy_version=self.version,
+            matched_rules=matched,
+            evidence_degraded=degraded,
+        )
 
 
 def load_policy_pack(path: Path) -> PolicyPack:
@@ -126,6 +220,80 @@ def load_enterprise_pack() -> PolicyPack:
     with resource.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle)
     return _load_mapping(raw)
+
+
+# ---------------------------------------------------------------------------
+# Internal: context validation and evidence helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_context_domains(context: Mapping[str, object]) -> None:
+    unknown = set(context.keys()) - _CONTEXT_DOMAINS
+    if unknown:
+        raise ValueError(
+            f"unknown context domain(s): {sorted(unknown)}; "
+            f"permitted domains: {sorted(_CONTEXT_DOMAINS)}"
+        )
+
+
+def _domain_evidence(domain: object, *, strict: bool = False) -> EvidenceState:
+    """Read the ``_evidence`` key from a domain dict.
+
+    When ``strict=True`` (used for consequential evaluations), an absent
+    ``_evidence`` key is treated as ``UNKNOWN`` rather than ``CONFIRMED``.
+    This closes the gap where callers omit evidence metadata and receive
+    a false ``ALLOW`` on a consequential action.
+
+    When ``strict=False`` (default, non-consequential evaluations), an
+    absent key returns ``CONFIRMED`` for backward compatibility.
+
+    An unrecognised ``_evidence`` string always returns ``UNKNOWN`` so
+    that callers cannot smuggle a bypass value through an unknown state.
+    """
+    if not isinstance(domain, Mapping):
+        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
+    raw = domain.get("_evidence")
+    if raw is None:
+        return EvidenceState.UNKNOWN if strict else EvidenceState.CONFIRMED
+    if isinstance(raw, EvidenceState):
+        return raw
+    try:
+        return EvidenceState(raw)
+    except ValueError:
+        return EvidenceState.UNKNOWN
+
+
+def _evidence_is_degraded(context: Mapping[str, object]) -> bool:
+    """Return True when any context domain carries non-safe evidence.
+
+    Uses strict mode for consequential actions: absent ``_evidence`` keys
+    are treated as ``UNKNOWN`` so that callers cannot bypass fail-closed
+    evaluation by omitting evidence metadata.
+    """
+    strict = _is_consequential(context)
+    return any(
+        _domain_evidence(v, strict=strict) not in _SAFE_EVIDENCE
+        for v in context.values()
+        if isinstance(v, Mapping)
+    )
+
+
+def _is_consequential(context: Mapping[str, object]) -> bool:
+    """Treat an action as consequential unless it is explicitly classified safe.
+
+    Missing or non-boolean classification is untrusted at the enforcement
+    boundary.  Callers that need backward-compatible evaluation must opt in
+    explicitly with ``action.consequential=False``.
+    """
+    action = context.get("action")
+    if not isinstance(action, Mapping):
+        return False
+    return action.get("consequential") is not False
+
+
+# ---------------------------------------------------------------------------
+# Internal: pack and rule loading
+# ---------------------------------------------------------------------------
 
 
 def _load_mapping(raw: object) -> PolicyPack:
@@ -156,14 +324,11 @@ def _load_rule(raw: object) -> Rule:
     if severity not in _SEVERITIES:
         raise ValueError(f"invalid severity: {severity}")
     if status not in _STATUSES:
-        raise ValueError(f"invalid status: {status}")
+        raise ValueError(f"invalid status: {status!r}; valid statuses: {sorted(_STATUSES)}")
     conditions = _conditions(raw["match"])
     prerequisites = _text_tuple(raw["prerequisites"], "prerequisites")
     tests = _text_tuple(raw["tests"], "tests")
-    if status == "enforced" and (not conditions or not tests):
-        raise ValueError("enforced rules require conditions and tests")
-    if status == "planned" and not prerequisites:
-        raise ValueError("planned rules require prerequisites")
+    _validate_rule_lifecycle(status, conditions, prerequisites, tests)
     rule_id = _required_text(raw, "id")
     version = _required_text(raw, "version")
     if re.fullmatch(r"DUSK-[A-Z]+-[0-9]{3}", rule_id) is None:
@@ -185,6 +350,37 @@ def _load_rule(raw: object) -> Rule:
         prerequisites=prerequisites,
         tests=tests,
     )
+
+
+def _validate_rule_lifecycle(
+    status: str,
+    conditions: tuple[Condition, ...],
+    prerequisites: tuple[str, ...],
+    tests: tuple[str, ...],
+) -> None:
+    """Enforce the per-lifecycle requirements on rule completeness.
+
+    Lifecycle progression and what each status requires:
+        proposed:    No requirements; rule is being scoped.
+        planned:     Prerequisites must be listed (telemetry not yet available).
+        implemented: Conditions required; tests not yet mandatory.
+        validated:   Conditions and tests both required; ready for enforcement.
+        enforced:    Conditions and tests required; active at runtime.
+    """
+    if status == "enforced" and (not conditions or not tests):
+        raise ValueError("enforced rules require conditions and tests")
+    if status == "validated" and (not conditions or not tests):
+        raise ValueError("validated rules require conditions and tests")
+    if status == "implemented" and not conditions:
+        raise ValueError("implemented rules require conditions")
+    if status == "planned" and not prerequisites:
+        raise ValueError("planned rules require prerequisites")
+    # proposed: no field requirements
+
+
+# ---------------------------------------------------------------------------
+# Internal: condition matching
+# ---------------------------------------------------------------------------
 
 
 def _conditions(raw: object) -> tuple[Condition, ...]:
