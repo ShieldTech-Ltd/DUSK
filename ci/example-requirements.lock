@@ -1,0 +1,6 @@
+# Regenerate with pip-compile from the example package and service manifests.
+flask==3.1.0 --hash=sha256:d667207822eb83f1c4b50949b1623c8fc8d51f2341d65f72e1a1815397551136
+flask-cors==5.0.0 --hash=sha256:5aadbff2f9f38c6c5f3f6f15290f8575e1f8556fe0388f011c5c8db8e1c35f80
+gunicorn==23.0.0 --hash=sha256:ec400d155e98f6f48c2d5e1d7e984231f37f3c322b9a8da24b53e8241a2b0c70
+python-dotenv==1.0.1 --hash=sha256:f7b63ef50a11a1de7c851501fee72f450a346a8500d40868a76d9a4602a27a68
+pyyaml==6.0.2 --hash=sha256:d584d9ec91ad6b151f9fb58b1dda5e3273d4269a6c7cd7adf45b6f2f3f9d1e2f

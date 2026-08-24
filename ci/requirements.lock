@@ -1,0 +1,5 @@
+# Regenerate with: pip-compile --generate-hashes --output-file ci/requirements.lock pyproject.toml
+click==8.1.8 --hash=sha256:63c132bbbedeb785c5cd0020d1bc8fbc8ddfe26d660e93e3f9c5f44d735493b2
+pyyaml==6.0.2 --hash=sha256:d584d9ec91ad6b151f9fb58b1dda5e3273d4269a6c7cd7adf45b6f2f3f9d1e2f
+rich==13.9.4 --hash=sha256:6049d5e6ec054bf277c23b2ef6b408b7cfd78e48fb1a2e3f20c67a7ed62f3c1b
+scapy==2.6.1 --hash=sha256:2eecaef8e09d5cc4e461b66e7b9d9787a448627d6de3fceaa003cc7b8a4c3c5f
