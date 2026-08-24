@@ -47,8 +47,8 @@ osv_example() {
 
 refresh_and_build() {
   docker pull \
-    ghcr.io/google/osv-scanner@sha256:385ff9dd9d50a573766fc226f24da1d61cd5843542ff7e04c563561bbd918e30
-  DUSK_ENFORCE=false DUSK_GATE_API_KEY=deep-ci \
+    ghcr.io/google/osv-scanner@sha256:385ff9dd9d50a573766fc226f24da1d61cd5843542ff7e04c563561bbd918e30 &&
+    DUSK_ENFORCE=false DUSK_GATE_API_KEY=deep-ci \
     docker compose --project-name agent-action-monitor \
       -f examples/agent-action-monitor/compose.yml \
       -f examples/agent-action-monitor/compose.ci.yml \
@@ -56,8 +56,8 @@ refresh_and_build() {
 }
 
 extended_properties() {
-  HYPOTHESIS_PROFILE=ci python -m pytest -q
-  HYPOTHESIS_PROFILE=ci PYTHONPATH=examples/agent-action-monitor/src \
+  HYPOTHESIS_PROFILE=ci python -m pytest -q &&
+    HYPOTHESIS_PROFILE=ci PYTHONPATH=examples/agent-action-monitor/src \
     python -m pytest -q examples/agent-action-monitor
 }
 

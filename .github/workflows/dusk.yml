@@ -33,13 +33,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          python scripts/ci/run_group.py --results results/correctness
-          --controls PR-001 PR-002 PR-003 PR-004 PR-005 PR-006 PR-007 PR-008 PR-009 PR-010
-          PR-011 PR-012 PR-013 PR-014 PR-015 PR-016 PR-017 PR-018 PR-019 PR-020 PR-021 PR-022
-          PR-023 PR-024 PR-025 PR-026 PR-027 PR-028 PR-029 PR-030 PR-031 PR-032 PR-033 PR-034
-          PR-035 PR-036 PR-037 PR-038 PR-039 PR-040 PR-041 PR-042 --
-          sh scripts/ci/pr_correctness.sh "$BASE_SHA" "$HEAD_SHA"
+        run: sh scripts/ci/pr_correctness.sh "$BASE_SHA" "$HEAD_SHA"
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: {name: correctness-results, path: results/, if-no-files-found: error, retention-days: 30}
