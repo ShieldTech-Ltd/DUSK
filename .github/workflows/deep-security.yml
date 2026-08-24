@@ -19,16 +19,16 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: {python-version: "3.12", cache: pip, cache-dependency-path: pyproject.toml}
       - run: |
-          pip install -e ".[dev]" pip-audit pip-licenses 'mutmut==2.4.5'
+          pip install -e ".[dev]" atheris pip-audit pip-licenses 'mutmut==2.4.5'
           pip install --require-hashes -r ci/example-requirements.lock
       - env: {GITHUB_AUTH_TOKEN: "${{ github.token }}"}
-        run: >-
-          python scripts/ci/run_group.py --results results/deep
-          --controls SEC-015 SEC-016 SEC-019 SEC-027 SEC-028 SEC-029 SEC-030 SEC-031 SEC-032 SEC-033 SEC-034 --
-          sh scripts/ci/deep_controls.sh
+        run: sh scripts/ci/deep_controls.sh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: {name: deep-control-results, path: results/, if-no-files-found: error, retention-days: 30}
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with: {name: deep-security-evidence, path: deep-evidence/, if-no-files-found: warn, retention-days: 30}
 
   deep-security-gate:
     if: always()
@@ -44,5 +44,6 @@ jobs:
         with: {name: deep-control-results, path: results}
       - env: {UPSTREAM: "${{ needs.deep-controls.result }}"}
         run: |
-          test "$UPSTREAM" = success
-          python scripts/ci/control.py aggregate --lane deep --results results
+          aggregate_rc=0
+          python scripts/ci/control.py aggregate --lane deep --results results || aggregate_rc=$?
+          test "$UPSTREAM" = success && test "$aggregate_rc" -eq 0
