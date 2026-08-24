@@ -11,6 +11,7 @@ gate_id=$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")
 agent_id=$(docker image inspect --format '{{.Id}}' "$project-agent-demo")
 mock_id=$(docker image inspect --format '{{.Id}}' "$project-mock-prod")
 mkdir -p container-evidence
+cp ci/grype.yml container-evidence/grype.yaml
 printf '%s\n%s\n%s\n' "$gate_id" "$agent_id" "$mock_id" > container-evidence/image-ids.txt
 
 for dockerfile in "$example/Dockerfile" "$example/agent-demo/Dockerfile" "$example/mock-prod/Dockerfile"; do
@@ -26,8 +27,8 @@ for image_id in "$gate_id" "$agent_id" "$mock_id"; do
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$PWD/container-evidence:/out" anchore/syft:v1.18.1 \
     "$image_id" -o cyclonedx-json="/out/$name.cdx.json"
-  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-    anchore/grype:v0.86.1 "$image_id" --fail-on high
+  docker run --rm -v "$PWD/container-evidence:/out" anchore/grype:v0.86.1 \
+    "sbom:/out/$name.cdx.json" --config /out/grype.yaml --fail-on high
 done
 
 # Compose carries read-only roots, ALL capability drops and no-new-privileges.

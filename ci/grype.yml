@@ -1,0 +1,6 @@
+ignore:
+  # Debian classifies this dpkg finding as won't-fix. The time-bounded
+  # exception is governed by SEC-034 and ci/suppressions.yml.
+  - vulnerability: CVE-2025-6297
+    package:
+      name: dpkg
