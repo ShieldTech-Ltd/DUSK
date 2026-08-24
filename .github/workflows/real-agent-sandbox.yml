@@ -33,6 +33,7 @@ permissions:
 jobs:
   real-agent-validation:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment: real-agent
     defaults:
       run:
