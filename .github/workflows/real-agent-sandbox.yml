@@ -103,7 +103,10 @@ jobs:
           DUSK_GATE_URL: "http://localhost:8000/v1/gate"
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
-        run: pytest tests/real_llm/ -v --tb=short
+        run: |
+          mkdir -p ci-logs
+          pytest tests/real_llm/ -v --tb=short \
+            --junitxml=ci-logs/real-agent-results.xml
 
       - name: Collect gate logs as evidence
         if: always()
