@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.real_llm.test_real_llm_gate import _require_gate_scenario
+from .test_real_llm_gate import _require_gate_scenario
 
 _REQUIRED_RESULT_KEYS = frozenset(
     {"verdict", "action", "applied", "reasons", "score", "mitre_attack", "mitre_atlas"}
