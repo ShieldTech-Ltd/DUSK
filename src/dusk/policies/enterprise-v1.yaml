@@ -315,11 +315,92 @@ rules:
       - {field: identity.fresh_authn_confirmed, operator: not_true, value: true}
     prerequisites: []
     tests: [allow, deny, bypass, missing-evidence, watch, enforce]
-  - &planned
+  - <<: *enforced
     id: DUSK-PERMIT-005
-    version: 1.0.0
     title: Enforce maximum permit lifetime
     category: permit
+    rationale: A permit whose computed lifetime exceeds the configured maximum cannot be honoured.
+    match:
+      - {field: permit.present, operator: equals, value: true}
+      - {field: permit.lifetime_exceeded, operator: equals, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-PERMIT-006
+    title: Reject permits from untrusted issuers
+    category: permit
+    rationale: Only permits signed by a DUSK-registered issuer authority are valid.
+    match:
+      - {field: permit.present, operator: equals, value: true}
+      - {field: permit.issuer_trusted, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-PERMIT-007
+    title: Reject permits used for a broader scope than issued
+    category: permit
+    rationale: A permit grants authority for exactly the requested scope; scope expansion is forbidden.
+    match:
+      - {field: permit.present, operator: equals, value: true}
+      - {field: permit.action_scope, operator: not_equals, value: "$permit.scope"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-PERMIT-008
+    title: Reject approval when content digest does not match action digest
+    category: permit
+    rationale: An approval is bound to the exact content digest of the action it authorises.
+    match:
+      - {field: permit.present, operator: equals, value: true}
+      - {field: permit.approval_digest, operator: exists, value: true}
+      - {field: permit.action_digest, operator: not_equals, value: "$permit.approval_digest"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-BROKER-002
+    title: Prevent raw credential retrieval
+    category: broker
+    rationale: The credential broker must acknowledge every credential operation; unacknowledged retrievals are denied.
+    match:
+      - {field: action.protected_target, operator: equals, value: true}
+      - {field: execution.broker_acknowledged, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-BROKER-003
+    title: Reject credential when audience does not match the target action
+    category: broker
+    rationale: Credentials are audience-scoped; using a credential for a different audience is a mismatch attack.
+    match:
+      - {field: action.protected_target, operator: equals, value: true}
+      - {field: execution.action_audience, operator: not_equals_or_missing, value: "$execution.credential_audience"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-BROKER-004
+    title: Reject credential whose lifetime exceeds the action lifetime
+    category: broker
+    rationale: A credential must not outlive the action it was issued for; excess lifetime increases the blast radius of compromise.
+    match:
+      - {field: action.protected_target, operator: equals, value: true}
+      - {field: execution.credential_expiry, operator: greater_than_or_missing, value: "$execution.action_expiry"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence]
+  - <<: *enforced
+    id: DUSK-BROKER-005
+    title: Prevent broker decision bypass or race condition
+    category: broker
+    rationale: An action submitted before the broker has made its authorisation decision circumvents the broker and must be denied.
+    match:
+      - {field: action.protected_target, operator: equals, value: true}
+      - {field: execution.action_request_time, operator: less_than_or_missing, value: "$execution.broker_decision_time"}
+    prerequisites: []
+    tests: [allow, deny, bypass, race-condition, missing-evidence]
+  - &planned
+    id: DUSK-FS-002
+    version: 1.0.0
+    title: Prevent authentication file modification
+    category: filesystem
     severity: critical
     decision: DENY
     status: planned
@@ -327,18 +408,8 @@ rules:
     rationale: Permits must not be valid beyond their maximum permitted lifetime.
     frameworks: [OWASP-AGENTIC, NIST-AI-RMF]
     match: []
-    prerequisites: [permit issue time, permit expiry]
-    tests: []
-  - <<: *planned
-    id: DUSK-BROKER-002
-    title: Prevent raw credential retrieval
-    category: broker
-    prerequisites: [broker operation classification]
-  - <<: *planned
-    id: DUSK-FS-002
-    title: Prevent authentication file modification
-    category: filesystem
     prerequisites: [canonical path classification]
+    tests: []
   - <<: *planned
     id: DUSK-FS-003
     title: Prevent policy and audit-log tampering
