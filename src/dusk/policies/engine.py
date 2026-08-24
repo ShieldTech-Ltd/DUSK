@@ -13,7 +13,19 @@ import yaml
 
 _SEVERITIES = {"low", "medium", "high", "critical"}
 _STATUSES = {"proposed", "planned", "implemented", "validated", "enforced"}
-_OPERATORS = {"equals", "in", "contains", "exists", "not_equals", "not_true"}
+_OPERATORS = {
+    "equals",
+    "in",
+    "contains",
+    "exists",
+    "not_equals",
+    "not_equals_or_missing",
+    "not_true",
+    "greater_than",
+    "greater_than_or_missing",
+    "less_than",
+    "less_than_or_missing",
+}
 _MISSING = object()
 _RULE_FIELDS = {
     "id",
@@ -412,6 +424,34 @@ def _resolve(context: Mapping[str, object], path: str) -> object:
     return value
 
 
+def _compare_numeric(actual: object, expected: object, op: str) -> bool:
+    """Numeric greater_than / less_than comparison; missing or non-numeric values do not fire."""
+    if actual is _MISSING:
+        return False
+    try:
+        a, e = float(actual), float(expected)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return a > e if op == "greater_than" else a < e
+
+
+def _compare_numeric_or_missing(actual: object, expected: object, op: str) -> bool:
+    """Fail closed when either required numeric operand is absent or malformed."""
+    if actual is _MISSING or expected is _MISSING:
+        return True
+    try:
+        a, e = float(actual), float(expected)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True
+    return a > e if op == "greater_than_or_missing" else a < e
+
+
+def _compare_numeric_condition(actual: object, expected: object, op: str) -> bool:
+    if op.endswith("_or_missing"):
+        return _compare_numeric_or_missing(actual, expected, op)
+    return _compare_numeric(actual, expected, op)
+
+
 def _compare(actual: object, condition: Condition, context: Mapping[str, object]) -> bool:
     expected = condition.value
     if isinstance(expected, str) and expected.startswith("$"):
@@ -422,12 +462,21 @@ def _compare(actual: object, condition: Condition, context: Mapping[str, object]
         return actual == expected
     if condition.operator == "not_equals":
         return actual is not _MISSING and actual != expected
+    if condition.operator == "not_equals_or_missing":
+        return actual is _MISSING or expected is _MISSING or actual != expected
     if condition.operator == "not_true":
         return actual is not True
     if condition.operator == "contains":
         return isinstance(actual, (str, list, tuple, set)) and expected in actual
     if condition.operator == "in":
         return isinstance(expected, list) and actual in expected
+    if condition.operator in {
+        "greater_than",
+        "less_than",
+        "greater_than_or_missing",
+        "less_than_or_missing",
+    }:
+        return _compare_numeric_condition(actual, expected, condition.operator)
     return False
 
 
