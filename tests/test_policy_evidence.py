@@ -143,7 +143,7 @@ def test_not_applicable_evidence_does_not_trigger_fail_closed() -> None:
 def test_missing_evidence_key_defaults_to_confirmed_for_non_consequential() -> None:
     """Absent _evidence on a non-consequential action is treated as CONFIRMED (backward compat)."""
     context = {
-        "action": {"type": "filesystem.read"},  # consequential absent == non-consequential
+        "action": {"type": "filesystem.read", "consequential": False},
         "resource": {"within_approved_root": True, "classification": "internal"},
     }
     result = load_enterprise_pack().evaluate(context)
@@ -168,6 +168,34 @@ def test_consequential_action_with_absent_evidence_defaults_to_unknown() -> None
     assert result.decision is Decision.DENY, (
         "Fail-closed must trigger DENY when evidence is absent on a consequential action"
     )
+
+
+def test_missing_consequential_classification_fails_closed() -> None:
+    """Omitting the action classification cannot select compatibility mode."""
+    context = {
+        "action": {"type": "noop"},
+        "permit": {"valid": True, "expired": False},
+        "approval": {"valid": True},
+    }
+
+    result = load_enterprise_pack().evaluate(context)
+
+    assert result.evidence_degraded is True
+    assert result.decision is Decision.DENY
+
+
+def test_untrusted_consequential_classification_fails_closed() -> None:
+    """Non-boolean classification values are untrusted and must fail closed."""
+    context = {
+        "action": {"type": "noop", "consequential": "unknown"},
+        "permit": {"valid": True, "expired": False},
+        "approval": {"valid": True},
+    }
+
+    result = load_enterprise_pack().evaluate(context)
+
+    assert result.evidence_degraded is True
+    assert result.decision is Decision.DENY
 
 
 def test_non_consequential_action_with_unknown_evidence_is_not_failed_closed() -> None:
@@ -228,7 +256,7 @@ def test_evidence_degraded_flag_appears_in_result_dict() -> None:
 
 
 def test_evidence_degraded_false_appears_in_result_dict_when_clean() -> None:
-    context = {"action": {"type": "filesystem.read"}}
+    context = {"action": {"type": "filesystem.read", "consequential": False}}
     d = load_enterprise_pack().evaluate(context).to_dict()
     assert d["evidence_degraded"] is False
 
@@ -252,7 +280,7 @@ def test_proposed_rule_accepted_with_empty_match_prerequisites_tests(tmp_path: P
 def test_proposed_rule_does_not_fire_at_runtime(tmp_path: Path) -> None:
     raw = _pack_with_single_rule(status="proposed", match=[], prerequisites=[], tests=[])
     pack = load_policy_pack(_write_pack(tmp_path, raw))
-    result = pack.evaluate({"action": {"type": "test.trigger"}})
+    result = pack.evaluate({"action": {"type": "test.trigger", "consequential": False}})
     assert all(r.id != "DUSK-TEST-001" for r in result.matched_rules)
     assert result.decision is Decision.ALLOW
 
@@ -272,7 +300,7 @@ def test_implemented_rule_does_not_require_tests(tmp_path: Path) -> None:
 def test_implemented_rule_does_not_fire_at_runtime(tmp_path: Path) -> None:
     raw = _pack_with_single_rule(status="implemented", tests=[], prerequisites=[])
     pack = load_policy_pack(_write_pack(tmp_path, raw))
-    result = pack.evaluate({"action": {"type": "test.trigger"}})
+    result = pack.evaluate({"action": {"type": "test.trigger", "consequential": False}})
     assert all(r.id != "DUSK-TEST-001" for r in result.matched_rules)
     assert result.decision is Decision.ALLOW
 
@@ -292,7 +320,7 @@ def test_validated_rule_accepted_with_conditions_and_tests(tmp_path: Path) -> No
 def test_validated_rule_does_not_fire_at_runtime(tmp_path: Path) -> None:
     raw = _pack_with_single_rule(status="validated", prerequisites=[])
     pack = load_policy_pack(_write_pack(tmp_path, raw))
-    result = pack.evaluate({"action": {"type": "test.trigger"}})
+    result = pack.evaluate({"action": {"type": "test.trigger", "consequential": False}})
     assert all(r.id != "DUSK-TEST-001" for r in result.matched_rules)
     assert result.decision is Decision.ALLOW
 
@@ -330,7 +358,7 @@ def test_only_enforced_rules_affect_runtime_decision(tmp_path: Path) -> None:
         "rules": rules,
     }
     pack = load_policy_pack(_write_pack(tmp_path, raw))
-    result = pack.evaluate({"action": {"type": "test.trigger"}})
+    result = pack.evaluate({"action": {"type": "test.trigger", "consequential": False}})
     assert result.decision is Decision.ALLOW
     assert result.matched_rules == ()
 
