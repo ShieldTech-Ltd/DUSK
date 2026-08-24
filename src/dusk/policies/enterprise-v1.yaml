@@ -132,38 +132,120 @@ rules:
       - {field: action.category, operator: in, value: [communication, financial, legal, production, account]}
       - {field: approval.valid, operator: not_true, value: true}
 
-  - &planned
+  - &iam_enforced
     id: DUSK-IAM-003
     version: 1.0.0
     title: Prevent identity impersonation
     category: identity
     severity: critical
     decision: DENY
-    status: planned
+    status: enforced
     owner: DUSK Security
     rationale: An agent cannot act as another principal without delegated authorization.
     frameworks: [OWASP-AGENTIC, NIST-AI-RMF]
-    match: []
-    prerequisites: [delegation chain, workload identity]
-    tests: []
-  - <<: *planned
+    match:
+      - {field: action.type, operator: equals, value: identity.assume}
+      - {field: action.initiating_principal, operator: exists, value: true}
+      - {field: delegation.present, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
     id: DUSK-IAM-004
     title: Require an initiating principal for privileged actions
-    prerequisites: [initiating principal, privilege classification]
-  - <<: *planned
+    rationale: A privileged action must have a recorded initiating human principal.
+    match:
+      - {field: action.privileged, operator: equals, value: true}
+      - {field: action.initiating_principal, operator: exists, value: false}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
     id: DUSK-IAM-005
     title: Prevent environment credential crossover
-    prerequisites: [credential environment binding]
-  - <<: *planned
+    rationale: A credential issued for one environment cannot be used in another.
+    match:
+      - {field: action.target_environment, operator: exists, value: true}
+      - {field: identity.credential_environment, operator: not_equals, value: "$action.target_environment"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
     id: DUSK-IAM-006
     title: Require fresh step-up authorization
     decision: REQUIRE_APPROVAL
-    prerequisites: [approval timestamp, action digest]
-  - <<: *planned
+    rationale: Actions requiring fresh authentication must have a current valid approval.
+    match:
+      - {field: action.requires_fresh_authn, operator: equals, value: true}
+      - {field: approval.valid, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-007
+    title: Prevent workload identity audience mismatch
+    rationale: A workload identity token must be scoped to the target service audience.
+    match:
+      - {field: action.target_service, operator: exists, value: true}
+      - {field: identity.audience, operator: not_equals, value: "$action.target_service"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-008
+    title: Prevent stale or revoked identity use
+    rationale: Revoked or stale identities must not be permitted to perform actions.
+    match:
+      - {field: identity.revoked, operator: equals, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-009
+    title: Prevent privilege use outside assigned role
+    rationale: An identity cannot perform actions that require a role it has not been assigned.
+    match:
+      - {field: action.required_role, operator: exists, value: true}
+      - {field: identity.role, operator: not_equals, value: "$action.required_role"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-010
+    title: Prevent service account interactive login
+    rationale: Service accounts must authenticate non-interactively; interactive sessions indicate credential misuse.
+    match:
+      - {field: action.type, operator: equals, value: auth.login}
+      - {field: identity.type, operator: equals, value: service_account}
+      - {field: identity.interactive, operator: equals, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-011
+    title: Prevent identity assurance downgrade
+    rationale: An action requiring assurance cannot proceed when identity assurance is insufficient.
+    match:
+      - {field: action.requires_assurance, operator: equals, value: true}
+      - {field: identity.assurance_sufficient, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *iam_enforced
+    id: DUSK-IAM-012
+    title: Prevent privileged action without fresh authentication
+    rationale: Privileged actions requiring fresh authentication must be preceded by a confirmed re-authentication event.
+    match:
+      - {field: action.privileged, operator: equals, value: true}
+      - {field: action.requires_fresh_authn, operator: equals, value: true}
+      - {field: identity.fresh_authn_confirmed, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - &planned
     id: DUSK-PERMIT-005
+    version: 1.0.0
     title: Enforce maximum permit lifetime
     category: permit
+    severity: critical
+    decision: DENY
+    status: planned
+    owner: DUSK Security
+    rationale: Permits must not be valid beyond their maximum permitted lifetime.
+    frameworks: [OWASP-AGENTIC, NIST-AI-RMF]
+    match: []
     prerequisites: [permit issue time, permit expiry]
+    tests: []
   - <<: *planned
     id: DUSK-BROKER-002
     title: Prevent raw credential retrieval
