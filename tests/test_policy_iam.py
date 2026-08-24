@@ -775,6 +775,21 @@ class TestIAM009PrivilegeOutsideRole:
 class TestIAM010ServiceAccountInteractiveLogin:
     rule_id = "DUSK-IAM-010"
 
+    def test_service_account_interactive_non_login_action_does_not_match(self):
+        """Interactive metadata on an unrelated action must not trigger IAM-010."""
+        context = {
+            "identity": {
+                "subject": "sa-svc@example.com",
+                "type": "service_account",
+                "interactive": True,
+            },
+            "action": {"type": "resource.read"},
+        }
+
+        result = _eval(context)
+
+        assert self.rule_id not in _matched_ids(result)
+
     def test_denial_service_account_interactive(self):
         """Service account attempting interactive login => DENY."""
         context = {
