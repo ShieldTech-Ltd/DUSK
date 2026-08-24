@@ -2,8 +2,9 @@
 # Run every deep control independently so one failure cannot hide later evidence.
 set -u
 
-results=results/deep
-evidence=deep-evidence
+group=${1:-all}
+results="results/deep-$group"
+evidence="deep-evidence/$group"
 failed=0
 mkdir -p "$results" "$evidence"
 
@@ -90,16 +91,43 @@ scorecard() {
     --repo "github.com/$GITHUB_REPOSITORY" --format json > "$evidence/scorecard.json"
 }
 
-record_run SEC-027 full_history_secrets
-record_run SEC-015 osv_root
-record_run SEC-016 osv_example
-record_run SEC-019 python scripts/ci/license_policy.py
-record_run SEC-028 refresh_and_build
-record_run SEC-030 extended_properties
-record_run SEC-031 parser_fuzz
-record_run SEC-032 root_mutation
-record_run SEC-033 auth_mutation
-record_run SEC-029 scorecard
-record_run SEC-034 python scripts/ci/suppression_policy.py
+case "$group" in
+  general)
+    record_run SEC-027 full_history_secrets
+    record_run SEC-015 osv_root
+    record_run SEC-016 osv_example
+    record_run SEC-019 python scripts/ci/license_policy.py
+    record_run SEC-028 refresh_and_build
+    record_run SEC-030 extended_properties
+    record_run SEC-031 parser_fuzz
+    record_run SEC-034 python scripts/ci/suppression_policy.py
+    ;;
+  policy-mutation)
+    record_run SEC-032 root_mutation
+    ;;
+  auth-mutation)
+    record_run SEC-033 auth_mutation
+    ;;
+  scorecard)
+    record_run SEC-029 scorecard
+    ;;
+  all)
+    record_run SEC-027 full_history_secrets
+    record_run SEC-015 osv_root
+    record_run SEC-016 osv_example
+    record_run SEC-019 python scripts/ci/license_policy.py
+    record_run SEC-028 refresh_and_build
+    record_run SEC-030 extended_properties
+    record_run SEC-031 parser_fuzz
+    record_run SEC-032 root_mutation
+    record_run SEC-033 auth_mutation
+    record_run SEC-029 scorecard
+    record_run SEC-034 python scripts/ci/suppression_policy.py
+    ;;
+  *)
+    echo "unknown deep-control group: $group" >&2
+    exit 2
+    ;;
+esac
 
 exit "$failed"

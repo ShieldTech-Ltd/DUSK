@@ -33,6 +33,8 @@ sh scripts/ci/container_controls.sh
 ```
 
 Weekly and release lanes use `scripts/ci/deep_controls.sh` and `scripts/ci/release_controls.sh`.
+The deep runner accepts `general`, `policy-mutation`, `auth-mutation`, and `scorecard` groups; the
+workflow runs those groups in parallel and aggregates their independent evidence.
 Scanner additions require a deliberately failing fixture and a test proving detection.
 
 ## Suppressions, ownership, and evidence
