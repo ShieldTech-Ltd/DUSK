@@ -19,7 +19,8 @@ done
 
 for image_id in "$gate_id" "$agent_id" "$mock_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
-  docker run --rm aquasec/trivy:0.58.2 image --exit-code 1 --ignore-unfixed \
+  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 \
+    image --exit-code 1 --ignore-unfixed \
     --severity HIGH,CRITICAL --scanners vuln,secret,misconfig "$image_id"
   name=$(printf '%s' "$image_id" | cut -c8-19)
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
