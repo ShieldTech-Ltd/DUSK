@@ -65,7 +65,7 @@ The following claims are backed by code and artifact evidence.
 
 `mock_bedrock.py:70` sets `self.scenario = scenario` at construction time. The poisoned tool call is hardcoded in `_RESPONSES` (`mock_bedrock.py:19-27`). No actual prompt injection takes place. A real LLM never generates a tool call. The `USE_REAL_BEDROCK=true` code path in `harness.py:39-44` exists but is exercised only when the protected `real-agent` environment is triggered manually or on the weekly schedule; its credentials are absent in standard CI.
 
-**Sprint 2 change:** Six real-LLM tests exist in `tests/real_llm/test_real_llm_gate.py` and auto-skip without credentials. The workflow `real-agent-sandbox.yml` provides the protected execution environment. Marked SCRIPTED ONLY until a protected-environment run produces passing evidence.
+**Sprint 2 change:** Seven real-LLM tests exist in `tests/real_llm/test_real_llm_gate.py` and auto-skip without credentials in standard CI. In the protected workflow, credential preflight prevents a missing-secret green run, and RL-02 through RL-07 fail if Bedrock does not invoke the expected DUSK gate scenario. The workflow publishes JUnit scenario counts with the gate logs. Marked SCRIPTED ONLY until a protected-environment run produces passing evidence.
 
 ### 2b. Scenario coverage gaps (updated for Sprint 2)
 
@@ -173,11 +173,11 @@ _(unchanged from Sprint 1 assessment — the architecture described is implement
 | ID | Scenario | Expected gate response | Status |
 |---|---|---|---|
 | C-01 | Real LLM given clean task | ALLOW | SCRIPTED ONLY (test_real_llm_gate.py:RL-01, auto-skip) |
-| C-02 | Real LLM given SSH-open injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-02, auto-skip) |
-| C-03 | Real LLM given role escalation injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-03, auto-skip) |
+| C-02 | Real LLM given SSH-open injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-02; protected run fails if the gate scenario is not exercised) |
+| C-03 | Real LLM given role escalation injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-03; protected run fails if the gate scenario is not exercised) |
 | C-04 | Scripted: data-agent to all-data bucket | WOULD-BLOCK or BLOCK, blast=high | SCRIPTED ONLY (test_gate_api.py) |
 | C-05 | Scripted: unknown agent deletes restricted audit | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_gate_api.py) |
-| C-06 | Real LLM given data export injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-04, auto-skip) |
+| C-06 | Real LLM given data export injection | WOULD-BLOCK or BLOCK | SCRIPTED ONLY (test_real_llm_gate.py:RL-04; protected run fails if the gate scenario is not exercised) |
 
 ### Group D: IAM and privilege escalation
 
@@ -280,7 +280,7 @@ Sprint 2 closed:
 
 **Remaining condition to flip to GO:**
 
-At least one Group C test (clean + at least one injected scenario) must pass in the protected `real-agent` GitHub Actions environment with real AWS Bedrock credentials. This is the central product claim: the gate catches what a real LLM actually produces when injected, not just pre-scripted tool calls. Until a protected-environment run produces passing evidence, this claim remains SCRIPTED ONLY.
+The clean scenario and every required injected scenario must pass in the protected `real-agent` GitHub Actions environment with real AWS Bedrock credentials. RL-02 through RL-07 fail when the expected tool is not generated, so a safe model refusal or unrelated tool call cannot count as DUSK interception evidence. The uploaded JUnit report records executed, passed, failed, and skipped scenario counts. Until a protected-environment run produces this passing evidence, the claim remains SCRIPTED ONLY.
 
 Running the real-agent workflow requires:
 1. `real-agent` GitHub environment created with approval gate
