@@ -21,7 +21,10 @@ jobs:
       - run: |
           pip install -e ".[dev]" atheris pip-audit pip-licenses 'mutmut==2.4.5'
           pip install --require-hashes -r ci/example-requirements.lock
-      - env: {GITHUB_AUTH_TOKEN: "${{ github.token }}"}
+      - env:
+          # A fine-grained read-only token is needed because GITHUB_TOKEN cannot
+          # read classic branch-protection settings. The fallback fails visibly.
+          GITHUB_AUTH_TOKEN: "${{ secrets.SCORECARD_TOKEN || github.token }}"
         run: sh scripts/ci/deep_controls.sh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

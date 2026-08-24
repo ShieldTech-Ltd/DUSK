@@ -72,6 +72,14 @@ performs a full-history secret scan, refreshes dependency vulnerability data,
 rebuilds containers without layer cache, and rescans all project images. These
 slower checks do not delay pull-request feedback.
 
+OpenSSF Scorecard also evaluates repository settings. Configure the repository
+secret `SCORECARD_TOKEN` with a fine-grained, read-only token limited to this
+repository and the `Administration: read` and `Metadata: read` permissions.
+GitHub's workflow token cannot read classic branch-protection settings; the
+Scorecard control therefore fails visibly when this secret is absent or loses
+access. The token is used only by the trusted scheduled/manual deep lane and is
+never exposed to pull-request jobs.
+
 Scheduled failures remain visible in GitHub Actions and must be investigated.
 No workflow automatically changes production state or files an external
 report.
