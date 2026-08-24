@@ -101,9 +101,12 @@ scorecard() {
     -e INPUT_PUBLISH_RESULTS=false \
     -e INPUT_FILE_MODE=git \
     -e GITHUB_REPOSITORY \
+    -e GITHUB_SHA \
     -e GITHUB_REF=refs/heads/main \
     -e GITHUB_EVENT_NAME=schedule \
+    -e GITHUB_EVENT_PATH=/github/workflow/event.json \
     -e GITHUB_WORKSPACE=/github/workspace \
+    -v "$GITHUB_EVENT_PATH:/github/workflow/event.json:ro" \
     -v "$PWD:/github/workspace" -w /github/workspace \
     ghcr.io/ossf/scorecard-action@sha256:ae5104dd3cc28466ebeb11144354be4cac4b7ff829654f9fab89021d71c46670
 }
