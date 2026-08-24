@@ -11,7 +11,7 @@ docker run --rm -v "$PWD:/src" -w /src \
   --lockfile=requirements.txt:/src/ci/example-requirements.lock
 python scripts/ci/license_policy.py
 HYPOTHESIS_PROFILE=ci pytest -q
-pytest -q examples/agent-action-monitor
+PYTHONPATH=examples/agent-action-monitor/src pytest -q examples/agent-action-monitor
 mutmut run --max-children 2 --paths-to-mutate src/dusk/policies/engine.py || test $? -eq 1
 mutmut run --max-children 2 --paths-to-mutate examples/agent-action-monitor/src/dusk/api.py || test $? -eq 1
 docker run --rm -e GITHUB_AUTH_TOKEN \
