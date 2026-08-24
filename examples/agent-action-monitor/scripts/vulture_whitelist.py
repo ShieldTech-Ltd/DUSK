@@ -18,6 +18,13 @@ against a real cross-reference search before being added.
   api.py, which only forwards each match's .id in similar_decision_ids.
   Kept on the dataclass as diagnostic data for a caller that wants the
   actual similarity score, not just which decisions matched.
+- tests/real_llm/test_real_llm_gate.py: pytestmark is a pytest-recognised
+  module-level variable that applies skip conditions to every test in the
+  module; it is never explicitly called, so vulture flags it as unused.
+- tests/test_sie_http_fallback.py: do_POST and log_message are
+  BaseHTTPRequestHandler protocol methods invoked by http.server when an
+  HTTP request arrives. The framework dispatches them by name; they are
+  never called directly by test code, so vulture cannot see them as used.
 """
 
 from dusk.actions.verdict import ActionGate
@@ -27,3 +34,10 @@ from dusk.trace.vector import SimilarDecision
 ActionGate.evaluate_all
 set_config
 SimilarDecision.similarity
+
+# pytest discovers this variable by name; it is not dead code.
+pytestmark
+
+# http.server dispatches these by name when an HTTP request arrives.
+do_POST
+log_message
