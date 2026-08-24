@@ -406,6 +406,10 @@ commands, performance design, and release boundary.
 
 ## Governance and security
 
+The repository's merge, deep-security, container, and release guarantees are defined by the
+[100-control enterprise CI catalogue](docs/ci-controls.md). Branch protection needs only the
+fail-closed `security-gate` status.
+
 DUSK is preparing for an OWASP Incubator application as a tool project. It does
 not claim complete OWASP Agentic Top 10 coverage or product
 certification. The exact shipped, partial, planned, and out-of-scope mappings
