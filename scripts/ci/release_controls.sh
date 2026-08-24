@@ -10,7 +10,7 @@ git fetch origin main
 git merge-base --is-ancestor "$(git rev-list -n 1 "$tag")" origin/main
 python scripts/check_release_version.py "$tag"
 export SOURCE_DATE_EPOCH
-SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$tag")
+SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$tag^{}")
 python -m build --outdir dist-one
 python -m build --outdir dist-two
 python -m twine check dist-one/*
