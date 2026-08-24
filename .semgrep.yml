@@ -56,8 +56,15 @@ rules:
     languages: [python]
     severity: ERROR
     message: Resolve and validate request-derived paths before opening files.
-    patterns:
-      - pattern: open($REQUEST.$ATTR, ...)
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: request.args.get(...)
+          - pattern: request.form.get(...)
+          - pattern: request.get_json(...)
+          - pattern: request.json
+    pattern-sinks:
+      - pattern: open(...)
 
   - id: dusk-sensitive-exception-response
     languages: [python]
