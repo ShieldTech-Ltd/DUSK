@@ -67,8 +67,9 @@ parser_fuzz() {
 }
 
 root_mutation() {
-  mutmut run --paths-to-mutate src/dusk/policies/engine.py \
-    --runner 'python -m pytest -q tests/test_enterprise_policies.py tests/test_policy_evidence.py tests/test_policy_properties.py'
+  PYTHONPATH=src mutmut run --paths-to-mutate src/dusk/policies/evidence.py \
+    --test-time-base 1 \
+    --runner 'env PYTHONPATH=src python -m pytest -q tests/test_policy_evidence_mutation.py'
   rc=$?
   mutmut results > "$evidence/root-mutation.txt" 2>&1 || true
   mv .mutmut-cache "$evidence/root-mutmut-cache"
@@ -77,8 +78,9 @@ root_mutation() {
 
 auth_mutation() {
   PYTHONPATH=examples/agent-action-monitor/src mutmut run \
-    --paths-to-mutate examples/agent-action-monitor/src/dusk/api.py \
-    --runner 'python -m pytest -q examples/agent-action-monitor/tests/integration/test_gate_api.py'
+    --paths-to-mutate examples/agent-action-monitor/src/dusk/auth.py \
+    --test-time-base 1 \
+    --runner 'env PYTHONPATH=examples/agent-action-monitor/src python -m pytest -q examples/agent-action-monitor/tests/test_auth.py'
   rc=$?
   mutmut results > "$evidence/auth-mutation.txt" 2>&1 || true
   mv .mutmut-cache "$evidence/auth-mutmut-cache"

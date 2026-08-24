@@ -34,8 +34,19 @@ sh scripts/ci/container_controls.sh
 
 Weekly and release lanes use `scripts/ci/deep_controls.sh` and `scripts/ci/release_controls.sh`.
 The deep runner accepts `general`, `policy-mutation`, `auth-mutation`, and `scorecard` groups; the
-workflow runs those groups in parallel and aggregates their independent evidence.
+workflow runs those groups in parallel and aggregates their independent evidence. Mutation testing
+is deliberately limited to the fail-closed policy-evidence classifier and gate-authentication
+boundary. Their direct boundary suites must kill every generated non-equivalent mutant; surviving
+or suspicious mutants fail SEC-032 or SEC-033. This keeps the control security-relevant and avoids
+repeatedly mutating unrelated parsing, logging, and API setup code.
 Scanner additions require a deliberately failing fixture and a test proving detection.
+
+To reproduce the two mutation controls locally:
+
+```sh
+sh scripts/ci/deep_controls.sh policy-mutation
+sh scripts/ci/deep_controls.sh auth-mutation
+```
 
 ## Suppressions, ownership, and evidence
 
