@@ -10,8 +10,8 @@ docker run --rm -v "$PWD:/src" -w /src \
   scan source --lockfile=requirements.txt:/src/ci/requirements.lock \
   --lockfile=requirements.txt:/src/ci/example-requirements.lock
 python scripts/ci/license_policy.py
-HYPOTHESIS_PROFILE=ci pytest -q
-PYTHONPATH=examples/agent-action-monitor/src pytest -q examples/agent-action-monitor
+HYPOTHESIS_PROFILE=ci python -m pytest -q
+PYTHONPATH=examples/agent-action-monitor/src python -m pytest -q examples/agent-action-monitor
 mutmut run --max-children 2 --paths-to-mutate src/dusk/policies/engine.py || test $? -eq 1
 mutmut run --max-children 2 --paths-to-mutate examples/agent-action-monitor/src/dusk/api.py || test $? -eq 1
 docker run --rm -e GITHUB_AUTH_TOKEN \
