@@ -74,7 +74,7 @@ run_controls "SEC-021 SEC-022 SEC-023 SEC-025 SEC-026" python scripts/ci/workflo
 run_controls "PR-045" actionlint
 run_controls "PR-046 SEC-024" sh "$0" --task workflow_analysis
 run_controls "PR-047" python scripts/ci/control.py validate
-run_controls "PR-048" python -m pytest -q tests/ci/test_control.py
+run_controls "PR-048" python -m pytest -q --confcutdir=tests/ci tests/ci/test_control.py
 run_controls "SEC-011" sh "$0" --task gitleaks_range "$base_sha" "$head_sha"
 
 exit "$failed"
