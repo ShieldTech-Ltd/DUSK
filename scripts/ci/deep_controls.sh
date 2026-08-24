@@ -12,8 +12,11 @@ docker run --rm -v "$PWD:/src" -w /src \
 python scripts/ci/license_policy.py
 HYPOTHESIS_PROFILE=ci python -m pytest -q
 PYTHONPATH=examples/agent-action-monitor/src python -m pytest -q examples/agent-action-monitor
-mutmut run --max-children 2 --paths-to-mutate src/dusk/policies/engine.py || test $? -eq 1
-mutmut run --max-children 2 --paths-to-mutate examples/agent-action-monitor/src/dusk/api.py || test $? -eq 1
+mutmut run --paths-to-mutate src/dusk/policies/engine.py \
+  --runner 'python -m pytest -q tests/test_enterprise_policies.py'
+PYTHONPATH=examples/agent-action-monitor/src mutmut run \
+  --paths-to-mutate examples/agent-action-monitor/src/dusk/api.py \
+  --runner 'python -m pytest -q examples/agent-action-monitor/tests/test_api.py'
 docker run --rm -e GITHUB_AUTH_TOKEN \
   ghcr.io/ossf/scorecard/v5@sha256:8ca7dd6933ea9b3c0c0c0f0fc773952aefb47bf08c43c1c646befe9ab28e4f28 \
   --repo "github.com/$GITHUB_REPOSITORY" --format json > deep-evidence/scorecard.json
