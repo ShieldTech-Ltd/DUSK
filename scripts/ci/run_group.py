@@ -7,7 +7,10 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from scripts.ci.control import load_catalogue, record
+try:
+    from scripts.ci.control import load_catalogue, record
+except ModuleNotFoundError:  # Direct execution adds scripts/ci, not the repository root.
+    from control import load_catalogue, record
 
 
 def main() -> None:
