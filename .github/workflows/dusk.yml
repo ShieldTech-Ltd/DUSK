@@ -127,7 +127,14 @@ jobs:
         run: sh scripts/run_owasp_demo.sh --no-build enforce
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with: {name: container-results, path: results/, if-no-files-found: error, retention-days: 30}
+        with:
+          name: container-results
+          path: |
+            results/
+            container-evidence/
+            examples/agent-action-monitor/ci-logs/
+          if-no-files-found: error
+          retention-days: 30
 
   security-gate:
     if: always()
