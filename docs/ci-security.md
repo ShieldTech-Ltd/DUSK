@@ -70,7 +70,11 @@ images they intend to test before invoking it.
 `.github/workflows/deep-security.yml` runs weekly and on manual dispatch. It
 performs a full-history secret scan, refreshes dependency vulnerability data,
 rebuilds containers without layer cache, and rescans all project images. These
-slower checks do not delay pull-request feedback.
+slower checks do not delay pull-request feedback. General scans, policy
+mutation, authentication mutation, and Scorecard run as independent parallel
+jobs. Each job has its own timeout and result artifact; `deep-security-gate`
+fails when any job is failed or cancelled, or any of the 11 expected results is
+missing, duplicated, malformed, or failed.
 
 OpenSSF Scorecard also evaluates repository settings. Configure the repository
 secret `SCORECARD_TOKEN` with a fine-grained, read-only token limited to this
