@@ -7,6 +7,10 @@ FROM python:3.13.11-slim-bookworm@sha256:20080e807bfc404f8450b185cf0fc95d5534626
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==83.0.0 wheel==0.47.0 \
