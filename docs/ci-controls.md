@@ -55,12 +55,34 @@ exact artifacts—not by weakening or skipping controls.
 
 | Run | Commit | PR lane | Deep lane | Release dry run |
 | --- | --- | ---: | ---: | ---: |
-| Pending 1 | — | — | — | — |
-| Pending 2 | — | — | — | — |
-| Pending 3 | — | — | — | — |
+| 1 | `aa1dba6` / `7cac999` | 3m30s ([run 32745875080](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32745875080)) | Pending administrator token | 1m11s ([run 32744086308](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32744086308)) |
+| 2 | `f9aa701` / `aa1dba6` | 4m03s ([run 32748254239](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32748254239)) | Pending administrator token | 1m16s ([run 32746335783](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32746335783)) |
+| 3 | `2c33aa4` / `e343dda` | 4m22s ([run 32748727611](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32748727611)) | Pending final parallel validation | 1m10s ([run 32751635453](https://github.com/ShieldTech-Ltd/DUSK/actions/runs/32751635453)) |
 
 For a release dry run, dispatch Release against an existing verified annotated tag with
 `publish=false`. Publishing is allowed only after `release-gate`; it downloads the exact bytes built,
 checked, checksummed, SBOM-generated, and attested upstream. Scheduled and release failures cannot
 silently continue. CodeQL and attestation temporarily capture tool outcomes solely to emit explicit
 `FAIL` evidence before their gates reject the run.
+
+## Administrator handoff
+
+The following repository settings cannot be committed in a pull request and must be applied by a
+repository administrator before this PR is marked ready:
+
+1. Create a fine-grained token limited to `ShieldTech-Ltd/DUSK` with `Administration: read` and
+   `Metadata: read`, then add it as the Actions repository secret `SCORECARD_TOKEN`. Re-run **Deep
+   security** and require `deep-security-gate` to pass.
+2. In **Settings → Code security → Code scanning**, disable CodeQL default setup. Retain the custom
+   `codeql` job in `.github/workflows/dusk.yml`; it runs `security-extended` and is aggregated into
+   `security-gate`.
+3. Protect `dev` and `main` (classic protection or repository ruleset). Require only
+   `security-gate` as the CI status, at least one approving review, dismissal of stale approvals,
+   conversation resolution, and no force pushes or branch deletion.
+4. Confirm Actions permissions default to read-only and that workflows from forks require approval.
+   No PR job references `SCORECARD_TOKEN`; it is available only to trusted scheduled/manual deep
+   runs.
+
+After applying the settings, run the PR lane three times, **Deep security** three times, and the
+Release dry run three times with `publish=false`. Replace the pending deep timings above with links
+to successful runs and keep the PR draft until every documented maximum is met.
