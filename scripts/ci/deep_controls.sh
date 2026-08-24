@@ -96,7 +96,7 @@ scorecard() {
   export INPUT_REPO_TOKEN
   docker run --rm \
     -e INPUT_REPO_TOKEN \
-    -e INPUT_RESULTS_FILE=/github/workspace/"$evidence"/scorecard.json \
+    -e INPUT_RESULTS_FILE="$evidence/scorecard.json" \
     -e INPUT_RESULTS_FORMAT=json \
     -e INPUT_PUBLISH_RESULTS=false \
     -e INPUT_FILE_MODE=git \
