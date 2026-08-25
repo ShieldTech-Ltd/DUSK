@@ -6,7 +6,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-No unreleased changes.
+### Security
+
+- Replaced long-lived AWS access-key secrets in the protected real-agent
+  workflow with job-scoped GitHub OIDC role assumption. Bedrock validation now
+  requires an approved environment, explicit role, region and model variables,
+  and the DUSK gate secret.
 
 ## [0.2.0], 2026-08-05
 

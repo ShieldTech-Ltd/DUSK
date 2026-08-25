@@ -1,8 +1,8 @@
 # Real-Agent Security Validation Requirements
 
 **Date:** 2026-08-23
-**Branch assessed:** `feat/sprint2-real-agent-validation` (Sprint 2 in-progress)
-**Status:** Sprint 2 implementation in review. Load-test threshold corrected (p50 ≤ 100 ms); real-LLM validation pending credentials and a protected-environment run.
+**Branch assessed:** `dev`
+**Status:** Scripted validation and an OIDC-enabled protected workflow are implemented. Real-LLM validation still requires the protected GitHub environment, AWS IAM role, Bedrock model access, and a passing credentialed run.
 
 > **Evidence codes used in this document:**
 > - **CONFIRMED** — code exists, test exercises the live path, and CI passes.
@@ -63,9 +63,9 @@ The following claims are backed by code and artifact evidence.
 
 ### 2a. The "poisoned agent" is pre-scripted, not genuinely compromised
 
-`mock_bedrock.py:70` sets `self.scenario = scenario` at construction time. The poisoned tool call is hardcoded in `_RESPONSES` (`mock_bedrock.py:19-27`). No actual prompt injection takes place. A real LLM never generates a tool call. The `USE_REAL_BEDROCK=true` code path in `harness.py:39-44` exists but is exercised only when the protected `real-agent` environment is triggered manually or on the weekly schedule; its credentials are absent in standard CI.
+`mock_bedrock.py:70` sets `self.scenario = scenario` at construction time. The poisoned tool call is hardcoded in `_RESPONSES` (`mock_bedrock.py:19-27`). No actual prompt injection takes place. A real LLM never generates a tool call. The `USE_REAL_BEDROCK=true` code path in `harness.py:39-44` exists but is exercised only when the protected `real-agent` environment is triggered manually or on the weekly schedule. Standard CI has no AWS identity and cannot produce this evidence.
 
-**Sprint 2 change:** Seven real-LLM tests exist in `tests/real_llm/test_real_llm_gate.py` and auto-skip without credentials in standard CI. In the protected workflow, credential preflight prevents a missing-secret green run, and RL-02 through RL-07 fail if Bedrock does not invoke the expected DUSK gate scenario. The workflow publishes JUnit scenario counts with the gate logs. Marked SCRIPTED ONLY until a protected-environment run produces passing evidence.
+**Sprint 2 change:** Seven real-LLM tests exist in `tests/real_llm/test_real_llm_gate.py` and auto-skip without credentials in standard CI. In the protected workflow, environment preflight and OIDC role assumption prevent a missing-configuration green run, and RL-02 through RL-07 fail if Bedrock does not invoke the expected DUSK gate scenario. The workflow publishes JUnit scenario counts with the gate logs. Marked SCRIPTED ONLY until a protected-environment run produces passing evidence.
 
 ### 2b. Scenario coverage gaps (updated for Sprint 2)
 
@@ -254,9 +254,11 @@ pytest tests/ -v
 # SIE fallback tests only
 pytest tests/test_sie_fallback.py -v
 
-# Real-LLM tests (auto-skip without credentials)
-USE_REAL_BEDROCK=true AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
-  DUSK_GATE_ALLOW_ANONYMOUS=true pytest tests/real_llm/ -v
+# Real-LLM tests with an authenticated local AWS profile
+AWS_PROFILE=dusk-bedrock AWS_DEFAULT_REGION=us-east-1 \
+  BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0 \
+  USE_REAL_BEDROCK=true DUSK_GATE_ALLOW_ANONYMOUS=true \
+  pytest tests/real_llm/ -v
 
 # Full sandbox with latency SLA (Sprint 2 fix applied)
 export DUSK_GATE_API_KEY=local-ci-test-only
@@ -283,6 +285,15 @@ Sprint 2 closed:
 The clean scenario and every required injected scenario must pass in the protected `real-agent` GitHub Actions environment with real AWS Bedrock credentials. RL-02 through RL-07 fail when the expected tool is not generated, so a safe model refusal or unrelated tool call cannot count as DUSK interception evidence. The uploaded JUnit report records executed, passed, failed, and skipped scenario counts. Until a protected-environment run produces this passing evidence, the claim remains SCRIPTED ONLY.
 
 Running the real-agent workflow requires:
-1. `real-agent` GitHub environment created with approval gate
-2. `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DUSK_GATE_API_KEY` stored as environment secrets
-3. Manual `workflow_dispatch` trigger or weekly schedule fires
+1. `real-agent` GitHub environment created with an approval gate and deployment restricted to `main`
+2. GitHub OIDC provider configured in AWS with audience `sts.amazonaws.com`
+3. Dedicated IAM role trust restricted to `repo:ShieldTech-Ltd/DUSK:environment:real-agent`
+4. IAM permission `bedrock:InvokeModel` restricted to the configured model resource
+5. `AWS_ROLE_ARN`, `AWS_REGION`, and `BEDROCK_MODEL_ID` stored as environment variables
+6. `DUSK_GATE_API_KEY` stored as the only required environment secret
+7. Manual `workflow_dispatch` trigger or weekly schedule fires
+
+The initial configuration uses `us-east-1` and
+`anthropic.claude-3-5-sonnet-20241022-v2:0`. Confirm that the AWS account has
+access to that model before dispatch. If the model is unavailable, update both
+the environment variable and the IAM model resource before running.

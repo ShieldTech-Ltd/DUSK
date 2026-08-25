@@ -1,18 +1,18 @@
 name: Real-Agent Sandbox
 
-# This workflow runs the full Bedrock → gate pipeline with a real LLM.
+# This workflow runs the full Bedrock to gate pipeline with a real LLM.
 # It is intentionally NOT in the standard CI path:
 #   - Requires the protected 'real-agent' GitHub environment (manual approval gate).
-#   - Uses real AWS credentials stored only in that environment.
-#   - Results are evidence, not a pass/fail CI gate -- green CI alone does not
+#   - Uses short-lived AWS credentials issued through GitHub OIDC.
+#   - Results are evidence, not a pass/fail CI gate. Green CI alone does not
 #     constitute real-agent validation.
 #
 # Hard constraints enforced here:
 #   - No credentials are printed, echoed, or surfaced in logs.
-#   - Missing credentials cause the workflow to fail at the credential preflight
+#   - Missing environment configuration causes the workflow to fail at preflight
 #     step; they do NOT silently cause tests to skip and show green.
-#   - Required secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DUSK_GATE_API_KEY.
-#   - AWS_SESSION_TOKEN is optional (for role-assumed or temporary credentials).
+#   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_MODEL_ID.
+#   - Required secret: DUSK_GATE_API_KEY.
 #   - This workflow NEVER pushes to main or dev and NEVER merges anything.
 
 on:
@@ -35,6 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: real-agent
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: examples/agent-action-monitor
@@ -55,21 +58,30 @@ jobs:
           pip install -e ".[dev]"
           pip install -r agent-demo/requirements.txt
 
-      - name: Credential preflight
+      - name: Environment preflight
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           missing=""
-          [ -z "$AWS_ACCESS_KEY_ID" ]     && missing="$missing AWS_ACCESS_KEY_ID"
-          [ -z "$AWS_SECRET_ACCESS_KEY" ] && missing="$missing AWS_SECRET_ACCESS_KEY"
-          [ -z "$DUSK_GATE_API_KEY" ]     && missing="$missing DUSK_GATE_API_KEY"
+          [ -z "$AWS_ROLE_ARN" ]       && missing="$missing AWS_ROLE_ARN"
+          [ -z "$AWS_REGION" ]         && missing="$missing AWS_REGION"
+          [ -z "$BEDROCK_MODEL_ID" ]   && missing="$missing BEDROCK_MODEL_ID"
+          [ -z "$DUSK_GATE_API_KEY" ]  && missing="$missing DUSK_GATE_API_KEY"
           if [ -n "$missing" ]; then
-            echo "ERROR: the following required secrets are not configured:$missing"
+            echo "ERROR: the following real-agent environment values are not configured:$missing"
             echo "Set them in the 'real-agent' GitHub environment and re-run."
             exit 1
           fi
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: dusk-real-agent-${{ github.run_id }}
 
       - name: Start gate and mock-prod via Docker Compose
         env:
@@ -96,11 +108,8 @@ jobs:
       - name: Run real-LLM gate tests
         env:
           USE_REAL_BEDROCK: "true"
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
-          BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0' }}
+          AWS_DEFAULT_REGION: "${{ vars.AWS_REGION }}"
+          BEDROCK_MODEL_ID: "${{ vars.BEDROCK_MODEL_ID }}"
           DUSK_GATE_URL: "http://localhost:8000/v1/gate"
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
