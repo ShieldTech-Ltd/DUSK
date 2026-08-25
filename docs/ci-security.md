@@ -88,6 +88,30 @@ Scheduled failures remain visible in GitHub Actions and must be investigated.
 No workflow automatically changes production state or files an external
 report.
 
+## Real-agent validation lane
+
+`.github/workflows/real-agent-sandbox.yml` runs separately from standard CI.
+It uses the protected `real-agent` environment and GitHub OIDC to assume a
+dedicated AWS role. The job receives `id-token: write` only at job scope and
+retains read-only repository access.
+
+Configure the environment with these variables:
+
+- `AWS_ROLE_ARN`: the dedicated Bedrock validation role
+- `AWS_REGION`: `us-east-1`
+- `BEDROCK_MODEL_ID`: `anthropic.claude-3-5-sonnet-20241022-v2:0`
+
+Store `DUSK_GATE_API_KEY` as an environment secret. Do not store long-lived AWS
+access keys. Restrict the AWS role trust policy to
+`repo:ShieldTech-Ltd/DUSK:environment:real-agent`, restrict its permissions to
+`bedrock:InvokeModel` for the configured model, and restrict environment
+deployments to `main` with required review.
+
+Run the first credentialed validation in `watch` mode. A valid evidence run
+must execute all seven real-LLM tests with zero skips and retain the JUnit report
+and redacted gate logs. Standard CI and skipped tests remain scripted evidence,
+not real-agent validation.
+
 ## Release lane
 
 `.github/workflows/release.yml` accepts only a pushed `v*` tag and requires the
