@@ -4,7 +4,6 @@ import yaml
 
 _WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
-_REAL_LLM_TEST_PATH = Path("examples/agent-action-monitor/tests/real_llm/test_real_llm_gate.py")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
 
 
