@@ -170,6 +170,61 @@ if ("ritiksah141" -notin $reviewerLogins) {
 }
 Write-Host "Environment protection confirmed: ritiksah141 required as reviewer."
 
+# Step 6b: Validate deployment branch policy restricts to main only.
+# The real-agent workflow checks github.ref at runtime, but the environment
+# deployment_branch_policy is the GitHub-enforced gate that prevents any
+# non-main branch from even entering the environment. Both controls must
+# be in place. custom_branch_policies:true with no branches configured
+# allows any branch; protected_branches:true restricts to protected branches
+# (which must include main). Either form is acceptable, but unrestricted
+# deployments are not.
+Write-Host ""
+Write-Host "=== Verifying environment deployment branch policy ==="
+$deployPolicy = $envInfo.deployment_branch_policy
+if ($null -eq $deployPolicy) {
+    Write-Error @"
+SECURITY: Environment '$GitHubEnvironment' has no deployment_branch_policy.
+Without a branch policy, any branch can deploy to this environment and assume
+the real-agent OIDC role. Configure the environment to restrict deployments
+to the protected main branch only.
+"@
+    exit 1
+}
+
+$protectedBranches  = $deployPolicy.protected_branches
+$customBranchPolicy = $deployPolicy.custom_branch_policies
+
+if ($protectedBranches -eq $true) {
+    Write-Host "Deployment branch policy: protected_branches=true (main is protected)"
+} elseif ($customBranchPolicy -eq $true) {
+    # Verify that custom policies actually list 'main' and nothing else.
+    $branchPoliciesJson = gh api "repos/$GitHubRepo/environments/$GitHubEnvironment/deployment-branch-policies" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Could not read custom deployment branch policies for '$GitHubEnvironment'.`n$branchPoliciesJson"
+        exit 1
+    }
+    $branchPolicies   = ($branchPoliciesJson | ConvertFrom-Json).branch_policies
+    $allowedPatterns  = @($branchPolicies | ForEach-Object { $_.name })
+    $onlyMainAllowed  = ($allowedPatterns.Count -eq 1) -and ($allowedPatterns[0] -eq "main")
+    if (-not $onlyMainAllowed) {
+        Write-Error @"
+SECURITY: Environment '$GitHubEnvironment' uses custom_branch_policies but
+the allowed patterns are: $($allowedPatterns -join ', ')
+Only 'main' must be allowed. Remove any other patterns and re-run.
+"@
+        exit 1
+    }
+    Write-Host "Deployment branch policy: custom_branch_policies, pattern=['main'] only"
+} else {
+    Write-Error @"
+SECURITY: Environment '$GitHubEnvironment' deployment_branch_policy is
+unrestricted (protected_branches=false, custom_branch_policies=false).
+Any branch can deploy to this environment. Restrict it to main only.
+"@
+    exit 1
+}
+Write-Host "Deployment branch restriction confirmed: only main may deploy to '$GitHubEnvironment'."
+
 # Step 7: Confirm existing variables and secrets are configured
 Write-Host ""
 Write-Host "=== Checking environment variable and secret presence ==="

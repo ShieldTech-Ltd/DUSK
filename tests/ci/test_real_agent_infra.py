@@ -167,6 +167,25 @@ def test_setup_script_does_not_dispatch_workflow() -> None:
     assert "Invoke-RestMethod" not in text or "dispatches" not in text.lower()
 
 
+def test_setup_script_validates_deployment_branch_policy_restricts_to_main() -> None:
+    """Setup script must verify the real-agent environment is restricted to main only.
+
+    custom_branch_policies:true with no branch filter allows any branch to
+    deploy, which defeats the OIDC trust's environment restriction.  The
+    script must detect this and fail rather than silently pass.
+    """
+    text = _SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "deployment_branch_policy" in text, (
+        "Setup script must check the environment's deployment_branch_policy"
+    )
+    assert "protected_branches" in text or "custom_branch_policies" in text, (
+        "Setup script must verify the deployment branch policy type"
+    )
+    assert "main" in text.lower(), (
+        "Setup script must verify deployments are restricted to main"
+    )
+
+
 def test_setup_script_passes_deploy_parameter_overrides_as_key_value_pairs() -> None:
     text = _SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
     assert '"BedrockModelId=$modelId"' in text
@@ -203,7 +222,12 @@ def test_cleanup_step_runs_always() -> None:
         (
             s
             for s in job["steps"]
-            if "stop" in s.get("name", "").lower() or "down" in s.get("run", "")
+            if "stop" in s.get("name", "").lower()
+            or (
+                "docker compose" in s.get("run", "")
+                and "down" in s.get("run", "")
+                and "remove-orphans" in s.get("run", "")
+            )
         ),
         None,
     )
