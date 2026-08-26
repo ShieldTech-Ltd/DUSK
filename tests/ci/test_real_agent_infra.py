@@ -1,4 +1,5 @@
 """Infrastructure tests for Bedrock OIDC CloudFormation template and setup scripts."""
+
 from __future__ import annotations
 
 import re
@@ -141,7 +142,7 @@ def test_setup_script_does_not_print_secrets() -> None:
     forbidden_patterns = [
         r"Write-Host.*DUSK_GATE_API_KEY",
         r"Write-Output.*DUSK_GATE_API_KEY",
-        r'echo.*DUSK_GATE_API_KEY',
+        r"echo.*DUSK_GATE_API_KEY",
         r"Write-Host.*AWS_SECRET_ACCESS_KEY",
         r"Write-Host.*AWS_SESSION_TOKEN",
     ]
@@ -183,8 +184,11 @@ def test_cleanup_step_runs_always() -> None:
     w = _workflow()
     job = w["jobs"]["real-agent-validation"]
     cleanup_step = next(
-        (s for s in job["steps"]
-         if "stop" in s.get("name", "").lower() or "down" in s.get("run", "")),
+        (
+            s
+            for s in job["steps"]
+            if "stop" in s.get("name", "").lower() or "down" in s.get("run", "")
+        ),
         None,
     )
     assert cleanup_step is not None, "No cleanup/stop containers step found"
@@ -195,8 +199,7 @@ def test_evidence_upload_runs_always_with_30_day_retention() -> None:
     w = _workflow()
     job = w["jobs"]["real-agent-validation"]
     upload_step = next(
-        (s for s in job["steps"]
-         if s.get("uses", "").startswith("actions/upload-artifact")),
+        (s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact")),
         None,
     )
     assert upload_step is not None, "No upload-artifact step found"
@@ -208,9 +211,11 @@ def test_workflow_has_caller_identity_step() -> None:
     w = _workflow()
     job = w["jobs"]["real-agent-validation"]
     identity_step = next(
-        (s for s in job["steps"]
-         if "identity" in s.get("name", "").lower() or
-         "get-caller-identity" in s.get("run", "")),
+        (
+            s
+            for s in job["steps"]
+            if "identity" in s.get("name", "").lower() or "get-caller-identity" in s.get("run", "")
+        ),
         None,
     )
     assert identity_step is not None, (
@@ -223,9 +228,12 @@ def test_workflow_has_bedrock_availability_check() -> None:
     w = _workflow()
     job = w["jobs"]["real-agent-validation"]
     bedrock_check = next(
-        (s for s in job["steps"]
-         if "bedrock" in s.get("name", "").lower() and
-         ("access" in s.get("name", "").lower() or "availab" in s.get("name", "").lower())),
+        (
+            s
+            for s in job["steps"]
+            if "bedrock" in s.get("name", "").lower()
+            and ("access" in s.get("name", "").lower() or "availab" in s.get("name", "").lower())
+        ),
         None,
     )
     assert bedrock_check is not None, (
