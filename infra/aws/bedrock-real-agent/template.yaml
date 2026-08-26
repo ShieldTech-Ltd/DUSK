@@ -21,12 +21,13 @@ Parameters:
     Description: GitHub Actions environment name (must match exactly)
   BedrockModelId:
     Type: String
-    Default: anthropic.claude-3-5-sonnet-20241022-v2:0
+    Default: us.anthropic.claude-sonnet-4-6
     Description: >
-      On-demand Bedrock model ID. Must be enabled in this account and region.
-      Validate with: aws bedrock get-foundation-model --model-identifier <id>
-      Do not silently change this value. Stop and report the blocker if the
-      model is unavailable.
+      Bedrock inference profile ID. Must be available in this account and region.
+  BedrockFoundationModelId:
+    Type: String
+    Default: anthropic.claude-sonnet-4-6
+    Description: Underlying foundation model ID required by cross-region inference.
   RoleName:
     Type: String
     Default: DuskRealAgentBedrockRole
@@ -92,14 +93,21 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action:
-                  - bedrock:ListInferenceProfiles
-                  - bedrock:InvokeModel
+                Action: bedrock:ListInferenceProfiles
+                Resource: "*"
+              - Effect: Allow
+                Action: bedrock:InvokeModel
                 Resource:
                   # Claude 4.x models require inference profiles (not direct
                   # foundation model ARNs). Inference profile ARNs include the
                   # account ID (single colon between region and account).
                   - Fn::Sub: "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
+                  # Converse authorizes both the inference profile and the
+                  # foundation model in every destination region advertised
+                  # by the US cross-region inference profile.
+                  - Fn::Sub: "arn:aws:bedrock:us-east-1::foundation-model/${BedrockFoundationModelId}"
+                  - Fn::Sub: "arn:aws:bedrock:us-east-2::foundation-model/${BedrockFoundationModelId}"
+                  - Fn::Sub: "arn:aws:bedrock:us-west-2::foundation-model/${BedrockFoundationModelId}"
 
 Outputs:
   RoleArn:
