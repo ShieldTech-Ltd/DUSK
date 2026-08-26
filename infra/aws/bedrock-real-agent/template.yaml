@@ -92,9 +92,10 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action:
-                  - bedrock:ListInferenceProfiles
-                  - bedrock:InvokeModel
+                Action: bedrock:ListInferenceProfiles
+                Resource: "*"
+              - Effect: Allow
+                Action: bedrock:InvokeModel
                 Resource:
                   # Claude 4.x models require inference profiles (not direct
                   # foundation model ARNs). Inference profile ARNs include the

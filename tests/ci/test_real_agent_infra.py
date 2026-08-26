@@ -72,7 +72,10 @@ def test_iam_policy_does_not_grant_admin_access() -> None:
             if isinstance(resources, str):
                 resources = [resources]
             for r in resources:
-                assert r != "*", f"Wildcard resource found: {r}"
+                if r == "*":
+                    assert actions == ["bedrock:ListInferenceProfiles"], (
+                        "Wildcard resources are permitted only for the AWS list action"
+                    )
 
 
 def test_template_contains_no_static_credentials() -> None:
@@ -110,7 +113,17 @@ def test_model_resource_uses_region_reference_and_no_account_id() -> None:
     t = _template()
     role = t["Resources"]["DuskBedrockRole"]
     policy_doc = role["Properties"]["Policies"][0]["PolicyDocument"]
-    resource_raw = policy_doc["Statement"][0]["Resource"]
+    invoke_statement = next(
+        statement
+        for statement in policy_doc["Statement"]
+        if "bedrock:InvokeModel"
+        in (
+            [statement["Action"]]
+            if isinstance(statement["Action"], str)
+            else statement["Action"]
+        )
+    )
+    resource_raw = invoke_statement["Resource"]
     resource = str(resource_raw)
     assert resource != "*", "Resource must not be a wildcard"
     assert "inference-profile" in resource, "Inference profile ARN is required"
@@ -156,6 +169,12 @@ def test_setup_script_does_not_dispatch_workflow() -> None:
     assert "gh workflow run" not in text
     assert "workflow dispatch" not in text.lower()
     assert "Invoke-RestMethod" not in text or "dispatches" not in text.lower()
+
+
+def test_setup_script_passes_deploy_parameter_overrides_as_key_value_pairs() -> None:
+    text = _SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert '"BedrockModelId=$modelId"' in text
+    assert "ParameterKey=BedrockModelId,ParameterValue=$modelId" not in text
 
 
 def test_workflow_has_concurrency_group() -> None:
@@ -272,3 +291,36 @@ def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
         "The real-agent workflow uses Bedrock operations that its OIDC role "
         f"cannot authorize: {sorted(required_actions - allowed_actions)}"
     )
+
+
+def test_list_inference_profiles_uses_wildcard_resource_only() -> None:
+    """ListInferenceProfiles has no resource type in AWS service authorization."""
+    t = _template()
+    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0][
+        "PolicyDocument"
+    ]["Statement"]
+
+    list_statement = next(
+        statement
+        for statement in statements
+        if "bedrock:ListInferenceProfiles"
+        in (
+            [statement["Action"]]
+            if isinstance(statement["Action"], str)
+            else statement["Action"]
+        )
+    )
+    assert list_statement["Resource"] == "*"
+    assert list_statement["Action"] == "bedrock:ListInferenceProfiles"
+
+    invoke_statement = next(
+        statement
+        for statement in statements
+        if "bedrock:InvokeModel"
+        in (
+            [statement["Action"]]
+            if isinstance(statement["Action"], str)
+            else statement["Action"]
+        )
+    )
+    assert invoke_statement["Resource"] != "*"

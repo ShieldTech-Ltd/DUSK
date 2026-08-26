@@ -221,13 +221,13 @@ Write-Host ""
 Write-Host "=== Deploying CloudFormation stack: $StackName ==="
 
 $overrides = @(
-    "ParameterKey=GitHubOrg,ParameterValue=ShieldTech-Ltd"
-    "ParameterKey=GitHubRepo,ParameterValue=DUSK"
-    "ParameterKey=GitHubEnvironment,ParameterValue=$GitHubEnvironment"
-    "ParameterKey=BedrockModelId,ParameterValue=$modelId"
+    "GitHubOrg=ShieldTech-Ltd"
+    "GitHubRepo=DUSK"
+    "GitHubEnvironment=$GitHubEnvironment"
+    "BedrockModelId=$modelId"
 )
 if ($ExistingOidcProviderArn) {
-    $overrides += "ParameterKey=ExistingOidcProviderArn,ParameterValue=$ExistingOidcProviderArn"
+    $overrides += "ExistingOidcProviderArn=$ExistingOidcProviderArn"
 }
 
 aws cloudformation deploy `
