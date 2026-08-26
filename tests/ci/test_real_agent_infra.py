@@ -9,7 +9,6 @@ import yaml
 
 _TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _SETUP_SCRIPT_PATH = Path("scripts/setup-bedrock-oidc.ps1")
-_TEST_SCRIPT_PATH = Path("scripts/test-bedrock-oidc-config.ps1")
 _WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 
 
