@@ -64,7 +64,10 @@ def test_iam_policy_does_not_grant_admin_access() -> None:
             for action in actions:
                 assert action != "*", f"Wildcard action found: {action}"
                 assert not action.startswith("iam:"), f"IAM action found: {action}"
-                assert action == "bedrock:InvokeModel", f"Unexpected action: {action}"
+                assert action in {
+                    "bedrock:GetFoundationModel",
+                    "bedrock:InvokeModel",
+                }, f"Unexpected action: {action}"
             resources = stmt.get("Resource", [])
             if isinstance(resources, str):
                 resources = [resources]
@@ -243,4 +246,29 @@ def test_workflow_has_bedrock_availability_check() -> None:
     run_script = bedrock_check.get("run", "")
     assert "get-foundation-model" in run_script, (
         "Bedrock check step must call 'aws bedrock get-foundation-model'"
+    )
+
+
+def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
+    """Catch workflow calls that the assumed OIDC role cannot authorize."""
+    t = _template()
+    policy_statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0][
+        "PolicyDocument"
+    ]["Statement"]
+    allowed_actions = {
+        action
+        for statement in policy_statements
+        for action in (
+            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
+        )
+    }
+
+    workflow_text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    required_actions = {"bedrock:InvokeModel"}
+    if "aws bedrock get-foundation-model" in workflow_text:
+        required_actions.add("bedrock:GetFoundationModel")
+
+    assert required_actions <= allowed_actions, (
+        "The real-agent workflow uses Bedrock operations that its OIDC role "
+        f"cannot authorize: {sorted(required_actions - allowed_actions)}"
     )
