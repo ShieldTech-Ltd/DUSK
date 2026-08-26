@@ -211,6 +211,16 @@ def test_cleanup_step_runs_always() -> None:
     assert cleanup_step.get("if") == "always()"
 
 
+def test_cleanup_step_receives_compose_required_gate_key() -> None:
+    w = _workflow()
+    cleanup_step = next(
+        step
+        for step in w["jobs"]["real-agent-validation"]["steps"]
+        if "stop" in step.get("name", "").lower()
+    )
+    assert cleanup_step["env"]["DUSK_GATE_API_KEY"] == "${{ secrets.DUSK_GATE_API_KEY }}"
+
+
 def test_evidence_upload_runs_always_with_30_day_retention() -> None:
     w = _workflow()
     job = w["jobs"]["real-agent-validation"]
@@ -312,3 +322,26 @@ def test_list_inference_profiles_uses_wildcard_resource_only() -> None:
         in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
     )
     assert invoke_statement["Resource"] != "*"
+
+
+def test_invoke_model_allows_profile_and_underlying_foundation_model() -> None:
+    t = _template()
+    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0]["PolicyDocument"][
+        "Statement"
+    ]
+    invoke_statement = next(
+        statement for statement in statements if statement["Action"] == "bedrock:InvokeModel"
+    )
+    resources = [str(resource) for resource in invoke_statement["Resource"]]
+
+    assert any("inference-profile/${BedrockModelId}" in resource for resource in resources)
+    expected_foundation_resources = {
+        f"arn:aws:bedrock:{region}::foundation-model/${{BedrockFoundationModelId}}"
+        for region in ("us-east-1", "us-east-2", "us-west-2")
+    }
+    assert expected_foundation_resources <= {
+        resource["Fn::Sub"]
+        for resource in invoke_statement["Resource"]
+        if isinstance(resource, dict) and "Fn::Sub" in resource
+    }
+    assert t["Parameters"]["BedrockFoundationModelId"]["Default"] == ("anthropic.claude-sonnet-4-6")

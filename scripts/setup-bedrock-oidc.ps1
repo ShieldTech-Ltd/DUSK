@@ -119,6 +119,7 @@ Write-Host "AWS region: $region"
 Write-Host ""
 Write-Host "=== Validating Bedrock model availability ==="
 $modelId = "us.anthropic.claude-sonnet-4-6"
+$foundationModelId = "anthropic.claude-sonnet-4-6"
 # Claude 4.x models use inference profiles. Check via list-inference-profiles.
 $profilesJson = aws bedrock list-inference-profiles `
     --region $region `
@@ -225,6 +226,7 @@ $overrides = @(
     "GitHubRepo=DUSK"
     "GitHubEnvironment=$GitHubEnvironment"
     "BedrockModelId=$modelId"
+    "BedrockFoundationModelId=$foundationModelId"
 )
 if ($ExistingOidcProviderArn) {
     $overrides += "ExistingOidcProviderArn=$ExistingOidcProviderArn"
