@@ -72,7 +72,10 @@ def test_iam_policy_does_not_grant_admin_access() -> None:
             if isinstance(resources, str):
                 resources = [resources]
             for r in resources:
-                assert r != "*", f"Wildcard resource found: {r}"
+                if r == "*":
+                    assert actions == ["bedrock:ListInferenceProfiles"], (
+                        "Wildcard resources are permitted only for the AWS list action"
+                    )
 
 
 def test_template_contains_no_static_credentials() -> None:
@@ -110,7 +113,13 @@ def test_model_resource_uses_region_reference_and_no_account_id() -> None:
     t = _template()
     role = t["Resources"]["DuskBedrockRole"]
     policy_doc = role["Properties"]["Policies"][0]["PolicyDocument"]
-    resource_raw = policy_doc["Statement"][0]["Resource"]
+    invoke_statement = next(
+        statement
+        for statement in policy_doc["Statement"]
+        if "bedrock:InvokeModel"
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
+    )
+    resource_raw = invoke_statement["Resource"]
     resource = str(resource_raw)
     assert resource != "*", "Resource must not be a wildcard"
     assert "inference-profile" in resource, "Inference profile ARN is required"
@@ -158,6 +167,31 @@ def test_setup_script_does_not_dispatch_workflow() -> None:
     assert "Invoke-RestMethod" not in text or "dispatches" not in text.lower()
 
 
+def test_setup_script_validates_deployment_branch_policy_restricts_to_main() -> None:
+    """Setup script must verify the real-agent environment is restricted to main only.
+
+    custom_branch_policies:true with no branch filter allows any branch to
+    deploy, which defeats the OIDC trust's environment restriction.  The
+    script must detect this and fail rather than silently pass.
+    """
+    text = _SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "deployment_branch_policy" in text, (
+        "Setup script must check the environment's deployment_branch_policy"
+    )
+    assert "protected_branches" in text or "custom_branch_policies" in text, (
+        "Setup script must verify the deployment branch policy type"
+    )
+    assert "main" in text.lower(), (
+        "Setup script must verify deployments are restricted to main"
+    )
+
+
+def test_setup_script_passes_deploy_parameter_overrides_as_key_value_pairs() -> None:
+    text = _SETUP_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert '"BedrockModelId=$modelId"' in text
+    assert "ParameterKey=BedrockModelId,ParameterValue=$modelId" not in text
+
+
 def test_workflow_has_concurrency_group() -> None:
     w = _workflow()
     assert "concurrency" in w, "Workflow is missing a top-level concurrency group"
@@ -188,12 +222,27 @@ def test_cleanup_step_runs_always() -> None:
         (
             s
             for s in job["steps"]
-            if "stop" in s.get("name", "").lower() or "down" in s.get("run", "")
+            if "stop" in s.get("name", "").lower()
+            or (
+                "docker compose" in s.get("run", "")
+                and "down" in s.get("run", "")
+                and "remove-orphans" in s.get("run", "")
+            )
         ),
         None,
     )
     assert cleanup_step is not None, "No cleanup/stop containers step found"
     assert cleanup_step.get("if") == "always()"
+
+
+def test_cleanup_step_receives_compose_required_gate_key() -> None:
+    w = _workflow()
+    cleanup_step = next(
+        step
+        for step in w["jobs"]["real-agent-validation"]["steps"]
+        if "stop" in step.get("name", "").lower()
+    )
+    assert cleanup_step["env"]["DUSK_GATE_API_KEY"] == "${{ secrets.DUSK_GATE_API_KEY }}"
 
 
 def test_evidence_upload_runs_always_with_30_day_retention() -> None:
@@ -272,3 +321,51 @@ def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
         "The real-agent workflow uses Bedrock operations that its OIDC role "
         f"cannot authorize: {sorted(required_actions - allowed_actions)}"
     )
+
+
+def test_list_inference_profiles_uses_wildcard_resource_only() -> None:
+    """ListInferenceProfiles has no resource type in AWS service authorization."""
+    t = _template()
+    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0]["PolicyDocument"][
+        "Statement"
+    ]
+
+    list_statement = next(
+        statement
+        for statement in statements
+        if "bedrock:ListInferenceProfiles"
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
+    )
+    assert list_statement["Resource"] == "*"
+    assert list_statement["Action"] == "bedrock:ListInferenceProfiles"
+
+    invoke_statement = next(
+        statement
+        for statement in statements
+        if "bedrock:InvokeModel"
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
+    )
+    assert invoke_statement["Resource"] != "*"
+
+
+def test_invoke_model_allows_profile_and_underlying_foundation_model() -> None:
+    t = _template()
+    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0]["PolicyDocument"][
+        "Statement"
+    ]
+    invoke_statement = next(
+        statement for statement in statements if statement["Action"] == "bedrock:InvokeModel"
+    )
+    resources = [str(resource) for resource in invoke_statement["Resource"]]
+
+    assert any("inference-profile/${BedrockModelId}" in resource for resource in resources)
+    expected_foundation_resources = {
+        f"arn:aws:bedrock:{region}::foundation-model/${{BedrockFoundationModelId}}"
+        for region in ("us-east-1", "us-east-2", "us-west-2")
+    }
+    assert expected_foundation_resources <= {
+        resource["Fn::Sub"]
+        for resource in invoke_statement["Resource"]
+        if isinstance(resource, dict) and "Fn::Sub" in resource
+    }
+    assert t["Parameters"]["BedrockFoundationModelId"]["Default"] == ("anthropic.claude-sonnet-4-6")

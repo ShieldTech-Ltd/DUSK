@@ -14,6 +14,7 @@ name: Real-Agent Sandbox
 #   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_MODEL_ID.
 #   - Required secret: DUSK_GATE_API_KEY.
 #   - This workflow NEVER pushes to main or dev and NEVER merges anything.
+#   - AWS credentials are only issued when running from refs/heads/main.
 
 on:
   workflow_dispatch:
@@ -54,13 +55,20 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: |
-            examples/agent-action-monitor/pyproject.toml
-            examples/agent-action-monitor/agent-demo/requirements.txt
+            examples/agent-action-monitor/requirements-real-agent.txt
 
-      - name: Install dependencies
+      # Finding 1: fail-closed before any AWS credential issuance.
+      # The OIDC trust already restricts the sub claim to the real-agent
+      # environment, but this check adds defence-in-depth at the workflow level.
+      - name: Verify main branch
         run: |
-          pip install -e ".[dev]"
-          pip install -r agent-demo/requirements.txt
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "ERROR: real-agent validation must run from refs/heads/main"
+            echo "       got: ${{ github.ref }}"
+            echo "       AWS credentials will not be issued on non-main branches."
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
 
       - name: Environment preflight
         env:
@@ -79,6 +87,16 @@ jobs:
             echo "Set them in the 'real-agent' GitHub environment and re-run."
             exit 1
           fi
+
+      # Finding 2: install locked, hash-verified dependencies only.
+      # requirements-real-agent.txt was generated with pip-compile --generate-hashes
+      # and covers all transitive runtime and test dependencies.
+      # The project itself is installed with --no-deps so pip does not resolve
+      # any additional (potentially mutable) transitive versions.
+      - name: Install dependencies
+        run: |
+          pip install --require-hashes -r requirements-real-agent.txt
+          pip install --no-deps .
 
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
@@ -105,6 +123,21 @@ jobs:
             exit 1
           fi
           echo "Bedrock inference profile confirmed: $PROFILE"
+
+      - name: Log validation parameters
+        run: |
+          GATE_MODE="${{ github.event.inputs.gate_mode || 'watch' }}"
+          echo "=== Real-agent validation parameters ==="
+          echo "gate_mode: $GATE_MODE"
+          echo "ref: ${{ github.ref }}"
+          echo "run_id: ${{ github.run_id }}"
+          echo "========================================"
+          if [ "$GATE_MODE" = "enforce" ]; then
+            echo "ENFORCE MODE: blocked actions will be rejected at the gate"
+            echo "              downstream mock-prod must NOT receive blocked requests"
+          else
+            echo "WATCH MODE: gate evaluates but does not reject blocked actions"
+          fi
 
       - name: Start gate and mock-prod via Docker Compose
         env:
@@ -141,11 +174,62 @@ jobs:
           pytest tests/real_llm/ -v --tb=short \
             --junitxml=ci-logs/real-agent-results.xml
 
+      # Fail the workflow if any protected test was skipped.
+      # In the real-agent environment, USE_REAL_BEDROCK=true and AWS
+      # credentials are present, so no test should skip.  A skip means
+      # the credential setup failed silently and the evidence is invalid.
+      # Regex extraction avoids XML parsing entirely (no XXE risk on the
+      # pytest-generated file; we only need two attributes from the root tag).
+      - name: Verify no real-LLM tests were skipped
+        run: |
+          python - <<'PYEOF'
+          import re, sys
+          text = open("ci-logs/real-agent-results.xml", encoding="utf-8").read()
+          m_skip  = re.search(r'<testsuite[^>]+\bskipped="(\d+)"', text)
+          m_total = re.search(r'<testsuite[^>]+\btests="(\d+)"', text)
+          skipped = int(m_skip.group(1))  if m_skip  else 0
+          total   = int(m_total.group(1)) if m_total else 0
+          if skipped > 0:
+              print(f"ERROR: {skipped}/{total} real-LLM test(s) were skipped")
+              print("Skipped tests mean credentials or USE_REAL_BEDROCK were missing")
+              print("Real-agent evidence from this run is INVALID")
+              sys.exit(1)
+          print(f"All {total} real-LLM tests ran (0 skipped)")
+          PYEOF
+
+      # In enforce mode, verify the mock-prod apply log endpoint is reachable.
+      # This confirms downstream isolation is observable, not just claimed from
+      # gate verdicts alone. The gate verdict and the downstream log are both
+      # required as independent evidence that enforcement worked.
+      - name: Verify enforce-mode downstream isolation
+        if: ${{ github.event.inputs.gate_mode == 'enforce' }}
+        run: |
+          LOG_JSON=$(curl -sf http://localhost:9000/log)
+          APPLIED=$(echo "$LOG_JSON" | python -c "import sys,json; print(json.load(sys.stdin).get('count',0))")
+          echo "mock-prod received $APPLIED applied action(s)"
+          if [ -z "$APPLIED" ]; then
+            echo "ERROR: could not read mock-prod apply log; downstream isolation cannot be verified"
+            exit 1
+          fi
+          echo "Downstream isolation check: mock-prod apply log is readable ($APPLIED entries)"
+
+      # Finding 4: supply DUSK_ENFORCE and DUSK_GATE_API_KEY so compose.ci.yml
+      # interpolation succeeds (it uses :? syntax that fails on missing vars).
+      # The || true was removed; a failure here means the gate produced no output
+      # and the uploaded artifact would be empty or contain a Compose error.
       - name: Collect gate logs as evidence
         if: always()
+        env:
+          DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           mkdir -p ci-logs
-          docker compose -f compose.yml -f compose.ci.yml logs dusk-gate > ci-logs/real-agent-gate.log 2>&1 || true
+          docker compose -f compose.yml -f compose.ci.yml logs dusk-gate \
+            > ci-logs/real-agent-gate.log 2>&1
+          if [ ! -s ci-logs/real-agent-gate.log ]; then
+            echo "ERROR: gate log file is empty; Compose may have failed to start the service" >&2
+            exit 1
+          fi
 
       - name: Upload evidence
         if: always()
@@ -159,5 +243,6 @@ jobs:
       - name: Stop containers
         if: always()
         env:
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
         run: docker compose -f compose.yml -f compose.ci.yml down --remove-orphans
