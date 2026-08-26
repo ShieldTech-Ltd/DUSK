@@ -30,6 +30,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: real-agent-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   real-agent-validation:
     runs-on: ubuntu-latest
@@ -82,6 +86,22 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: dusk-real-agent-${{ github.run_id }}
+
+      - name: Verify AWS caller identity
+        run: |
+          IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
+          echo "Assumed role: $IDENTITY"
+
+      - name: Verify Bedrock model access
+        env:
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          MODEL=$(aws bedrock get-foundation-model \
+            --model-identifier "$BEDROCK_MODEL_ID" \
+            --query 'modelDetails.modelId' \
+            --output text)
+          echo "Bedrock model confirmed: $MODEL"
 
       - name: Start gate and mock-prod via Docker Compose
         env:
