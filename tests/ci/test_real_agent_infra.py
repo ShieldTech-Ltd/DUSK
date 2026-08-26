@@ -117,11 +117,7 @@ def test_model_resource_uses_region_reference_and_no_account_id() -> None:
         statement
         for statement in policy_doc["Statement"]
         if "bedrock:InvokeModel"
-        in (
-            [statement["Action"]]
-            if isinstance(statement["Action"], str)
-            else statement["Action"]
-        )
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
     )
     resource_raw = invoke_statement["Resource"]
     resource = str(resource_raw)
@@ -296,19 +292,15 @@ def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
 def test_list_inference_profiles_uses_wildcard_resource_only() -> None:
     """ListInferenceProfiles has no resource type in AWS service authorization."""
     t = _template()
-    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0][
-        "PolicyDocument"
-    ]["Statement"]
+    statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0]["PolicyDocument"][
+        "Statement"
+    ]
 
     list_statement = next(
         statement
         for statement in statements
         if "bedrock:ListInferenceProfiles"
-        in (
-            [statement["Action"]]
-            if isinstance(statement["Action"], str)
-            else statement["Action"]
-        )
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
     )
     assert list_statement["Resource"] == "*"
     assert list_statement["Action"] == "bedrock:ListInferenceProfiles"
@@ -317,10 +309,6 @@ def test_list_inference_profiles_uses_wildcard_resource_only() -> None:
         statement
         for statement in statements
         if "bedrock:InvokeModel"
-        in (
-            [statement["Action"]]
-            if isinstance(statement["Action"], str)
-            else statement["Action"]
-        )
+        in ([statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"])
     )
     assert invoke_statement["Resource"] != "*"
