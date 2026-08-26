@@ -181,9 +181,7 @@ def test_setup_script_validates_deployment_branch_policy_restricts_to_main() -> 
     assert "protected_branches" in text or "custom_branch_policies" in text, (
         "Setup script must verify the deployment branch policy type"
     )
-    assert "main" in text.lower(), (
-        "Setup script must verify deployments are restricted to main"
-    )
+    assert "main" in text.lower(), "Setup script must verify deployments are restricted to main"
 
 
 def test_setup_script_passes_deploy_parameter_overrides_as_key_value_pairs() -> None:

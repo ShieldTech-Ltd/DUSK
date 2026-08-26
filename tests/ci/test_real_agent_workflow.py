@@ -4,9 +4,7 @@ import yaml
 
 _WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
-_REAL_LLM_TEST_PATH = Path(
-    "examples/agent-action-monitor/tests/real_llm/test_real_llm_gate.py"
-)
+_REAL_LLM_TEST_PATH = Path("examples/agent-action-monitor/tests/real_llm/test_real_llm_gate.py")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
 
 
@@ -69,11 +67,7 @@ def test_workflow_checks_main_branch_before_aws_credentials() -> None:
         if s.get("uses", "").startswith("aws-actions/configure-aws-credentials")
     )
     ref_check_idx = next(
-        (
-            i
-            for i, s in enumerate(steps)
-            if "refs/heads/main" in s.get("run", "")
-        ),
+        (i for i, s in enumerate(steps) if "refs/heads/main" in s.get("run", "")),
         None,
     )
     assert ref_check_idx is not None, (
@@ -123,8 +117,7 @@ def test_log_collection_step_supplies_compose_required_env_vars() -> None:
         (
             s
             for s in steps
-            if "collect" in s.get("name", "").lower()
-            and "log" in s.get("name", "").lower()
+            if "collect" in s.get("name", "").lower() and "log" in s.get("name", "").lower()
         ),
         None,
     )
@@ -147,8 +140,7 @@ def test_log_collection_step_does_not_swallow_errors() -> None:
         (
             s
             for s in steps
-            if "collect" in s.get("name", "").lower()
-            and "log" in s.get("name", "").lower()
+            if "collect" in s.get("name", "").lower() and "log" in s.get("name", "").lower()
         ),
         None,
     )
@@ -167,8 +159,7 @@ def test_log_collection_step_fails_if_log_file_is_empty() -> None:
         (
             s
             for s in steps
-            if "collect" in s.get("name", "").lower()
-            and "log" in s.get("name", "").lower()
+            if "collect" in s.get("name", "").lower() and "log" in s.get("name", "").lower()
         ),
         None,
     )
@@ -194,8 +185,10 @@ def test_workflow_fails_if_real_llm_tests_are_skipped() -> None:
     text = _WORKFLOW_PATH.read_text(encoding="utf-8")
     # Either pytest uses --fail-on-no-tests or there is a post-test skip check
     assert (
-        "skipped" in text.lower() and "exit 1" in text
-    ) or "--fail-on-no-tests" in text or "-p no:skip" in text, (
+        ("skipped" in text.lower() and "exit 1" in text)
+        or "--fail-on-no-tests" in text
+        or "-p no:skip" in text
+    ), (
         "Workflow must fail when real-LLM tests are skipped (check JUnit XML skipped count "
         "or use pytest -p no:skip in the real-agent environment)"
     )
@@ -205,6 +198,6 @@ def test_workflow_fails_if_real_llm_tests_are_skipped() -> None:
 def test_workflow_logs_gate_mode_before_tests() -> None:
     """Workflow must print the gate mode (watch/enforce) so evidence is unambiguous."""
     text = _WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "gate_mode" in text and (
-        "echo" in text or "print" in text
-    ), "Workflow must log the selected gate_mode to stdout before running tests"
+    assert "gate_mode" in text and ("echo" in text or "print" in text), (
+        "Workflow must log the selected gate_mode to stdout before running tests"
+    )

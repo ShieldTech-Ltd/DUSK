@@ -61,14 +61,16 @@ jobs:
       # The OIDC trust already restricts the sub claim to the real-agent
       # environment, but this check adds defence-in-depth at the workflow level.
       - name: Verify main branch
+        env:
+          GH_REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+          if [ "$GH_REF" != "refs/heads/main" ]; then
             echo "ERROR: real-agent validation must run from refs/heads/main"
-            echo "       got: ${{ github.ref }}"
+            echo "       got: $GH_REF"
             echo "       AWS credentials will not be issued on non-main branches."
             exit 1
           fi
-          echo "Branch check passed: ${{ github.ref }}"
+          echo "Branch check passed: $GH_REF"
 
       - name: Environment preflight
         env:
@@ -125,14 +127,17 @@ jobs:
           echo "Bedrock inference profile confirmed: $PROFILE"
 
       - name: Log validation parameters
+        env:
+          GH_REF: ${{ github.ref }}
+          GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
-          GATE_MODE="${{ github.event.inputs.gate_mode || 'watch' }}"
           echo "=== Real-agent validation parameters ==="
-          echo "gate_mode: $GATE_MODE"
-          echo "ref: ${{ github.ref }}"
-          echo "run_id: ${{ github.run_id }}"
+          echo "gate_mode: $GH_GATE_MODE"
+          echo "ref: $GH_REF"
+          echo "run_id: $GH_RUN_ID"
           echo "========================================"
-          if [ "$GATE_MODE" = "enforce" ]; then
+          if [ "$GH_GATE_MODE" = "enforce" ]; then
             echo "ENFORCE MODE: blocked actions will be rejected at the gate"
             echo "              downstream mock-prod must NOT receive blocked requests"
           else

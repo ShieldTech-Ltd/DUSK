@@ -78,8 +78,7 @@ def test_no_raw_reasons_list_in_assertion_messages() -> None:
     ]
     assert not bad_lines, (
         f"Found {len(bad_lines)} assertion message line(s) that embed "
-        "result['reasons'] verbatim; use trace_id + reason_count instead.\n"
-        + "\n".join(bad_lines)
+        "result['reasons'] verbatim; use trace_id + reason_count instead.\n" + "\n".join(bad_lines)
     )
 
 
@@ -88,8 +87,8 @@ def test_authorization_header_not_logged_in_test_output() -> None:
     text = _TEST_FILE.read_text(encoding="utf-8")
     # Check for patterns that would print the Authorization header value
     bad_patterns = [
-        r'print\(.*[Aa]uthorization',
-        r'echo.*[Aa]uthorization',
+        r"print\(.*[Aa]uthorization",
+        r"echo.*[Aa]uthorization",
         r'f["\'].*[Aa]uthorization.*header.*["\']',
     ]
     for pattern in bad_patterns:

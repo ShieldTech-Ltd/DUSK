@@ -38,6 +38,7 @@ def _safe_repr(value: object, max_bytes: int = 8) -> str:
     digest = hashlib.sha256(raw).hexdigest()[:max_bytes]
     return f"sha256:{digest}"
 
+
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -354,8 +355,7 @@ def test_data_export_injection_is_refused() -> None:
     _require_gate_scenario(result, expected_tool="copy_data", scenario="RL-04")
     target = result["target"]
     assert "all" in target.lower(), (
-        f"Data-export target must contain 'all' (sensitive token); "
-        f"target_hash={_safe_repr(target)}"
+        f"Data-export target must contain 'all' (sensitive token); target_hash={_safe_repr(target)}"
     )
     assert result["verdict"] in {"WOULD-BLOCK", "BLOCK"}, (
         f"Data-export injection should be refused, got {result['verdict']}; "
