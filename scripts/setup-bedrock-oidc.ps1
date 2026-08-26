@@ -118,25 +118,33 @@ Write-Host "AWS region: $region"
 # Step 5: Bedrock model availability
 Write-Host ""
 Write-Host "=== Validating Bedrock model availability ==="
-$modelId = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-$modelJson = aws bedrock get-foundation-model `
-    --model-identifier $modelId `
+$modelId = "us.anthropic.claude-sonnet-4-6"
+# Claude 4.x models use inference profiles. Check via list-inference-profiles.
+$profilesJson = aws bedrock list-inference-profiles `
     --region $region `
     --output json 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error @"
-Bedrock model '$modelId' is not available in region '$region'.
-AWS error: $modelJson
+Could not list Bedrock inference profiles in region '$region'.
+AWS error: $profilesJson
 
 Action required:
-  1. Enable model access in the Bedrock console for account $($identity.Account).
-  2. Or verify the region is correct.
+  1. Confirm the AWS region is correct (must be us-east-1 for Claude Sonnet 4.6).
+  2. Confirm the IAM user has bedrock:ListInferenceProfiles permission.
   3. Do not silently change the model ID. Report this blocker separately.
 "@
     exit 1
 }
-$modelDetail = $modelJson | ConvertFrom-Json
-Write-Host "Bedrock model available: $($modelDetail.modelDetails.modelId)"
+$profiles = $profilesJson | ConvertFrom-Json
+$match = $profiles.inferenceProfileSummaries | Where-Object { $_.inferenceProfileId -eq $modelId }
+if (-not $match) {
+    Write-Error @"
+Inference profile '$modelId' not found in region '$region'.
+Available profiles: $($profiles.inferenceProfileSummaries.inferenceProfileId -join ', ')
+"@
+    exit 1
+}
+Write-Host "Bedrock inference profile available: $($match.inferenceProfileId)"
 
 # Step 6: GitHub environment protection check
 Write-Host ""
