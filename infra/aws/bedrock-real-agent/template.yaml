@@ -93,14 +93,13 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - bedrock:GetFoundationModel
+                  - bedrock:ListInferenceProfiles
                   - bedrock:InvokeModel
                 Resource:
-                  # Foundation model ARNs carry no account ID (double colon).
-                  # This restricts the role to the exact configured model.
-                  # If AWS returns AccessDenied with this resource, stop and
-                  # document the required ARN before broadening permissions.
-                  - Fn::Sub: "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+                  # Claude 4.x models require inference profiles (not direct
+                  # foundation model ARNs). Inference profile ARNs include the
+                  # account ID (single colon between region and account).
+                  - Fn::Sub: "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
 
 Outputs:
   RoleArn:
@@ -122,7 +121,8 @@ Outputs:
 
   ModelResource:
     Value:
-      Fn::Sub: "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+      Fn::Sub: "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
     Description: >
-      IAM resource ARN used in the Bedrock permission. Confirm this matches
-      what 'aws bedrock get-foundation-model' returns for the model.
+      IAM resource ARN used in the Bedrock permission. Inference profile ARN
+      format (includes account ID). Use with us.anthropic.claude-sonnet-4-6
+      or equivalent inference profile ID as BedrockModelId.
