@@ -15,7 +15,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 - CloudFormation template for GitHub OIDC provider and least-privilege IAM role
-  restricted to the `real-agent` environment (`infra/aws/bedrock-real-agent/template.yaml`).
+  restricted to the `real-agent` environment, with only the model metadata and
+  invocation permissions used by the workflow (`infra/aws/bedrock-real-agent/template.yaml`).
 - PowerShell setup script (`scripts/setup-bedrock-oidc.ps1`) with read-only
   validation and deployment modes.
 - Read-only validation wrapper (`scripts/test-bedrock-oidc-config.ps1`).

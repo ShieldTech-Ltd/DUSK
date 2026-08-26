@@ -93,6 +93,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - bedrock:GetFoundationModel
                   - bedrock:InvokeModel
                 Resource:
                   # Foundation model ARNs carry no account ID (double colon).

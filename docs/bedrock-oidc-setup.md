@@ -25,7 +25,7 @@ AWS STS AssumeRoleWithWebIdentity
   v
 IAM Role: DuskRealAgentBedrockRole
   |
-  | bedrock:InvokeModel only
+  | bedrock:GetFoundationModel + bedrock:InvokeModel
   | resource: foundation model ARN (no account ID, no wildcard)
   |
   v
@@ -67,6 +67,7 @@ with a different subject is rejected by STS before any AWS API call is made.
 
 | Permission | Reason |
 |---|---|
+| `bedrock:GetFoundationModel` | Required by the workflow model pre-check |
 | `bedrock:InvokeModel` | Required by Bedrock Converse API (`client.converse()`) |
 
 No other permissions are granted. `bedrock:InvokeModelWithResponseStream` is
@@ -248,6 +249,7 @@ suites.
 ## Troubleshooting
 
 **AccessDenied from Bedrock:**
+- Verify the IAM role has `bedrock:GetFoundationModel` for the model pre-check.
 - Verify model access is enabled in the Bedrock console.
 - Verify the IAM role has `bedrock:InvokeModel` on the correct model ARN.
 - Verify the region in `AWS_REGION` matches where model access was enabled.
