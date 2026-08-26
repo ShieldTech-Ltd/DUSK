@@ -65,6 +65,7 @@ def test_iam_policy_does_not_grant_admin_access() -> None:
                 assert not action.startswith("iam:"), f"IAM action found: {action}"
                 assert action in {
                     "bedrock:GetFoundationModel",
+                    "bedrock:ListInferenceProfiles",
                     "bedrock:InvokeModel",
                 }, f"Unexpected action: {action}"
             resources = stmt.get("Resource", [])
@@ -112,10 +113,8 @@ def test_model_resource_uses_region_reference_and_no_account_id() -> None:
     resource_raw = policy_doc["Statement"][0]["Resource"]
     resource = str(resource_raw)
     assert resource != "*", "Resource must not be a wildcard"
-    assert "::foundation-model" in resource, (
-        "Foundation model ARN must use double-colon (no account ID): "
-        "arn:aws:bedrock:{region}::foundation-model/{model-id}"
-    )
+    assert "inference-profile" in resource, "Inference profile ARN is required"
+    assert "AWS::AccountId" in resource, "Inference profile ARN must include account ID"
     # No literal 12-digit account IDs
     account_pattern = re.compile(r"(?<!:):(\d{12}):")
     assert not account_pattern.search(resource), "Hardcoded account ID in resource ARN"
@@ -243,8 +242,8 @@ def test_workflow_has_bedrock_availability_check() -> None:
         "Add a step that validates the model before running tests."
     )
     run_script = bedrock_check.get("run", "")
-    assert "get-foundation-model" in run_script, (
-        "Bedrock check step must call 'aws bedrock get-foundation-model'"
+    assert "list-inference-profiles" in run_script, (
+        "Bedrock check step must call 'aws bedrock list-inference-profiles'"
     )
 
 
@@ -264,6 +263,8 @@ def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
 
     workflow_text = _WORKFLOW_PATH.read_text(encoding="utf-8")
     required_actions = {"bedrock:InvokeModel"}
+    if "aws bedrock list-inference-profiles" in workflow_text:
+        required_actions.add("bedrock:ListInferenceProfiles")
     if "aws bedrock get-foundation-model" in workflow_text:
         required_actions.add("bedrock:GetFoundationModel")
 

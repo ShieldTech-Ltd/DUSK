@@ -93,6 +93,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - bedrock:ListInferenceProfiles
                   - bedrock:InvokeModel
                 Resource:
                   # Claude 4.x models require inference profiles (not direct
