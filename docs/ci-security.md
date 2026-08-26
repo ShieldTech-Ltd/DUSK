@@ -55,6 +55,12 @@ health checks, and verifies:
 - blocked actions leave downstream state unchanged
 - no SIE endpoint is needed because deterministic fallback remains available
 
+After the verdict verification phase, the sandbox runs a load phase: 100
+mixed requests at concurrency 10, with a p50 limit of 50 ms and a p95 limit
+of 200 ms. The load driver exits non-zero on any request error or latency
+breach, which fails the CI job. Load logs are saved alongside the evidence
+artifact.
+
 The shell wrapper always captures logs and removes containers, networks, and
 volumes. It deliberately uses `--no-build`; callers must build or pull the
 images they intend to test before invoking it.
@@ -64,11 +70,47 @@ images they intend to test before invoking it.
 `.github/workflows/deep-security.yml` runs weekly and on manual dispatch. It
 performs a full-history secret scan, refreshes dependency vulnerability data,
 rebuilds containers without layer cache, and rescans all project images. These
-slower checks do not delay pull-request feedback.
+slower checks do not delay pull-request feedback. General scans, policy
+mutation, authentication mutation, and Scorecard run as independent parallel
+jobs. Each job has its own timeout and result artifact; `deep-security-gate`
+fails when any job is failed or cancelled, or any of the 11 expected results is
+missing, duplicated, malformed, or failed.
+
+OpenSSF Scorecard also evaluates repository settings. Configure the repository
+secret `SCORECARD_TOKEN` with a fine-grained, read-only token limited to this
+repository and the `Administration: read` and `Metadata: read` permissions.
+GitHub's workflow token cannot read classic branch-protection settings; the
+Scorecard control therefore fails visibly when this secret is absent or loses
+access. The token is used only by the trusted scheduled/manual deep lane and is
+never exposed to pull-request jobs.
 
 Scheduled failures remain visible in GitHub Actions and must be investigated.
 No workflow automatically changes production state or files an external
 report.
+
+## Real-agent validation lane
+
+`.github/workflows/real-agent-sandbox.yml` runs separately from standard CI.
+It uses the protected `real-agent` environment and GitHub OIDC to assume a
+dedicated AWS role. The job receives `id-token: write` only at job scope and
+retains read-only repository access.
+
+Configure the environment with these variables:
+
+- `AWS_ROLE_ARN`: the dedicated Bedrock validation role
+- `AWS_REGION`: `us-east-1`
+- `BEDROCK_MODEL_ID`: `anthropic.claude-3-5-sonnet-20241022-v2:0`
+
+Store `DUSK_GATE_API_KEY` as an environment secret. Do not store long-lived AWS
+access keys. Restrict the AWS role trust policy to
+`repo:ShieldTech-Ltd/DUSK:environment:real-agent`, restrict its permissions to
+`bedrock:InvokeModel` for the configured model, and restrict environment
+deployments to `main` with required review.
+
+Run the first credentialed validation in `watch` mode. A valid evidence run
+must execute all seven real-LLM tests with zero skips and retain the JUnit report
+and redacted gate logs. Standard CI and skipped tests remain scripted evidence,
+not real-agent validation.
 
 ## Release lane
 

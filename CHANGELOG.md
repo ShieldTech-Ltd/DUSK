@@ -6,7 +6,26 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-No unreleased changes.
+### Security
+
+- Replaced long-lived AWS access-key secrets in the protected real-agent
+  workflow with job-scoped GitHub OIDC role assumption. Bedrock validation now
+  requires an approved environment, explicit role, region and model variables,
+  and the DUSK gate secret.
+
+### Added
+- CloudFormation template for GitHub OIDC provider and least-privilege IAM role
+  restricted to the `real-agent` environment, with only the model metadata and
+  invocation permissions used by the workflow (`infra/aws/bedrock-real-agent/template.yaml`).
+- PowerShell setup script (`scripts/setup-bedrock-oidc.ps1`) with read-only
+  validation and deployment modes.
+- Read-only validation wrapper (`scripts/test-bedrock-oidc-config.ps1`).
+- Infrastructure and workflow tests (`tests/ci/test_real_agent_infra.py`).
+- Operator documentation for Bedrock OIDC setup (`docs/bedrock-oidc-setup.md`).
+
+### Changed
+- `real-agent-sandbox.yml`: added concurrency group, AWS caller identity
+  verification step, and Bedrock model availability pre-check.
 
 ## [0.2.0], 2026-08-05
 

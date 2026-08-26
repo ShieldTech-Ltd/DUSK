@@ -35,3 +35,23 @@ $COMPOSE down --volumes --remove-orphans >/dev/null 2>&1 || true
 $COMPOSE up --detach --no-build --wait dusk-gate mock-prod
 python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
   | tee "$LOG_DIR/$MODE-evidence.json"
+
+# Load phase: 100 mixed requests at concurrency 10.
+# p50 must stay under 100 ms and p95 under 200 ms.
+# The load driver exits 1 on any request error or latency breach.
+# Do NOT pipe through tee: POSIX sh reports the last command's exit code
+# (tee's, which is always 0), not the load driver's. Redirect to file first,
+# then print; the if-condition context suppresses set -e so the exit code is
+# always captured.
+LOAD_LOG="$LOG_DIR/$MODE-load.log"
+if ! $COMPOSE run --rm --no-deps agent-demo \
+  python load_driver.py \
+    --concurrency 10 --total 100 --poisoned-ratio 0.2 \
+    --p50-limit-ms 100 --p95-limit-ms 200 \
+    > "$LOAD_LOG" 2>&1
+then
+  cat "$LOAD_LOG"
+  echo "load phase failed; see $LOAD_LOG" >&2
+  exit 1
+fi
+cat "$LOAD_LOG"
