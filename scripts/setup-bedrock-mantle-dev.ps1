@@ -242,6 +242,22 @@ if ($GitHubEnvironment -ne "real-agent-dev") {
 }
 Write-Host "Template OIDC subject restricts to environment:real-agent-dev."
 
+# GitHub uses an immutable, ID-qualified OIDC subject for this repository.
+# Resolve both IDs from the authenticated GitHub API instead of hard-coding
+# values that could silently become stale after an ownership change.
+$githubOrgId = gh api orgs/ShieldTech-Ltd --jq .id 2>&1
+if ($LASTEXITCODE -ne 0 -or $githubOrgId -notmatch '^\d+$') {
+    Write-Error "Could not resolve the immutable GitHub organisation ID."
+    exit 1
+}
+$githubRepoId = gh api repos/ShieldTech-Ltd/DUSK --jq .id 2>&1
+if ($LASTEXITCODE -ne 0 -or $githubRepoId -notmatch '^\d+$') {
+    Write-Error "Could not resolve the immutable GitHub repository ID."
+    exit 1
+}
+$expectedSubject = "repo:ShieldTech-Ltd@${githubOrgId}/DUSK@${githubRepoId}:environment:real-agent-dev"
+Write-Host "Resolved immutable GitHub OIDC identity for ShieldTech-Ltd/DUSK."
+
 # Validate-only path
 if (-not $Deploy) {
     Write-Host ""
@@ -263,6 +279,8 @@ Write-Host "=== Deploying CloudFormation stack: $StackName ==="
 $overrides = @(
     "GitHubOrg=ShieldTech-Ltd"
     "GitHubRepo=DUSK"
+    "GitHubOrgId=$githubOrgId"
+    "GitHubRepoId=$githubRepoId"
     "GitHubEnvironment=$GitHubEnvironment"
     "RoleName=$RoleName"
 )
@@ -327,7 +345,6 @@ $expectedProviderArn = if ($ExistingOidcProviderArn) {
 } else {
     "arn:${partition}:iam::$($identity.Account):oidc-provider/token.actions.githubusercontent.com"
 }
-$expectedSubject = "repo:ShieldTech-Ltd/DUSK:environment:real-agent-dev"
 $trustConditionNames = @($trust.Condition.PSObject.Properties.Name)
 $trustStringEqualsNames = @($trust.Condition.StringEquals.PSObject.Properties.Name | Sort-Object)
 $expectedTrustKeys = @(

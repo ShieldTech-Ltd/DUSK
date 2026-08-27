@@ -59,6 +59,13 @@ def test_dev_workflow_uses_separate_environment() -> None:
     assert job["environment"] != "real-agent"
 
 
+def test_dev_workflow_names_the_job_and_does_not_persist_checkout_credentials() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["name"] == "Real-agent Mantle dev validation"
+    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["persist-credentials"] is False
+
+
 def test_dev_workflow_has_separate_concurrency_group() -> None:
     dev = _dev_workflow()
     prod = _prod_workflow()
@@ -92,6 +99,11 @@ def test_dev_workflow_requires_bedrock_provider_env_var() -> None:
     ):
         assert var in run_script, f"Preflight must check {var}"
     assert "exit 1" in run_script
+
+
+def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
+    test_step = next(s for s in _dev_steps() if s.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
 
 
 def test_prod_workflow_remains_main_only() -> None:
@@ -131,9 +143,20 @@ def test_dev_template_oidc_trust_has_one_exact_statement() -> None:
     assert statement["Condition"]["StringEquals"] == {
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": {
-            "Fn::Sub": ("repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}")
+            "Fn::Sub": (
+                "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:"
+                "environment:${GitHubEnvironment}"
+            )
         },
     }
+
+
+def test_dev_template_requires_immutable_github_owner_and_repo_ids() -> None:
+    parameters = _dev_template()["Parameters"]
+    assert parameters["GitHubOrgId"]["AllowedPattern"] == "^[0-9]+$"
+    assert parameters["GitHubRepoId"]["AllowedPattern"] == "^[0-9]+$"
+    template_text = _DEV_TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "repo:${GitHubOrg}/${GitHubRepo}:environment:" not in template_text
 
 
 def test_dev_template_has_no_wildcard_actions() -> None:
@@ -226,6 +249,14 @@ def test_dev_setup_validates_the_published_role_arn_and_live_trust() -> None:
     assert "sts:AssumeRoleWithWebIdentity" in script
     assert "token.actions.githubusercontent.com:aud" in script
     assert "token.actions.githubusercontent.com:sub" in script
+    assert "gh api orgs/ShieldTech-Ltd --jq .id" in script
+    assert "gh api repos/ShieldTech-Ltd/DUSK --jq .id" in script
+    assert "GitHubOrgId=$githubOrgId" in script
+    assert "GitHubRepoId=$githubRepoId" in script
+    assert (
+        "repo:ShieldTech-Ltd@${githubOrgId}/DUSK@${githubRepoId}:environment:real-agent-dev"
+        in script
+    )
 
 
 def test_dev_template_has_no_invoke_model() -> None:
@@ -380,6 +411,15 @@ def test_dev_workflow_stop_containers_runs_always() -> None:
 def test_dev_workflow_fails_if_real_llm_tests_skipped() -> None:
     text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "skipped" in text.lower() and "exit 1" in text
+
+
+def test_dev_workflow_log_collection_is_stage_aware() -> None:
+    collect = next(s for s in _dev_steps() if s.get("name") == "Collect gate logs as evidence")
+    script = collect["run"]
+    assert "docker compose" in script
+    assert "ps -q dusk-gate" in script
+    assert "gate-not-started" in script
+    assert "if [ ! -s ci-logs/real-agent-gate.log ]" in script
 
 
 def test_dev_workflow_never_generates_or_prints_bearer_token() -> None:

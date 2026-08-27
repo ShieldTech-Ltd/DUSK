@@ -22,6 +22,14 @@ Parameters:
     Type: String
     Default: DUSK
     Description: Repository name without owner prefix (case-sensitive)
+  GitHubOrgId:
+    Type: String
+    AllowedPattern: "^[0-9]+$"
+    Description: Immutable numeric GitHub organisation ID
+  GitHubRepoId:
+    Type: String
+    AllowedPattern: "^[0-9]+$"
+    Description: Immutable numeric GitHub repository ID
   GitHubEnvironment:
     Type: String
     Default: real-agent-dev
@@ -85,7 +93,8 @@ Resources:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
                 # EXACT subject: the dev environment only, no wildcard.
                 "token.actions.githubusercontent.com:sub":
-                  Fn::Sub: "repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}"
+                  Fn::Sub: >-
+                    repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:environment:${GitHubEnvironment}
       Policies:
         - PolicyName: BedrockMantleDevInference
           PolicyDocument:
