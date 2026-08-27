@@ -17,6 +17,9 @@
 /scripts/                      @TFT444 @ritiksah141
 /docs/branch-protection.md     @TFT444 @ritiksah141
 /docs/threat-model.md          @TFT444 @ritiksah141
+/docs/adr/                     @TFT444 @ritiksah141
+/docs/control-plane-api-conventions.md @TFT444 @ritiksah141
+/docs/production-control-plane-threat-model.md @TFT444 @ritiksah141
 
 # Ritik's lane -- gate service, SIE, trace, packaging
 /src/dusk/core/                 @TFT444 @ritiksah141
