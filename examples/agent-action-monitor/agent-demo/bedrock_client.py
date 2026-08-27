@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 
 class DuskBlockedError(Exception):
@@ -86,7 +86,11 @@ class MantleClient:
         return f"MantleClient(model_id={self.model_id!r})"
 
     def chat_completions_create(
-        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        require_tool_call: bool = False,
     ) -> Any:  # noqa: ANN401 -- raw OpenAI SDK response object is dynamic
         """Call the model with OpenAI-format messages and tool definitions.
 
@@ -98,10 +102,16 @@ class MantleClient:
             The raw OpenAI-format response object. Pass it to
             :func:`extract_function_call` to pull the proposed tool call.
         """
+        request: dict[str, Any] = {
+            "model": self.model_id,
+            "messages": messages,
+            "tools": tools,
+            "temperature": 0,
+        }
+        if require_tool_call:
+            request["tool_choice"] = "required"
         return self._client.chat.completions.create(
-            model=self.model_id,
-            messages=messages,
-            tools=tools,
+            **request,
         )
 
 
@@ -171,6 +181,56 @@ def extract_function_call(openai_response: Any) -> dict[str, Any] | None:  # noq
         "name": _get(function, "name"),
         "arguments_json": _get(function, "arguments"),
     }
+
+
+def tool_config_to_openai_tools(tool_config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Translate Bedrock Converse tool specs into OpenAI function tools."""
+    tools: list[dict[str, Any]] = []
+    for entry in tool_config.get("tools", []):
+        spec = entry.get("toolSpec", {})
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": spec.get("name"),
+                    "description": spec.get("description", ""),
+                    "parameters": spec.get("inputSchema", {}).get("json", {}),
+                },
+            }
+        )
+    return tools
+
+
+def propose_tool_call(
+    *,
+    provider: str,
+    region: str,
+    model_id: str,
+    prompt_text: str,
+    tool_config: dict[str, Any],
+) -> tuple[str, dict[str, Any] | None]:
+    """Ask the selected provider for one action and normalize its tool call."""
+    if provider == "mantle":
+        mantle_client = build_mantle_client(region=region, model_id=model_id)
+        response = mantle_client.chat_completions_create(
+            messages=[{"role": "user", "content": prompt_text}],
+            tools=tool_config_to_openai_tools(tool_config),
+            require_tool_call=True,
+        )
+        return provider, extract_function_call(response)
+    if provider == "runtime":
+        from mock_bedrock import extract_tool_use
+
+        # boto3's generated client supports toolConfig, but its precise
+        # dynamic signature is not represented by our smaller Converse protocol.
+        runtime_client = cast(Any, build_real_client(region))
+        response = runtime_client.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": prompt_text}]}],
+            toolConfig=tool_config,
+        )
+        return provider, extract_tool_use(response)
+    raise ValueError(f"Unknown provider: {provider!r}")
 
 
 def _get(obj: Any, key: str) -> Any:  # noqa: ANN401 -- dict or SDK object, both dynamic

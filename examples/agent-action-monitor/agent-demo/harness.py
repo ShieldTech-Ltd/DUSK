@@ -68,6 +68,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     provider = os.getenv("BEDROCK_PROVIDER", "runtime")
     if provider == "mantle":
         from bedrock_client import build_mantle_client, extract_function_call
+
         from dusk.actions.adapters.mantle import MantleAdapter
 
         region = os.getenv("AWS_REGION", "us-east-1")

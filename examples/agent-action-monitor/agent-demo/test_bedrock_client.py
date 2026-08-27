@@ -11,8 +11,11 @@ import pytest
 from bedrock_client import (
     DuskBedrockClient,
     DuskBlockedError,
+    MantleClient,
     build_provider_client,
     extract_function_call,
+    propose_tool_call,
+    tool_config_to_openai_tools,
 )
 
 
@@ -144,6 +147,21 @@ def test_mantle_client_does_not_echo_token_in_repr(monkeypatch):
     assert "super-secret-token-xyz" not in str(client)
 
 
+def test_mantle_client_can_require_a_tool_call():
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "moonshotai.kimi-k2.5")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "update firewall"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["tool_choice"] == "required"
+    assert request["temperature"] == 0
+
+
 # --- extract_function_call -------------------------------------------------
 
 
@@ -183,3 +201,101 @@ def test_extract_function_call_returns_first_tool_call():
 def test_extract_function_call_handles_missing_choices():
     assert extract_function_call({}) is None
     assert extract_function_call({"choices": []}) is None
+
+
+def _bedrock_tool_config() -> dict[str, Any]:
+    return {
+        "tools": [
+            {
+                "toolSpec": {
+                    "name": "update_firewall_rule",
+                    "description": "Update a firewall rule.",
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {"target": {"type": "string"}},
+                            "required": ["target"],
+                        }
+                    },
+                }
+            }
+        ]
+    }
+
+
+def test_tool_config_to_openai_tools_preserves_schema():
+    tools = tool_config_to_openai_tools(_bedrock_tool_config())
+    assert tools == [
+        {
+            "type": "function",
+            "function": {
+                "name": "update_firewall_rule",
+                "description": "Update a firewall rule.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"target": {"type": "string"}},
+                    "required": ["target"],
+                },
+            },
+        }
+    ]
+
+
+def test_propose_tool_call_uses_mantle_when_selected(monkeypatch):
+    response = _openai_response_with_tool_call()
+    mantle_client = MagicMock()
+    mantle_client.chat_completions_create.return_value = response
+    monkeypatch.setattr("bedrock_client.build_mantle_client", lambda **kwargs: mantle_client)
+
+    provider, tool_call = propose_tool_call(
+        provider="mantle",
+        region="eu-west-2",
+        model_id="moonshotai.kimi-k2.5",
+        prompt_text="update the route",
+        tool_config=_bedrock_tool_config(),
+    )
+
+    assert provider == "mantle"
+    assert tool_call == {
+        "id": "call_abc123",
+        "name": "update_route_table",
+        "arguments_json": '{"target": "rt-1"}',
+    }
+    mantle_client.chat_completions_create.assert_called_once()
+    assert mantle_client.chat_completions_create.call_args.kwargs["require_tool_call"] is True
+
+
+def test_propose_tool_call_keeps_runtime_converse_path(monkeypatch):
+    runtime_client = MagicMock()
+    runtime_client.converse.return_value = {
+        "output": {
+            "message": {
+                "content": [
+                    {
+                        "toolUse": {
+                            "toolUseId": "runtime-1",
+                            "name": "update_firewall_rule",
+                            "input": {"target": "fw-1"},
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    monkeypatch.setattr("bedrock_client.build_real_client", lambda region: runtime_client)
+
+    provider, tool_call = propose_tool_call(
+        provider="runtime",
+        region="us-east-1",
+        model_id="claude",
+        prompt_text="update firewall",
+        tool_config=_bedrock_tool_config(),
+    )
+
+    assert provider == "runtime"
+    assert tool_call["name"] == "update_firewall_rule"
+    runtime_client.converse.assert_called_once_with(
+        modelId="claude",
+        messages=[{"role": "user", "content": [{"text": "update firewall"}]}],
+        toolConfig=_bedrock_tool_config(),
+    )
