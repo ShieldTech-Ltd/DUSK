@@ -6,9 +6,10 @@ Description: >
   only. Pull requests, arbitrary branches, forks, the production real-agent
   environment, and any other environment cannot assume this role.
 
-  Unlike the production stack, this role grants ONLY
-  bedrock:GetFoundationModelToken. The Mantle call is made through an
-  OpenAI-compatible client using a short-term bearer token, so no
+  Unlike the production stack, this role grants the minimum Mantle
+  authentication, project-read, and inference permissions needed by the
+  OpenAI-compatible client. Bearer-token use is restricted to SHORT_TERM
+  tokens, and no
   bedrock:InvokeModel or bedrock:ListInferenceProfiles permission is needed.
   No account IDs are hard-coded. Deploy with aws cloudformation deploy.
 
@@ -86,20 +87,29 @@ Resources:
                 "token.actions.githubusercontent.com:sub":
                   Fn::Sub: "repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}"
       Policies:
-        - PolicyName: BedrockGetFoundationModelTokenOnly
+        - PolicyName: BedrockMantleDevInference
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                # bedrock:GetFoundationModelToken does not support
-                # resource-level scoping in AWS's service authorization
-                # reference, so it must be granted on "*". This is the only
-                # action this role holds; there is no InvokeModel and no
-                # ListInferenceProfiles here because Mantle authenticates the
-                # OpenAI-compatible call with the short-term bearer token this
-                # action mints, not with a boto3 InvokeModel call.
-                Action: bedrock:GetFoundationModelToken
+                # CallWithBearerToken does not support resource-level
+                # scoping, so it must be granted on "*". Restrict it to
+                # short-term tokens and keep runtime inference actions out of
+                # this role.
+                Action: bedrock-mantle:CallWithBearerToken
                 Resource: "*"
+                Condition:
+                  StringEquals:
+                    "bedrock-mantle:bearerTokenType": SHORT_TERM
+              - Effect: Allow
+                Action:
+                  - bedrock-mantle:CreateInference
+                  - bedrock-mantle:GetProject
+                  - bedrock-mantle:ListProjects
+                  - bedrock-mantle:ListTagsForResource
+                Resource:
+                  Fn::Sub: >-
+                    arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*
 
 Outputs:
   RoleArn:

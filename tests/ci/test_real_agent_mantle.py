@@ -13,6 +13,7 @@ _DEV_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox-dev.yml")
 _PROD_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
 _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
+_DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
 
 _DEV_JOB = "real-agent-dev-validation"
@@ -114,6 +115,29 @@ def test_dev_template_oidc_subject_is_exact_no_wildcard() -> None:
     assert "real-agent-dev" in sub_value or "GitHubEnvironment" in sub_value
 
 
+def test_dev_template_oidc_trust_has_one_exact_statement() -> None:
+    trust = _dev_role()["Properties"]["AssumeRolePolicyDocument"]
+    assert len(trust["Statement"]) == 1
+    statement = trust["Statement"][0]
+    assert statement["Effect"] == "Allow"
+    assert statement["Action"] == "sts:AssumeRoleWithWebIdentity"
+    assert statement["Principal"]["Federated"] == {
+        "Fn::If": [
+            "CreateOidcProvider",
+            {"Fn::GetAtt": ["GitHubOidcProvider", "Arn"]},
+            {"Ref": "ExistingOidcProviderArn"},
+        ]
+    }
+    assert statement["Condition"]["StringEquals"] == {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": {
+            "Fn::Sub": (
+                "repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}"
+            )
+        },
+    }
+
+
 def test_dev_template_has_no_wildcard_actions() -> None:
     role = _dev_role()
     for policy in role["Properties"]["Policies"]:
@@ -126,14 +150,93 @@ def test_dev_template_has_no_wildcard_actions() -> None:
                 assert not action.startswith("iam:")
 
 
-def test_dev_template_get_foundation_model_token_action_present() -> None:
+def test_dev_template_allows_only_short_term_mantle_bearer_tokens() -> None:
     role = _dev_role()
-    actions = set()
+    statements = []
     for policy in role["Properties"]["Policies"]:
-        for stmt in policy["PolicyDocument"]["Statement"]:
-            a = stmt["Action"]
-            actions.update([a] if isinstance(a, str) else a)
-    assert "bedrock:GetFoundationModelToken" in actions
+        statements.extend(policy["PolicyDocument"]["Statement"])
+
+    mantle_statement = next(
+        stmt
+        for stmt in statements
+        if stmt["Action"] == "bedrock-mantle:CallWithBearerToken"
+    )
+    assert mantle_statement["Resource"] == "*"
+    assert mantle_statement["Condition"] == {
+        "StringEquals": {"bedrock-mantle:bearerTokenType": "SHORT_TERM"}
+    }
+
+    actions = {
+        action
+        for stmt in statements
+        for action in (
+            [stmt["Action"]] if isinstance(stmt["Action"], str) else stmt["Action"]
+        )
+    }
+    assert "bedrock:GetFoundationModelToken" not in actions
+
+
+def test_dev_template_grants_scoped_mantle_inference_permissions() -> None:
+    role = _dev_role()
+    statements = [
+        stmt
+        for policy in role["Properties"]["Policies"]
+        for stmt in policy["PolicyDocument"]["Statement"]
+    ]
+    inference_statement = next(
+        stmt
+        for stmt in statements
+        if "bedrock-mantle:CreateInference" in stmt["Action"]
+    )
+    assert set(inference_statement["Action"]) == {
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+    assert inference_statement["Resource"] == {
+        "Fn::Sub": (
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:"
+            "${AWS::AccountId}:project/*"
+        )
+    }
+
+
+def test_dev_template_action_allowlist_is_exact() -> None:
+    actions = {
+        action
+        for policy in _dev_role()["Properties"]["Policies"]
+        for statement in policy["PolicyDocument"]["Statement"]
+        for action in (
+            [statement["Action"]]
+            if isinstance(statement["Action"], str)
+            else statement["Action"]
+        )
+    }
+    assert actions == {
+        "bedrock-mantle:CallWithBearerToken",
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+
+
+def test_dev_setup_rejects_extra_effective_role_permissions() -> None:
+    script = _DEV_SETUP_PATH.read_text(encoding="utf-8")
+    assert "list-attached-role-policies" in script
+    assert "$policyNames.Count -ne 1" in script
+    assert "$policy.PolicyDocument.Statement.Count -ne 2" in script
+    assert "Unexpected action" in script
+
+
+def test_dev_setup_validates_the_published_role_arn_and_live_trust() -> None:
+    script = _DEV_SETUP_PATH.read_text(encoding="utf-8")
+    assert "$roleArn -ne $expectedRoleArn" in script
+    assert "aws iam get-role --role-name $RoleName" in script
+    assert "sts:AssumeRoleWithWebIdentity" in script
+    assert "token.actions.githubusercontent.com:aud" in script
+    assert "token.actions.githubusercontent.com:sub" in script
 
 
 def test_dev_template_has_no_invoke_model() -> None:
