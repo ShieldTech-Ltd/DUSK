@@ -5,6 +5,11 @@ self-contained HTTP gate example. Both consume the same canonical agent-action
 shape and apply per-agent behavioural analysis, but they have deliberately
 different deployment boundaries.
 
+The proposed production control-plane service is intentionally a third, separate
+boundary. Its reviewed design is recorded in
+[ADR 0001](adr/0001-production-control-plane.md). It is not described as an
+implemented capability until the corresponding production issues land.
+
 ## Current gate implementation
 
 ![DUSK agent-action-monitor implementation architecture](../examples/agent-action-monitor/docs/architecture.svg)
@@ -59,3 +64,5 @@ attacker from slowly teaching malicious behavior as normal.
 - [Gate Docker verification](gate-docker-verification.md)
 - [Gate latency notes](gate-latency-notes.md)
 - [Threat model](threat-model.md)
+- [Production control-plane threat model](production-control-plane-threat-model.md)
+- [Control-plane API conventions](control-plane-api-conventions.md)
