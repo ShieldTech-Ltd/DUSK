@@ -1,0 +1,458 @@
+"""CI tests for the Bedrock Mantle dev-validation workflow, IAM, and adapter."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+import yaml
+
+_DEV_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox-dev.yml")
+_PROD_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
+_DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
+_PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
+_DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
+_LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
+
+_DEV_JOB = "real-agent-dev-validation"
+
+
+def _dev_workflow() -> dict:
+    return yaml.safe_load(_DEV_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def _prod_workflow() -> dict:
+    return yaml.safe_load(_PROD_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+
+def _dev_template() -> dict:
+    return yaml.safe_load(_DEV_TEMPLATE_PATH.read_text(encoding="utf-8"))
+
+
+def _dev_role() -> dict:
+    t = _dev_template()
+    return t["Resources"]["DuskMantleDevRole"]
+
+
+def _dev_steps() -> list[dict]:
+    return _dev_workflow()["jobs"][_DEV_JOB]["steps"]
+
+
+# --- Dev workflow structure ------------------------------------------------
+
+
+def test_dev_workflow_is_dev_only() -> None:
+    steps = _dev_steps()
+    ref_check = next((s for s in steps if "refs/heads/dev" in s.get("run", "")), None)
+    assert ref_check is not None, "Dev workflow must gate on refs/heads/dev"
+    assert "exit 1" in ref_check["run"]
+    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "refs/heads/main" not in text, "Dev workflow must not gate on main"
+
+
+def test_dev_workflow_uses_separate_environment() -> None:
+    w = _dev_workflow()
+    job = w["jobs"][_DEV_JOB]
+    assert job["environment"] == "real-agent-dev"
+    assert job["environment"] != "real-agent"
+
+
+def test_dev_workflow_names_the_job_and_does_not_persist_checkout_credentials() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["name"] == "Real-agent Mantle dev validation"
+    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["persist-credentials"] is False
+
+
+def test_dev_workflow_has_separate_concurrency_group() -> None:
+    dev = _dev_workflow()
+    prod = _prod_workflow()
+    assert "concurrency" in dev
+    dev_group = dev["concurrency"]["group"]
+    prod_group = prod["concurrency"]["group"]
+    assert dev_group != prod_group
+    assert "mantle-dev" in dev_group
+    assert dev["concurrency"].get("cancel-in-progress") is False
+
+
+def test_dev_workflow_is_dispatch_only() -> None:
+    w = _dev_workflow()
+    on = w[True] if True in w else w["on"]
+    assert "workflow_dispatch" in on
+    assert "schedule" not in on, "Dev validation must be dispatch-only, no schedule"
+
+
+def test_dev_workflow_requires_bedrock_provider_env_var() -> None:
+    w = _dev_workflow()
+    job = w["jobs"][_DEV_JOB]
+    preflight = next((s for s in job["steps"] if "preflight" in s.get("name", "").lower()), None)
+    assert preflight is not None
+    run_script = preflight.get("run", "")
+    for var in (
+        "AWS_ROLE_ARN",
+        "AWS_REGION",
+        "BEDROCK_PROVIDER",
+        "BEDROCK_MODEL_ID",
+        "DUSK_GATE_API_KEY",
+    ):
+        assert var in run_script, f"Preflight must check {var}"
+    assert "exit 1" in run_script
+
+
+def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
+    test_step = next(s for s in _dev_steps() if s.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
+
+
+def test_dev_workflow_starts_only_persistent_compose_services() -> None:
+    start_step = next(
+        s for s in _dev_steps() if s.get("name") == "Start gate and mock-prod via Docker Compose"
+    )
+    compose_up_lines = [
+        line.strip()
+        for line in start_step["run"].splitlines()
+        if "docker compose" in line and " up " in f" {line} "
+    ]
+
+    assert compose_up_lines == [
+        "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
+    ], (
+        "The real-agent workflow must start only persistent services. Starting the one-shot "
+        "agent-demo service makes `docker compose up --wait` return exit code 1 after the "
+        "container exits successfully."
+    )
+
+
+def test_prod_workflow_remains_main_only() -> None:
+    """Regression: the prod workflow must still gate on main, not dev."""
+    text = _PROD_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "refs/heads/main" in text
+    assert "refs/heads/dev" not in text
+
+
+# --- Dev IAM ---------------------------------------------------------------
+
+
+def test_dev_template_oidc_subject_is_exact_no_wildcard() -> None:
+    role = _dev_role()
+    trust = role["Properties"]["AssumeRolePolicyDocument"]
+    statement = trust["Statement"][0]
+    condition = statement["Condition"]["StringEquals"]
+    sub = condition["token.actions.githubusercontent.com:sub"]
+    sub_value = str(sub)
+    assert "*" not in sub_value
+    assert "real-agent-dev" in sub_value or "GitHubEnvironment" in sub_value
+
+
+def test_dev_template_oidc_trust_has_one_exact_statement() -> None:
+    trust = _dev_role()["Properties"]["AssumeRolePolicyDocument"]
+    assert len(trust["Statement"]) == 1
+    statement = trust["Statement"][0]
+    assert statement["Effect"] == "Allow"
+    assert statement["Action"] == "sts:AssumeRoleWithWebIdentity"
+    assert statement["Principal"]["Federated"] == {
+        "Fn::If": [
+            "CreateOidcProvider",
+            {"Fn::GetAtt": ["GitHubOidcProvider", "Arn"]},
+            {"Ref": "ExistingOidcProviderArn"},
+        ]
+    }
+    assert statement["Condition"]["StringEquals"] == {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": {
+            "Fn::Sub": (
+                "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:"
+                "environment:${GitHubEnvironment}"
+            )
+        },
+    }
+
+
+def test_dev_template_requires_immutable_github_owner_and_repo_ids() -> None:
+    parameters = _dev_template()["Parameters"]
+    assert parameters["GitHubOrgId"]["AllowedPattern"] == "^[0-9]+$"
+    assert parameters["GitHubRepoId"]["AllowedPattern"] == "^[0-9]+$"
+    template_text = _DEV_TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "repo:${GitHubOrg}/${GitHubRepo}:environment:" not in template_text
+
+
+def test_dev_template_has_no_wildcard_actions() -> None:
+    role = _dev_role()
+    for policy in role["Properties"]["Policies"]:
+        for stmt in policy["PolicyDocument"]["Statement"]:
+            actions = stmt["Action"]
+            if isinstance(actions, str):
+                actions = [actions]
+            for action in actions:
+                assert action != "*", f"Wildcard action found: {action}"
+                assert not action.startswith("iam:")
+
+
+def test_dev_template_allows_only_short_term_mantle_bearer_tokens() -> None:
+    role = _dev_role()
+    statements = []
+    for policy in role["Properties"]["Policies"]:
+        statements.extend(policy["PolicyDocument"]["Statement"])
+
+    mantle_statement = next(
+        stmt for stmt in statements if stmt["Action"] == "bedrock-mantle:CallWithBearerToken"
+    )
+    assert mantle_statement["Resource"] == "*"
+    assert mantle_statement["Condition"] == {
+        "StringEquals": {"bedrock-mantle:bearerTokenType": "SHORT_TERM"}
+    }
+
+    actions = {
+        action
+        for stmt in statements
+        for action in ([stmt["Action"]] if isinstance(stmt["Action"], str) else stmt["Action"])
+    }
+    assert "bedrock:GetFoundationModelToken" not in actions
+
+
+def test_dev_template_grants_scoped_mantle_inference_permissions() -> None:
+    role = _dev_role()
+    statements = [
+        stmt
+        for policy in role["Properties"]["Policies"]
+        for stmt in policy["PolicyDocument"]["Statement"]
+    ]
+    inference_statement = next(
+        stmt for stmt in statements if "bedrock-mantle:CreateInference" in stmt["Action"]
+    )
+    assert set(inference_statement["Action"]) == {
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+    assert inference_statement["Resource"] == {
+        "Fn::Sub": (
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*"
+        )
+    }
+
+
+def test_dev_template_action_allowlist_is_exact() -> None:
+    actions = {
+        action
+        for policy in _dev_role()["Properties"]["Policies"]
+        for statement in policy["PolicyDocument"]["Statement"]
+        for action in (
+            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
+        )
+    }
+    assert actions == {
+        "bedrock-mantle:CallWithBearerToken",
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+
+
+def test_dev_setup_rejects_extra_effective_role_permissions() -> None:
+    script = _DEV_SETUP_PATH.read_text(encoding="utf-8")
+    assert "list-attached-role-policies" in script
+    assert "$policyNames.Count -ne 1" in script
+    assert "$policy.PolicyDocument.Statement.Count -ne 2" in script
+    assert "Unexpected action" in script
+
+
+def test_dev_setup_validates_the_published_role_arn_and_live_trust() -> None:
+    script = _DEV_SETUP_PATH.read_text(encoding="utf-8")
+    assert "$roleArn -ne $expectedRoleArn" in script
+    assert "aws iam get-role --role-name $RoleName" in script
+    assert "sts:AssumeRoleWithWebIdentity" in script
+    assert "token.actions.githubusercontent.com:aud" in script
+    assert "token.actions.githubusercontent.com:sub" in script
+    assert "gh api orgs/ShieldTech-Ltd --jq .id" in script
+    assert "gh api repos/ShieldTech-Ltd/DUSK --jq .id" in script
+    assert "GitHubOrgId=$githubOrgId" in script
+    assert "GitHubRepoId=$githubRepoId" in script
+    assert (
+        "repo:ShieldTech-Ltd@${githubOrgId}/DUSK@${githubRepoId}:environment:real-agent-dev"
+        in script
+    )
+
+
+def test_dev_template_has_no_invoke_model() -> None:
+    """Mantle uses a bearer token via the OpenAI client, not boto3 InvokeModel."""
+    role = _dev_role()
+    actions = set()
+    for policy in role["Properties"]["Policies"]:
+        for stmt in policy["PolicyDocument"]["Statement"]:
+            a = stmt["Action"]
+            actions.update([a] if isinstance(a, str) else a)
+    assert "bedrock:InvokeModel" not in actions
+    assert "bedrock:ListInferenceProfiles" not in actions
+
+
+def test_dev_template_separate_from_prod_template() -> None:
+    assert _DEV_TEMPLATE_PATH.exists()
+    assert _PROD_TEMPLATE_PATH.exists()
+    assert _DEV_TEMPLATE_PATH != _PROD_TEMPLATE_PATH
+    dev = _dev_template()
+    # Dev role name must differ from prod role name.
+    assert dev["Resources"]["DuskMantleDevRole"]["Properties"]["RoleName"]["Ref"] == "RoleName"
+    assert dev["Parameters"]["RoleName"]["Default"] == "DuskRealAgentDevMantleRole"
+
+
+# --- MantleAdapter ---------------------------------------------------------
+
+
+def _function_call(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "id": "call_abc123",
+        "name": "update_firewall_rule",
+        "arguments_json": json.dumps({"target": "fw-x", "before": None, "after": {"port": 22}}),
+    }
+    base.update(overrides)
+    return base
+
+
+def test_mantle_adapter_parses_valid_function_call() -> None:
+    from dusk.actions.adapters.mantle import MantleAdapter
+
+    action = MantleAdapter().parse_function_call(
+        _function_call(),
+        agent_id="agent-x",
+        timestamp=datetime(2026, 7, 10, tzinfo=UTC),
+    )
+    assert action.source == "mantle"
+    assert action.target == "fw-x"
+    assert action.action_type == "firewall_rule_change"
+
+
+def test_mantle_adapter_raises_on_malformed_json() -> None:
+    from dusk.actions.adapters.base import AdapterError
+    from dusk.actions.adapters.mantle import MantleAdapter
+
+    with pytest.raises(AdapterError):
+        MantleAdapter().parse_function_call(
+            _function_call(arguments_json="{bad json"),
+            agent_id="agent-x",
+            timestamp=datetime(2026, 7, 10, tzinfo=UTC),
+        )
+
+
+def test_mantle_adapter_raises_on_missing_target() -> None:
+    from dusk.actions.adapters.base import AdapterError
+    from dusk.actions.adapters.mantle import MantleAdapter
+
+    with pytest.raises(AdapterError):
+        MantleAdapter().parse_function_call(
+            _function_call(arguments_json=json.dumps({"after": {}})),
+            agent_id="agent-x",
+            timestamp=datetime(2026, 7, 10, tzinfo=UTC),
+        )
+
+
+def test_mantle_adapter_raises_on_unexpected_tool() -> None:
+    from dusk.actions.adapters.base import AdapterError
+    from dusk.actions.adapters.mantle import MantleAdapter
+
+    with pytest.raises(AdapterError):
+        MantleAdapter().parse_function_call(
+            _function_call(
+                name="rm_rf_root",
+                arguments_json=json.dumps({"target": "x"}),
+            ),
+            agent_id="agent-x",
+            timestamp=datetime(2026, 7, 10, tzinfo=UTC),
+        )
+
+
+def test_mantle_adapter_no_auth_header_in_error_messages() -> None:
+    from dusk.actions.adapters.base import AdapterError
+    from dusk.actions.adapters.mantle import MantleAdapter
+
+    try:
+        MantleAdapter().parse_function_call(
+            _function_call(arguments_json="{bad"),
+            agent_id="agent-x",
+            timestamp=datetime(2026, 7, 10, tzinfo=UTC),
+        )
+    except AdapterError as exc:
+        message = str(exc).lower()
+        assert "authorization" not in message
+        assert "bearer" not in message
+
+
+# --- Dependencies ----------------------------------------------------------
+
+
+def test_requirements_lock_file_contains_openai_with_hash() -> None:
+    text = _LOCK_FILE_PATH.read_text(encoding="utf-8")
+    assert "openai==" in text
+    # The openai entry must carry at least one sha256 hash.
+    lines = text.splitlines()
+    idx = next(i for i, ln in enumerate(lines) if ln.startswith("openai=="))
+    window = "\n".join(lines[idx : idx + 6])
+    assert "--hash=sha256:" in window
+
+
+def test_requirements_lock_file_contains_aws_bedrock_token_generator() -> None:
+    text = _LOCK_FILE_PATH.read_text(encoding="utf-8")
+    assert "aws-bedrock-token-generator==" in text
+    lines = text.splitlines()
+    idx = next(i for i, ln in enumerate(lines) if ln.startswith("aws-bedrock-token-generator=="))
+    window = "\n".join(lines[idx : idx + 6])
+    assert "--hash=sha256:" in window
+
+
+# --- Evidence --------------------------------------------------------------
+
+
+def test_dev_workflow_evidence_upload_runs_always() -> None:
+    w = _dev_workflow()
+    job = w["jobs"][_DEV_JOB]
+    upload = next(
+        (s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact")),
+        None,
+    )
+    assert upload is not None
+    assert upload.get("if") == "always()"
+    assert upload["with"]["retention-days"] == 30
+
+
+def test_dev_workflow_stop_containers_runs_always() -> None:
+    w = _dev_workflow()
+    job = w["jobs"][_DEV_JOB]
+    stop = next((s for s in job["steps"] if "stop" in s.get("name", "").lower()), None)
+    assert stop is not None
+    assert stop.get("if") == "always()"
+    assert stop["env"]["DUSK_GATE_API_KEY"] == "${{ secrets.DUSK_GATE_API_KEY }}"
+
+
+def test_dev_workflow_fails_if_real_llm_tests_skipped() -> None:
+    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "skipped" in text.lower() and "exit 1" in text
+
+
+def test_dev_workflow_log_collection_is_stage_aware() -> None:
+    collect = next(s for s in _dev_steps() if s.get("name") == "Collect gate logs as evidence")
+    script = collect["run"]
+    assert "docker compose" in script
+    assert "ps -q dusk-gate" in script
+    assert "gate-not-started" in script
+    assert "if [ ! -s ci-logs/real-agent-gate.log ]" in script
+
+
+def test_dev_workflow_never_generates_or_prints_bearer_token() -> None:
+    """The workflow must not mint or surface a bearer token in any step.
+
+    The token is minted inside the Python client only. The workflow may
+    mention 'bearer' in an explanatory comment, but it must never invoke the
+    token generator, the token-minting CLI, or echo a token value.
+    """
+    steps = _dev_steps()
+    for step in steps:
+        run_script = step.get("run", "").lower()
+        assert "provide_token" not in run_script
+        assert "get-foundation-model-token" not in run_script
+        # No step should echo/print a variable named like a token.
+        assert "echo $token" not in run_script
+        assert 'echo "$token' not in run_script

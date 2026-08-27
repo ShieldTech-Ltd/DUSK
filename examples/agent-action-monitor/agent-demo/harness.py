@@ -13,6 +13,35 @@ from mock_bedrock import MockBedrock, extract_tool_use
 _DEFAULT_GATE_URL = "http://localhost:8000/v1/gate"
 _DEFAULT_MOCK_PROD_URL = "http://localhost:9000/apply"
 
+#: OpenAI-format tool definitions for the Mantle provider path. Mirrors the
+#: five DUSK control-plane tools the Bedrock toolConfig exposes, translated
+#: into the OpenAI `tools` schema the Mantle endpoint expects.
+_MANTLE_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string"},
+                    "before": {"type": ["object", "null"]},
+                    "after": {"type": ["object", "null"]},
+                },
+                "required": ["target"],
+            },
+        },
+    }
+    for name, description in (
+        ("update_route_table", "Update an existing route-table entry."),
+        ("update_firewall_rule", "Create or modify a firewall rule."),
+        ("assign_role", "Assign an IAM role to a principal."),
+        ("copy_data", "Copy data between storage locations."),
+        ("delete_resource", "Permanently delete a named resource."),
+    )
+]
+
 
 def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     """Run one scenario end to end and return the outcome.
@@ -36,24 +65,44 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
             rather than raises so a demo script can print both outcomes
             without a try/except per scenario.
     """
-    use_real_bedrock = os.getenv("USE_REAL_BEDROCK", "false").lower() == "true"
-    if use_real_bedrock:
-        from bedrock_client import build_real_client
+    provider = os.getenv("BEDROCK_PROVIDER", "runtime")
+    if provider == "mantle":
+        from bedrock_client import build_mantle_client, extract_function_call
 
-        client = DuskBedrockClient(client=build_real_client())
+        from dusk.actions.adapters.mantle import MantleAdapter
+
+        region = os.getenv("AWS_REGION", "us-east-1")
+        model_id = os.getenv("BEDROCK_MODEL_ID", "")
+        mantle_client = build_mantle_client(region=region, model_id=model_id)
+        response = mantle_client.chat_completions_create(
+            messages=[{"role": "user", "content": scenario}],
+            tools=_MANTLE_TOOLS,
+        )
+        function_call = extract_function_call(response)
+        if function_call is None:
+            return {"verdict": "NO_ACTION", "action": None, "applied": False}
+        action = MantleAdapter().parse_function_call(
+            function_call, agent_id=agent_id, timestamp=datetime.now(UTC)
+        )
     else:
-        client = DuskBedrockClient(client=MockBedrock(scenario=scenario))  # type: ignore[arg-type]
+        use_real_bedrock = os.getenv("USE_REAL_BEDROCK", "false").lower() == "true"
+        if use_real_bedrock:
+            from bedrock_client import build_real_client
 
-    response = client.converse(messages=[{"role": "user", "content": [{"text": scenario}]}])
-    tool_use = extract_tool_use(response)
-    if tool_use is None:
-        return {"verdict": "NO_ACTION", "action": None, "applied": False}
+            client = DuskBedrockClient(client=build_real_client())
+        else:
+            client = DuskBedrockClient(client=MockBedrock(scenario=scenario))  # type: ignore[arg-type]
 
-    from dusk.actions.adapters.bedrock import BedrockAdapter
+        response = client.converse(messages=[{"role": "user", "content": [{"text": scenario}]}])
+        tool_use = extract_tool_use(response)
+        if tool_use is None:
+            return {"verdict": "NO_ACTION", "action": None, "applied": False}
 
-    action = BedrockAdapter().parse_tool_use(
-        tool_use, agent_id=agent_id, timestamp=datetime.now(UTC)
-    )
+        from dusk.actions.adapters.bedrock import BedrockAdapter
+
+        action = BedrockAdapter().parse_tool_use(
+            tool_use, agent_id=agent_id, timestamp=datetime.now(UTC)
+        )
 
     gate_url = os.getenv("DUSK_GATE_URL", _DEFAULT_GATE_URL)
     gate_api_key = os.getenv("DUSK_GATE_API_KEY", "")

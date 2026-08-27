@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 
 class DuskBlockedError(Exception):
@@ -63,3 +63,207 @@ def build_real_client(region: str = "us-east-1") -> BedrockConverseClient:
     import boto3
 
     return boto3.client("bedrock-runtime", region_name=region)  # type: ignore[no-any-return]
+
+
+class MantleClient:
+    """Wrap an OpenAI-compatible client for the Bedrock Mantle endpoint.
+
+    Mantle speaks the OpenAI Chat Completions protocol rather than the
+    Bedrock Converse protocol, so this client is a peer of
+    :class:`DuskBedrockClient` rather than a drop-in for it. The bearer
+    token used for auth is held only inside the wrapped OpenAI client and
+    is never stored as an attribute here, so it cannot leak through repr()
+    or logging of this object.
+    """
+
+    def __init__(self, client: Any, model_id: str) -> None:  # noqa: ANN401
+        self._client = client
+        self.model_id = model_id
+
+    def __repr__(self) -> str:
+        # Deliberately omit the wrapped client (which holds the bearer
+        # token) so the token can never surface in logs or tracebacks.
+        return f"MantleClient(model_id={self.model_id!r})"
+
+    def chat_completions_create(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        require_tool_call: bool = False,
+    ) -> Any:  # noqa: ANN401 -- raw OpenAI SDK response object is dynamic
+        """Call the model with OpenAI-format messages and tool definitions.
+
+        Args:
+            messages: OpenAI Chat Completions-shaped message history.
+            tools: OpenAI function/tool definitions the model may call.
+
+        Returns:
+            The raw OpenAI-format response object. Pass it to
+            :func:`extract_function_call` to pull the proposed tool call.
+        """
+        request: dict[str, Any] = {
+            "model": self.model_id,
+            "messages": messages,
+            "tools": tools,
+            "temperature": 0,
+        }
+        if require_tool_call:
+            request["tool_choice"] = "required"
+        return self._client.chat.completions.create(
+            **request,
+        )
+
+
+def build_mantle_client(region: str, model_id: str) -> MantleClient:
+    """Return a MantleClient authenticated with a short-term Bedrock token.
+
+    The token generator is imported inside this function (not at module
+    scope) so tests can stub the ``aws_bedrock_token_generator`` and
+    ``openai`` modules without them being installed. The generated bearer
+    token is passed straight into the OpenAI client and is never logged,
+    printed, returned, or stored on the returned object.
+
+    Args:
+        region: AWS region hosting the Mantle endpoint (e.g. eu-west-2).
+        model_id: Mantle model identifier (e.g. the Kimi K2.5 model ID).
+
+    Raises:
+        RuntimeError: If the token generator returns a falsy token.
+    """
+    from aws_bedrock_token_generator import provide_token
+    from openai import OpenAI
+
+    token = provide_token(region)
+    if not token:
+        # Fail closed: never construct a client with an empty credential.
+        raise RuntimeError(
+            "Bedrock token generator returned an empty token; "
+            "cannot authenticate to the Mantle endpoint"
+        )
+
+    openai_client = OpenAI(
+        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
+        api_key=token,
+    )
+    return MantleClient(client=openai_client, model_id=model_id)
+
+
+def extract_function_call(openai_response: Any) -> dict[str, Any] | None:  # noqa: ANN401
+    """Pull the first tool call out of an OpenAI-format response, if any.
+
+    Args:
+        openai_response: A Chat Completions response (object or dict) that
+            may carry ``choices[0].message.tool_calls``.
+
+    Returns:
+        A dict ``{"id", "name", "arguments_json"}`` for the first tool
+        call, or ``None`` if the model proposed no tool call. The raw
+        ``arguments_json`` string is returned unparsed; the adapter is
+        responsible for validating it as JSON.
+    """
+    choices = _get(openai_response, "choices")
+    if not choices:
+        return None
+    message = _get(choices[0], "message")
+    if message is None:
+        return None
+    tool_calls = _get(message, "tool_calls")
+    if not tool_calls:
+        return None
+
+    first = tool_calls[0]
+    function = _get(first, "function")
+    if function is None:
+        return None
+    return {
+        "id": _get(first, "id"),
+        "name": _get(function, "name"),
+        "arguments_json": _get(function, "arguments"),
+    }
+
+
+def tool_config_to_openai_tools(tool_config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Translate Bedrock Converse tool specs into OpenAI function tools."""
+    tools: list[dict[str, Any]] = []
+    for entry in tool_config.get("tools", []):
+        spec = entry.get("toolSpec", {})
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": spec.get("name"),
+                    "description": spec.get("description", ""),
+                    "parameters": spec.get("inputSchema", {}).get("json", {}),
+                },
+            }
+        )
+    return tools
+
+
+def propose_tool_call(
+    *,
+    provider: str,
+    region: str,
+    model_id: str,
+    prompt_text: str,
+    tool_config: dict[str, Any],
+) -> tuple[str, dict[str, Any] | None]:
+    """Ask the selected provider for one action and normalize its tool call."""
+    if provider == "mantle":
+        mantle_client = build_mantle_client(region=region, model_id=model_id)
+        response = mantle_client.chat_completions_create(
+            messages=[{"role": "user", "content": prompt_text}],
+            tools=tool_config_to_openai_tools(tool_config),
+            require_tool_call=True,
+        )
+        return provider, extract_function_call(response)
+    if provider == "runtime":
+        from mock_bedrock import extract_tool_use
+
+        # boto3's generated client supports toolConfig, but its precise
+        # dynamic signature is not represented by our smaller Converse protocol.
+        runtime_client = cast(Any, build_real_client(region))
+        response = runtime_client.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": prompt_text}]}],
+            toolConfig=tool_config,
+        )
+        return provider, extract_tool_use(response)
+    raise ValueError(f"Unknown provider: {provider!r}")
+
+
+def _get(obj: Any, key: str) -> Any:  # noqa: ANN401 -- dict or SDK object, both dynamic
+    """Read ``key`` from a dict or an attribute-style object, tolerating both.
+
+    OpenAI SDK responses are attribute objects; test fixtures and JSON are
+    dicts. This lets extract_function_call handle either shape.
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def build_provider_client(region: str, model_id: str, provider: str) -> Any:  # noqa: ANN401
+    """Return the model client for the selected provider.
+
+    Args:
+        region: AWS region for the client.
+        model_id: Model identifier (only used by the Mantle provider).
+        provider: ``"runtime"`` for the boto3 Bedrock Converse path, or
+            ``"mantle"`` for the OpenAI-compatible Mantle endpoint.
+
+    Returns:
+        A :class:`DuskBedrockClient` for ``"runtime"`` or a
+        :class:`MantleClient` for ``"mantle"``.
+
+    Raises:
+        ValueError: If ``provider`` is not a recognised value.
+    """
+    if provider == "runtime":
+        return DuskBedrockClient(client=build_real_client(region))
+    if provider == "mantle":
+        return build_mantle_client(region=region, model_id=model_id)
+    raise ValueError(f"Unknown provider: {provider!r}")
