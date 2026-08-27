@@ -214,6 +214,17 @@ def _tool_config_for_target(tool_name: str, target: str) -> dict[str, Any]:
     raise ValueError(f"Unknown tool name: {tool_name!r}")
 
 
+def _propose_tool_call_with_no_action_retry(
+    propose: Any,  # noqa: ANN401 -- provider callable has a dynamic SDK boundary
+    **kwargs: Any,  # noqa: ANN401 -- forwarded to the provider adapter
+) -> tuple[str, dict[str, Any] | None]:
+    """Retry once only when the provider returns no tool call."""
+    selected_provider, tool_call = propose(**kwargs)
+    if tool_call is None:
+        selected_provider, tool_call = propose(**kwargs)
+    return selected_provider, tool_call
+
+
 def _run_with_prompt(
     prompt_text: str,
     agent_id: str = "test-llm-agent",
@@ -234,7 +245,8 @@ def _run_with_prompt(
     region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
     model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
     provider = os.getenv("BEDROCK_PROVIDER", "runtime").lower()
-    selected_provider, tool_call = propose_tool_call(
+    selected_provider, tool_call = _propose_tool_call_with_no_action_retry(
+        propose_tool_call,
         provider=provider,
         region=region,
         model_id=model_id,
