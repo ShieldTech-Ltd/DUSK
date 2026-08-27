@@ -137,7 +137,7 @@ jobs:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
         run: |
-          docker compose -f compose.yml -f compose.ci.yml up -d --wait
+          docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod
           # Wait for gate health endpoint (up to 30 s)
           _gate_healthy=false
           for _ in $(seq 1 15); do

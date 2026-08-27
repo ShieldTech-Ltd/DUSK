@@ -106,6 +106,25 @@ def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
     assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
 
 
+def test_dev_workflow_starts_only_persistent_compose_services() -> None:
+    start_step = next(
+        s for s in _dev_steps() if s.get("name") == "Start gate and mock-prod via Docker Compose"
+    )
+    compose_up_lines = [
+        line.strip()
+        for line in start_step["run"].splitlines()
+        if "docker compose" in line and " up " in f" {line} "
+    ]
+
+    assert compose_up_lines == [
+        "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
+    ], (
+        "The real-agent workflow must start only persistent services. Starting the one-shot "
+        "agent-demo service makes `docker compose up --wait` return exit code 1 after the "
+        "container exits successfully."
+    )
+
+
 def test_prod_workflow_remains_main_only() -> None:
     """Regression: the prod workflow must still gate on main, not dev."""
     text = _PROD_WORKFLOW_PATH.read_text(encoding="utf-8")
