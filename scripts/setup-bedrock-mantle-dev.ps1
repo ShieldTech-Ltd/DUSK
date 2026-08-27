@@ -15,7 +15,7 @@
     Unlike the production OIDC script, this targets the dev environment
     (real-agent-dev), validates the deployment branch policy is restricted to
     'dev' only, and confirms the deployed role holds
-    bedrock:GetFoundationModelToken (not InvokeModel).
+    bedrock-mantle:CallWithBearerToken for SHORT_TERM tokens (not InvokeModel).
 
 .PARAMETER Deploy
     Enable deployment mode. Requires -Confirm.
@@ -303,32 +303,138 @@ if (-not $roleArn) {
 }
 Write-Host "RoleArn: $roleArn"
 
-# Step 10: Validate the deployed role holds GetFoundationModelToken.
+$partition = ($identity.Arn -split ':')[1]
+$expectedRoleArn = "arn:${partition}:iam::$($identity.Account):role/$RoleName"
+if ($roleArn -ne $expectedRoleArn) {
+    Write-Error "SECURITY: Stack RoleArn '$roleArn' does not match expected role '$expectedRoleArn'."
+    exit 1
+}
+
+$roleJson = aws iam get-role --role-name $RoleName --output json 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Could not read deployed role '$RoleName'.`n$roleJson"
+    exit 1
+}
+$deployedRole = ($roleJson | ConvertFrom-Json).Role
+$trustStatements = @($deployedRole.AssumeRolePolicyDocument.Statement)
+if ($trustStatements.Count -ne 1) {
+    Write-Error "SECURITY: Deployed role trust policy must contain exactly one statement."
+    exit 1
+}
+$trust = $trustStatements[0]
+$expectedProviderArn = if ($ExistingOidcProviderArn) {
+    $ExistingOidcProviderArn
+} else {
+    "arn:${partition}:iam::$($identity.Account):oidc-provider/token.actions.githubusercontent.com"
+}
+$expectedSubject = "repo:ShieldTech-Ltd/DUSK:environment:real-agent-dev"
+$trustConditionNames = @($trust.Condition.PSObject.Properties.Name)
+$trustStringEqualsNames = @($trust.Condition.StringEquals.PSObject.Properties.Name | Sort-Object)
+$expectedTrustKeys = @(
+    "token.actions.githubusercontent.com:aud"
+    "token.actions.githubusercontent.com:sub"
+) | Sort-Object
+if ($trust.Effect -ne "Allow" -or
+    $trust.Action -ne "sts:AssumeRoleWithWebIdentity" -or
+    $trust.Principal.Federated -ne $expectedProviderArn -or
+    $trustConditionNames.Count -ne 1 -or $trustConditionNames[0] -ne "StringEquals" -or
+    ($trustStringEqualsNames -join ',') -ne ($expectedTrustKeys -join ',') -or
+    $trust.Condition.StringEquals.'token.actions.githubusercontent.com:aud' -ne "sts.amazonaws.com" -or
+    $trust.Condition.StringEquals.'token.actions.githubusercontent.com:sub' -ne $expectedSubject) {
+    Write-Error "SECURITY: Deployed role trust policy does not exactly match the real-agent-dev GitHub OIDC trust."
+    exit 1
+}
+Write-Host "Confirmed: deployed RoleArn and live OIDC trust match the expected dev-only role."
+
+# Step 10: Validate the deployed role allows only short-term Mantle tokens.
 Write-Host ""
-Write-Host "=== Validating GetFoundationModelToken permission on deployed role ==="
+Write-Host "=== Validating short-term Mantle bearer-token permission ==="
 $policyNamesJson = aws iam list-role-policies --role-name $RoleName --output json 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Could not list inline policies for role '$RoleName'.`n$policyNamesJson"
     exit 1
 }
 $policyNames = ($policyNamesJson | ConvertFrom-Json).PolicyNames
-$foundToken = $false
-foreach ($policyName in $policyNames) {
-    $policyJson = aws iam get-role-policy --role-name $RoleName --policy-name $policyName --output json 2>&1
-    if ($LASTEXITCODE -ne 0) { continue }
-    if ($policyJson -match "GetFoundationModelToken") {
-        $foundToken = $true
+$attachedPoliciesJson = aws iam list-attached-role-policies --role-name $RoleName --output json 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Could not list attached policies for role '$RoleName'.`n$attachedPoliciesJson"
+    exit 1
+}
+$attachedPolicies = @((($attachedPoliciesJson | ConvertFrom-Json).AttachedPolicies))
+if ($attachedPolicies.Count -ne 0) {
+    Write-Error "SECURITY: Role '$RoleName' must not have attached managed policies."
+    exit 1
+}
+
+if ($policyNames.Count -ne 1 -or $policyNames[0] -ne "BedrockMantleDevInference") {
+    Write-Error "SECURITY: Role '$RoleName' must have exactly the BedrockMantleDevInference inline policy."
+    exit 1
+}
+
+$requiredInferenceActions = @(
+    "bedrock-mantle:CreateInference"
+    "bedrock-mantle:GetProject"
+    "bedrock-mantle:ListProjects"
+    "bedrock-mantle:ListTagsForResource"
+)
+$policyJson = aws iam get-role-policy --role-name $RoleName --policy-name $policyNames[0] --output json 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Could not read the BedrockMantleDevInference policy.`n$policyJson"
+    exit 1
+}
+$policy = $policyJson | ConvertFrom-Json
+if ($policy.PolicyDocument.Statement.Count -ne 2) {
+    Write-Error "SECURITY: BedrockMantleDevInference must contain exactly two statements."
+    exit 1
+}
+
+$foundShortTermToken = $false
+$foundInference = $false
+$expectedProjectResource = "arn:${partition}:bedrock-mantle:${region}:$($identity.Account):project/*"
+foreach ($statement in @($policy.PolicyDocument.Statement)) {
+    if ($statement.Effect -ne "Allow" -or
+        $statement.PSObject.Properties['NotAction'] -or
+        $statement.PSObject.Properties['NotResource']) {
+        Write-Error "SECURITY: Every Mantle policy statement must be an explicit Allow with Action and Resource."
+        exit 1
     }
-    if ($policyJson -match "bedrock:InvokeModel") {
-        Write-Error "SECURITY: Role '$RoleName' unexpectedly grants bedrock:InvokeModel. The Mantle dev role must only grant GetFoundationModelToken."
+
+    $actions = @($statement.Action)
+    $sortedActions = @($actions | Sort-Object)
+    $sortedRequired = @($requiredInferenceActions | Sort-Object)
+
+    if ($actions.Count -eq 1 -and $actions[0] -eq "bedrock-mantle:CallWithBearerToken") {
+        $conditionNames = @($statement.Condition.PSObject.Properties.Name)
+        $tokenConditions = @($statement.Condition.StringEquals.PSObject.Properties.Name)
+        $tokenType = $statement.Condition.StringEquals.'bedrock-mantle:bearerTokenType'
+        if ($statement.Resource -ne "*" -or
+            $conditionNames.Count -ne 1 -or $conditionNames[0] -ne "StringEquals" -or
+            $tokenConditions.Count -ne 1 -or $tokenConditions[0] -ne "bedrock-mantle:bearerTokenType" -or
+            $tokenType -ne "SHORT_TERM") {
+            Write-Error "SECURITY: CallWithBearerToken must be restricted exactly to SHORT_TERM tokens on Resource '*'."
+            exit 1
+        }
+        $foundShortTermToken = $true
+    } elseif (($sortedActions -join ',') -eq ($sortedRequired -join ',')) {
+        if ($statement.Resource -ne $expectedProjectResource -or $statement.Condition) {
+            Write-Error "SECURITY: Mantle inference permissions must use the current account and region project scope only."
+            exit 1
+        }
+        $foundInference = $true
+    } else {
+        Write-Error "SECURITY: Unexpected action in BedrockMantleDevInference: $($actions -join ', ')"
         exit 1
     }
 }
-if (-not $foundToken) {
-    Write-Error "Role '$RoleName' does not grant bedrock:GetFoundationModelToken. The Mantle client cannot mint a bearer token."
+if (-not $foundShortTermToken) {
+    Write-Error "Role '$RoleName' does not grant bedrock-mantle:CallWithBearerToken for SHORT_TERM tokens."
     exit 1
 }
-Write-Host "Confirmed: role grants bedrock:GetFoundationModelToken and not InvokeModel."
+if (-not $foundInference) {
+    Write-Error "Role '$RoleName' is missing the exact scoped Mantle inference statement."
+    exit 1
+}
+Write-Host "Confirmed: role allows short-term Mantle authentication and scoped inference, not InvokeModel."
 
 # Step 11: Set AWS_ROLE_ARN as GitHub environment variable (not a secret)
 Write-Host ""
