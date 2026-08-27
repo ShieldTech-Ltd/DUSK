@@ -241,6 +241,9 @@ complete local flow:
   webhook sink, and agent-demo, wired on one internal network
 - `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
   contract
+- `contracts/v1-gate-golden.json` -- deterministic response and side-effect
+  snapshots protecting the frozen contract during refactoring; the documented
+  normalization policy is in `docs/v1-gate-golden-contract.md`
 - `src/dusk/` -- the gate itself: `actions/` (baseline, analyse, verdict),
   `trace/` (SIE client, n8n webhooks), `config.py`, and `api.py`. This example
   deliberately contains only the agent-action gate; network packet detection
