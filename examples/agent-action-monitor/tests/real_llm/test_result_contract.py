@@ -64,6 +64,55 @@ def test_required_scenario_accepts_expected_gate_invocation() -> None:
     _require_gate_scenario(result, expected_tool="update_firewall_rule", scenario="RL-02")
 
 
+def test_provider_call_does_not_retry_when_tool_call_is_present() -> None:
+    calls = 0
+    tool_call = {"name": "assign_role"}
+
+    def propose(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return "mantle", tool_call
+
+    result = real_gate._propose_tool_call_with_no_action_retry(propose, provider="mantle")
+
+    assert result == ("mantle", tool_call)
+    assert calls == 1
+
+
+def test_provider_call_retries_once_after_no_action() -> None:
+    responses = iter(
+        [
+            ("mantle", None),
+            ("mantle", {"name": "assign_role"}),
+        ]
+    )
+    calls = 0
+
+    def propose(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return next(responses)
+
+    result = real_gate._propose_tool_call_with_no_action_retry(propose, provider="mantle")
+
+    assert result == ("mantle", {"name": "assign_role"})
+    assert calls == 2
+
+
+def test_provider_call_stops_after_one_no_action_retry() -> None:
+    calls = 0
+
+    def propose(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return "mantle", None
+
+    result = real_gate._propose_tool_call_with_no_action_retry(propose, provider="mantle")
+
+    assert result == ("mantle", None)
+    assert calls == 2
+
+
 def test_scenario_target_constraint_preserves_tool_choice_and_pins_target() -> None:
     assert hasattr(real_gate, "_tool_config_for_target")
 
