@@ -131,9 +131,7 @@ def test_dev_template_oidc_trust_has_one_exact_statement() -> None:
     assert statement["Condition"]["StringEquals"] == {
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": {
-            "Fn::Sub": (
-                "repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}"
-            )
+            "Fn::Sub": ("repo:${GitHubOrg}/${GitHubRepo}:environment:${GitHubEnvironment}")
         },
     }
 
@@ -157,9 +155,7 @@ def test_dev_template_allows_only_short_term_mantle_bearer_tokens() -> None:
         statements.extend(policy["PolicyDocument"]["Statement"])
 
     mantle_statement = next(
-        stmt
-        for stmt in statements
-        if stmt["Action"] == "bedrock-mantle:CallWithBearerToken"
+        stmt for stmt in statements if stmt["Action"] == "bedrock-mantle:CallWithBearerToken"
     )
     assert mantle_statement["Resource"] == "*"
     assert mantle_statement["Condition"] == {
@@ -169,9 +165,7 @@ def test_dev_template_allows_only_short_term_mantle_bearer_tokens() -> None:
     actions = {
         action
         for stmt in statements
-        for action in (
-            [stmt["Action"]] if isinstance(stmt["Action"], str) else stmt["Action"]
-        )
+        for action in ([stmt["Action"]] if isinstance(stmt["Action"], str) else stmt["Action"])
     }
     assert "bedrock:GetFoundationModelToken" not in actions
 
@@ -184,9 +178,7 @@ def test_dev_template_grants_scoped_mantle_inference_permissions() -> None:
         for stmt in policy["PolicyDocument"]["Statement"]
     ]
     inference_statement = next(
-        stmt
-        for stmt in statements
-        if "bedrock-mantle:CreateInference" in stmt["Action"]
+        stmt for stmt in statements if "bedrock-mantle:CreateInference" in stmt["Action"]
     )
     assert set(inference_statement["Action"]) == {
         "bedrock-mantle:CreateInference",
@@ -196,8 +188,7 @@ def test_dev_template_grants_scoped_mantle_inference_permissions() -> None:
     }
     assert inference_statement["Resource"] == {
         "Fn::Sub": (
-            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:"
-            "${AWS::AccountId}:project/*"
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*"
         )
     }
 
@@ -208,9 +199,7 @@ def test_dev_template_action_allowlist_is_exact() -> None:
         for policy in _dev_role()["Properties"]["Policies"]
         for statement in policy["PolicyDocument"]["Statement"]
         for action in (
-            [statement["Action"]]
-            if isinstance(statement["Action"], str)
-            else statement["Action"]
+            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
         )
     }
     assert actions == {
