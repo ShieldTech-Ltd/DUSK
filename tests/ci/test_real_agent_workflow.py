@@ -191,7 +191,8 @@ def test_log_collection_step_does_not_swallow_errors() -> None:
     run_script = collect_step.get("run", "")
     log_command = next(line for line in run_script.splitlines() if " logs dusk-gate" in line)
     assert "|| true" not in log_command, (
-        "The Compose log command must not swallow failures because that can produce invalid evidence"
+        "The Compose log command must not swallow failures because that can "
+        "produce invalid evidence"
     )
 
 
