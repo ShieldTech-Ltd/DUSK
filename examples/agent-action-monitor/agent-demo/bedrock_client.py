@@ -149,6 +149,37 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
     return MantleClient(client=openai_client, model_id=model_id)
 
 
+def list_mantle_model_ids(region: str) -> set[str]:
+    """Return model IDs visible through the authenticated Mantle endpoint."""
+    from aws_bedrock_token_generator import provide_token
+    from openai import OpenAI
+
+    token = provide_token(region)
+    if not token:
+        raise RuntimeError("Bedrock token generator returned an empty token")
+
+    client = OpenAI(
+        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
+        api_key=token,
+    )
+    entries = getattr(client.models.list(), "data", None)
+    if not isinstance(entries, list):
+        raise RuntimeError("Mantle models response did not contain a data list")
+
+    model_ids: set[str] = set()
+    for entry in entries:
+        model_id = getattr(entry, "id", None)
+        if isinstance(model_id, str) and model_id:
+            model_ids.add(model_id)
+    return model_ids
+
+
+def require_mantle_model_available(region: str, model_id: str) -> None:
+    """Fail unless an exact model ID is visible in the selected region."""
+    if model_id not in list_mantle_model_ids(region):
+        raise RuntimeError(f"Mantle model is not available in {region}: {model_id}")
+
+
 def extract_function_call(openai_response: Any) -> dict[str, Any] | None:  # noqa: ANN401
     """Pull the first tool call out of an OpenAI-format response, if any.
 

@@ -5,9 +5,9 @@
 **Status:** Scripted validation and an OIDC-enabled protected workflow are implemented. Real-LLM validation still requires the protected GitHub environment, AWS IAM role, Bedrock model access, and a passing credentialed run.
 
 > **Evidence codes used in this document:**
-> - **CONFIRMED** — code exists, test exercises the live path, and CI passes.
-> - **SCRIPTED ONLY** — test exists but uses MockBedrock, a stub SIE, or a pre-crafted payload rather than a real LLM or real external service.  Covers the gate's logic; does not prove the gate catches what a real LLM generates.
-> - **UNKNOWN** — no test coverage or no evidence at all.
+> - **CONFIRMED:** code exists, test exercises the live path, and CI passes.
+> - **SCRIPTED ONLY:** test exists but uses MockBedrock, a stub SIE, or a pre-crafted payload rather than a real LLM or real external service. Covers the gate's logic; does not prove the gate catches what a real LLM generates.
+> - **UNKNOWN:** no test coverage or no evidence at all.
 
 ---
 
@@ -71,7 +71,7 @@ The following claims are backed by code and artifact evidence.
 
 | Scenario | Previous status | Sprint 2 status |
 |---|---|---|
-| Genuine prompt injection (adversarial content in retrieved data causes tool call) | UNKNOWN | SCRIPTED ONLY (tests/real_llm/ – auto-skip without credentials) |
+| Genuine prompt injection (adversarial content in retrieved data causes tool call) | UNKNOWN | SCRIPTED ONLY (`tests/real_llm/` auto-skips without credentials) |
 | Real LLM (Claude/Bedrock) generating the tool call | UNKNOWN | SCRIPTED ONLY (real-agent-sandbox.yml exists; no credential run yet) |
 | Agent chaining (one agent's output feeds another's context) | UNKNOWN | UNKNOWN |
 | IAM / role_assignment escalation | UNKNOWN | SCRIPTED ONLY (D-01 through D-04 in test_gate_api.py) |
@@ -80,11 +80,11 @@ The following claims are backed by code and artifact evidence.
 | Multi-agent coordination (two agents acting in concert) | UNKNOWN | UNKNOWN |
 | Gradual baseline poisoning (borderline-normal actions slowly widening profile) | UNKNOWN | UNKNOWN |
 
-### 2c. Performance under load — now enforced in CI
+### 2c. Performance under load, now enforced in CI
 
 `load_driver.py` measures p50/p95/p99 latency and its `main()` function returns a non-zero exit code on breach. `run_ci_sandbox.sh` now invokes it with `--p50-limit-ms 100 --p95-limit-ms 200`. CI exit code is correctly propagated (false-green pipe bug fixed in Sprint 2). The original 50 ms threshold was too tight for shared CI runners (measured p50 = 53.9 ms); 100 ms is the realistic CI threshold.
 
-### 2d. SIE failure modes — now covered by unit tests
+### 2d. SIE failure modes, now covered by unit tests
 
 Unit tests in `tests/test_sie_fallback.py` (SIF-01 through SIF-04) cover TimeoutError, malformed dense response, the F-04 property (SIE high score does not lower a deterministic WOULD-BLOCK), and end-to-end gate behaviour when SIE raises. All run without a real SIE endpoint (SCRIPTED ONLY). The `_PROVISION_TIMEOUT_S = 1.5` boundary has not been validated against a real SIE that is slow or unresponsive.
 
@@ -120,7 +120,7 @@ The scheme check blocks `file://` and `data://` URLs but does not block RFC1918 
 
 ## 4. Proposed Sandbox Architecture for Real-Agent Validation
 
-_(unchanged from Sprint 1 assessment — the architecture described is implemented by real-agent-sandbox.yml)_
+_(unchanged from Sprint 1 assessment; the architecture described is implemented by `real-agent-sandbox.yml`)_
 
 ```
 [Test Orchestrator]
@@ -233,9 +233,9 @@ _(unchanged from Sprint 1 assessment — the architecture described is implement
 |---|---|---|
 | Authentication | 100% of A-01 through A-06 pass in both watch and enforce mode | CONFIRMED |
 | Verdict accuracy (scripted) | 100% of B-01 through B-04 pass | CONFIRMED |
-| Verdict accuracy (real LLM) | C-01 returns ALLOW; C-02 through C-06 return WOULD-BLOCK or BLOCK | SCRIPTED ONLY — pending real-agent run |
+| Verdict accuracy (real LLM) | C-01 returns ALLOW; C-02 through C-06 return WOULD-BLOCK or BLOCK | SCRIPTED ONLY, pending real-agent run |
 | IAM escalation | D-02 through D-04 refused; D-01 allowed | SCRIPTED ONLY |
-| Latency (enforce mode, local Compose) | E-01: p50 < 100 ms, p95 < 200 ms, zero errors | SCRIPTED ONLY — threshold corrected; pending a passing CI run |
+| Latency (enforce mode, local Compose) | E-01: p50 < 100 ms, p95 < 200 ms, zero errors | SCRIPTED ONLY, threshold corrected and pending a passing CI run |
 | SIE fallback | F-01 through F-03: no 500 responses; verdict still rendered | SCRIPTED ONLY |
 | Config validation | G-01 and G-02: process exits non-zero on invalid config | CONFIRMED |
 | Audit durability | H-01: score on restart >= score before restart; H-02: no crash on corrupted file | CONFIRMED |
@@ -266,11 +266,44 @@ sh ./scripts/run_ci_sandbox.sh watch   # includes load test with p50/p95 asserti
 sh ./scripts/run_ci_sandbox.sh enforce
 ```
 
+### Protected dev model qualification
+
+The dev-only workflow `.github/workflows/real-agent-sandbox-dev.yml` owns the
+authoritative Mantle model allowlist. It runs the same real-agent, DUSK gate,
+Docker Compose, prompts, and assertions for every entry:
+
+| Evidence slug | Bedrock Mantle model ID |
+|---|---|
+| `kimi-k2-5` | `moonshotai.kimi-k2.5` |
+| `glm-5` | `zai.glm-5` |
+| `nemotron-3-super-120b` | `nvidia.nemotron-super-3-120b` |
+
+The legacy `BEDROCK_MODEL_ID` variable in the `real-agent-dev` GitHub
+environment does not select a matrix model. Changing the approved set requires
+a reviewed source change to the workflow and its contract tests.
+
+Each matrix job must satisfy all of these conditions:
+
+1. The exact model ID is visible through the authenticated London Mantle endpoint.
+2. Every protected real-LLM scenario executes through the DUSK gate.
+3. JUnit reports more than zero tests, with zero failures, zero errors, and zero skips.
+4. Gate logs are non-empty and containers are cleaned up even after a failure.
+5. A model-specific manifest and artifact identify the provider, model, commit, run, gate mode, and test counts.
+
+The aggregate `real-agent-dev-matrix-gate` job passes only when all three model
+jobs pass. There is no fallback model and a successful Kimi result cannot hide
+a GLM or Nemotron failure. The protected workflow still requires the configured
+reviewer approval and can receive AWS OIDC credentials only from `dev`.
+
+The setup scripts remain read-only unless both deployment switches are supplied.
+They validate infrastructure and environment state, but they do not control the
+source-managed model matrix and do not dispatch the workflow.
+
 ---
 
 ## 8. GO / NO-GO for a Controlled Design-Partner Pilot
 
-**NO-GO — conditions reduced but real-LLM evidence still missing.**
+**NO-GO: conditions reduced but real-LLM evidence still missing.**
 
 Sprint 2 closed:
 - False-green load test (pipe exit code bug fixed; latency SLA now enforced)
