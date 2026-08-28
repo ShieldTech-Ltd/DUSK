@@ -133,7 +133,10 @@ def _reset_runtime() -> None:
     ),
 )
 def test_validation_failures_match_golden(
-    client: FlaskClient, golden: dict[str, Any], name: str, mutation: Any  # noqa: ANN401
+    client: FlaskClient,
+    golden: dict[str, Any],
+    name: str,
+    mutation: Any,  # noqa: ANN401
 ) -> None:
     _assert_golden(client.post("/v1/gate", json=mutation(_action_payload())), name, golden)
 
@@ -144,9 +147,7 @@ def test_non_object_request_failures_match_golden(
     invalid = client.post("/v1/gate", data="not json", content_type="application/json")
     _assert_golden(invalid, "invalid_json", golden)
     _reset_runtime()
-    _assert_golden(
-        client.post("/v1/gate", json=["not", "an", "object"]), "non_object_json", golden
-    )
+    _assert_golden(client.post("/v1/gate", json=["not", "an", "object"]), "non_object_json", golden)
 
 
 @pytest.mark.parametrize(
@@ -199,9 +200,7 @@ def test_authentication_paths_match_golden(
     _assert_golden(accepted, "allow", golden)
 
 
-def test_framework_failure_paths_match_golden(
-    client: FlaskClient, golden: dict[str, Any]
-) -> None:
+def test_framework_failure_paths_match_golden(client: FlaskClient, golden: dict[str, Any]) -> None:
     _assert_golden(client.get("/v1/gate"), "method_not_allowed", golden)
     oversized = client.post(
         "/v1/gate", data="x" * (2 * 1024 * 1024), content_type="application/json"
