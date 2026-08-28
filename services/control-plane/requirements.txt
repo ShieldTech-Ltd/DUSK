@@ -1,0 +1,5 @@
+# Runtime dependencies used by the dependency-audit control.
+# Keep these constraints synchronized with pyproject.toml.
+fastapi>=0.116,<1
+pydantic-settings>=2.10,<3
+uvicorn>=0.35,<1

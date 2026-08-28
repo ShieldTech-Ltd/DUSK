@@ -2,23 +2,28 @@
 set -eu
 
 example=examples/agent-action-monitor
+control_plane=services/control-plane
 project=agent-action-monitor
 compose="docker compose --project-name $project -f $example/compose.yml -f $example/compose.ci.yml"
 
 # Build each image once. Every later operation addresses the immutable local ID.
 DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate agent-demo mock-prod
+docker build --tag dusk-control-plane:ci "$control_plane"
 gate_id=$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")
 agent_id=$(docker image inspect --format '{{.Id}}' "$project-agent-demo")
 mock_id=$(docker image inspect --format '{{.Id}}' "$project-mock-prod")
+control_plane_id=$(docker image inspect --format '{{.Id}}' dusk-control-plane:ci)
 mkdir -p container-evidence
 cp ci/grype.yml container-evidence/grype.yaml
-printf '%s\n%s\n%s\n' "$gate_id" "$agent_id" "$mock_id" > container-evidence/image-ids.txt
+printf '%s\n%s\n%s\n%s\n' "$gate_id" "$agent_id" "$mock_id" "$control_plane_id" \
+  > container-evidence/image-ids.txt
 
-for dockerfile in "$example/Dockerfile" "$example/agent-demo/Dockerfile" "$example/mock-prod/Dockerfile"; do
+for dockerfile in "$example/Dockerfile" "$example/agent-demo/Dockerfile" \
+  "$example/mock-prod/Dockerfile" "$control_plane/Dockerfile"; do
   docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint - < "$dockerfile"
 done
 
-for image_id in "$gate_id" "$agent_id" "$mock_id"; do
+for image_id in "$gate_id" "$agent_id" "$mock_id" "$control_plane_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 \
     image --exit-code 1 --ignore-unfixed \
@@ -34,12 +39,16 @@ done
 
 # Compose carries read-only roots, ALL capability drops and no-new-privileges.
 DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose config > container-evidence/compose.json
+docker compose -f "$control_plane/compose.yml" --profile control-plane config \
+  > container-evidence/control-plane-compose.json
 grep -q 'read_only: true' container-evidence/compose.json
 grep -q 'cap_drop:' container-evidence/compose.json
-for image_id in "$gate_id" "$mock_id"; do
+grep -q 'read_only: true' container-evidence/control-plane-compose.json
+grep -q 'cap_drop:' container-evidence/control-plane-compose.json
+for image_id in "$gate_id" "$mock_id" "$control_plane_id"; do
   test "$(docker image inspect --format '{{json .Config.Healthcheck}}' "$image_id")" != "null"
 done
-for image_id in "$gate_id" "$agent_id" "$mock_id"; do
+for image_id in "$gate_id" "$agent_id" "$mock_id" "$control_plane_id"; do
   ! docker run --rm --entrypoint sh "$image_id" -c 'command -v pip || command -v gcc || command -v make'
 done
 

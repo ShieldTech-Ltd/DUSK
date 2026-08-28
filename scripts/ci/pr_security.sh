@@ -5,16 +5,19 @@ set -u
 bandit_scan() {
   bandit -r src examples/agent-action-monitor/src examples/agent-action-monitor/agent-demo \
     examples/agent-action-monitor/mock-prod \
-    examples/agent-action-monitor/scripts/verify_ci_sandbox.py -ll -x '*/test_*.py'
+    examples/agent-action-monitor/scripts/verify_ci_sandbox.py \
+    services/control-plane/src -ll -x '*/test_*.py'
 }
 
 semgrep_scan() {
-  semgrep scan --config .semgrep.yml --error --metrics=off src examples/agent-action-monitor
+  semgrep scan --config .semgrep.yml --error --metrics=off src \
+    examples/agent-action-monitor services/control-plane
 }
 
 example_audit() {
   pip-audit -r examples/agent-action-monitor/agent-demo/requirements.txt &&
-    pip-audit -r examples/agent-action-monitor/mock-prod/requirements.txt
+    pip-audit -r examples/agent-action-monitor/mock-prod/requirements.txt &&
+    pip-audit -r services/control-plane/requirements.txt
 }
 
 workflow_analysis() {
