@@ -11,10 +11,13 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{name = "Dusk contributors"}]
 dependencies = [
+    "alembic>=1.19.1,<2",
+    "asyncpg>=0.31,<1",
     "fastapi>=0.116,<1",
     "httpx2>=2.12,<3",
     "PyJWT[crypto]>=2.13,<3",
     "pydantic-settings>=2.10,<3",
+    "SQLAlchemy[asyncio]>=2.0.52,<2.1",
     "uvicorn>=0.35,<1",
 ]
 
@@ -32,6 +35,9 @@ dusk-control-plane = "dusk_control_plane.main:run"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+dusk_control_plane = ["migrations/*.mako", "migrations/versions/*.py"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
@@ -45,6 +51,7 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
+"scripts/vulture_whitelist.py" = ["B018", "F821"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -14,6 +14,17 @@ jobs:
   correctness:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgresql:
+        image: postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+        env:
+          POSTGRES_DB: dusk_control_plane
+          POSTGRES_USER: dusk_control_plane
+          POSTGRES_PASSWORD: ci-integration-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dusk_control_plane -d dusk_control_plane"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {fetch-depth: 0}
@@ -36,6 +47,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: sh scripts/ci/pr_correctness.sh "$BASE_SHA" "$HEAD_SHA"
+      - name: Run PostgreSQL migration and repository integration tests
+        env:
+          DUSK_TEST_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:ci-integration-only@127.0.0.1:5432/dusk_control_plane
+        run: pytest -q -n 0 services/control-plane/tests/integration
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: {name: correctness-results, path: results/, if-no-files-found: error, retention-days: 30}

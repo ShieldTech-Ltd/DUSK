@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dusk_control_plane import __version__
@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     oidc_max_jwks_bytes: int = Field(default=262_144, ge=1024, le=1_048_576)
     oidc_max_jwks_keys: int = Field(default=32, ge=1, le=128)
     oidc_max_token_bytes: int = Field(default=16_384, ge=1024, le=65_536)
+    storage_enabled: bool = False
+    database_url: SecretStr | None = None
+    database_pool_size: int = Field(default=10, ge=1, le=100)
+    database_max_overflow: int = Field(default=10, ge=0, le=100)
+    database_pool_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
+    database_statement_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
 
     @model_validator(mode="after")
     def protect_non_local_deployments(self) -> Settings:
@@ -97,7 +103,17 @@ class Settings(BaseSettings):
         }
         if len(claim_names) != 4:
             raise ValueError("OIDC custom claim names must be distinct")
+        self._validate_storage()
         return self
+
+    def _validate_storage(self) -> None:
+        if not self.storage_enabled:
+            return
+        if self.database_url is None:
+            raise ValueError("storage_enabled requires database_url")
+        database_url = self.database_url.get_secret_value()
+        if not database_url.startswith("postgresql+asyncpg://"):
+            raise ValueError("database_url must use postgresql+asyncpg")
 
 
 def _is_trusted_https_url(value: str, *, issuer: bool) -> bool:

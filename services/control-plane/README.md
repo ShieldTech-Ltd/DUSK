@@ -48,9 +48,6 @@ settings fail startup.
 | `DUSK_CP_READINESS_TIMEOUT_MS` | `1000` | `50..5000` per probe |
 | `DUSK_CP_MAX_REQUEST_BODY_BYTES` | `1048576` | `1024..10485760` |
 
-The service currently has no secret-valued settings. Identity, PostgreSQL, and
-other trust configuration is introduced only with the corresponding issues.
-
 When `DUSK_CP_V2_ENABLED=true`, the service requires `DUSK_CP_OIDC_ISSUER`,
 `DUSK_CP_OIDC_AUDIENCE`, and `DUSK_CP_OIDC_JWKS_URI`. Issuer and JWKS values must
 use HTTPS. Cache, timeout, token-size, JWKS-size, clock-skew, maximum-token-age,
@@ -77,3 +74,44 @@ documented in
 | `DUSK_CP_OIDC_MAX_JWKS_BYTES` | `262144` | `1024..1048576` |
 | `DUSK_CP_OIDC_MAX_JWKS_KEYS` | `32` | `1..128` |
 | `DUSK_CP_OIDC_MAX_TOKEN_BYTES` | `16384` | `1024..65536` |
+
+## PostgreSQL storage
+
+PostgreSQL is disabled by default. When `DUSK_CP_STORAGE_ENABLED=true`,
+`DUSK_CP_DATABASE_URL` is required and must use the
+`postgresql+asyncpg://` SQLAlchemy dialect. The URL is treated as a secret and
+must come from the deployment secret manager. SQL parameters are hidden from
+engine diagnostics. Pool size, overflow, queue timeout, and statement timeout
+are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
+
+| Storage variable | Default | Constraint |
+|---|---|---|
+| `DUSK_CP_STORAGE_ENABLED` | `false` | Requires a database URL when enabled |
+| `DUSK_CP_DATABASE_URL` | unset | Secret `postgresql+asyncpg://` URL |
+| `DUSK_CP_DATABASE_POOL_SIZE` | `10` | `1..100` persistent connections per process |
+| `DUSK_CP_DATABASE_MAX_OVERFLOW` | `10` | `0..100` temporary overflow connections |
+| `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
+| `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
+
+Start the pinned local PostgreSQL profile and apply the schema with:
+
+```bash
+docker compose -f services/control-plane/compose.yml --profile storage up -d
+export DUSK_CP_DATABASE_URL='postgresql+asyncpg://dusk_control_plane:local-development-only@127.0.0.1:5432/dusk_control_plane'
+alembic -c services/control-plane/alembic.ini upgrade head
+```
+
+Migrations are additive during forward deployment and run inside PostgreSQL's
+transactional DDL boundary. The service image includes the immutable migration
+history. Rollback is explicit:
+
+```bash
+alembic -c services/control-plane/alembic.ini downgrade -1
+```
+
+The baseline schema stores tenant-qualified principals and roles, redacted
+canonical actions, decisions, policy matches, tamper-evident audit metadata,
+integration health, transactional outbox deliveries, agent-risk rollups, and
+dashboard aggregates. It does not store raw requests, tokens, credentials,
+prompts, or unrestricted provider payloads. Decision details can be tombstoned
+without deleting decision identity or audit-integrity metadata.

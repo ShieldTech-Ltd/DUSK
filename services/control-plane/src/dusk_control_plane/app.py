@@ -52,6 +52,8 @@ def create_app(
         try:
             yield
         finally:
+            if resolved.database is not None:
+                await resolved.database.close()
             application.state.started = False
 
     docs_url = "/docs" if settings.api_docs_enabled else None
