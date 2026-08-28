@@ -284,7 +284,7 @@ a reviewed source change to the workflow and its contract tests.
 
 Each matrix job must satisfy all of these conditions:
 
-1. The exact model ID is visible through the authenticated London Mantle endpoint.
+1. The exact model ID completes authenticated inference through the London Mantle endpoint.
 2. Every protected real-LLM scenario executes through the DUSK gate.
 3. JUnit reports more than zero tests, with zero failures, zero errors, and zero skips.
 4. Gate logs are non-empty and containers are cleaned up even after a failure.

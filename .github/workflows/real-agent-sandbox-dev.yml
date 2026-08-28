@@ -125,12 +125,6 @@ jobs:
           IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
           echo "Assumed role: $IDENTITY"
 
-      - name: Verify Mantle model availability
-        env:
-          MATRIX_MODEL_ID: ${{ matrix.model.id }}
-        run: |
-          PYTHONPATH=agent-demo python -c "import os; from bedrock_client import require_mantle_model_available; require_mantle_model_available(os.environ['AWS_REGION'], os.environ['MATRIX_MODEL_ID'])"
-
       - name: Log validation parameters
         env:
           GH_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}

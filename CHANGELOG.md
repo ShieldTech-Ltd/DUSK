@@ -31,6 +31,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ### Changed
 - `real-agent-sandbox.yml`: added concurrency group, AWS caller identity
   verification step, and Bedrock model availability pre-check.
+- `real-agent-sandbox-dev.yml`: qualify each matrix model through authenticated
+  inference instead of requiring the broader Mantle model-list permission.
 
 ## [0.2.0], 2026-08-05
 
