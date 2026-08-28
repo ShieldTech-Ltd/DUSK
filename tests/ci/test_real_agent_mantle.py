@@ -15,6 +15,7 @@ _DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
 _MAIN_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-main/template.yaml")
 _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
+_MAIN_SETUP_PATH = Path("scripts/setup-bedrock-mantle-main.ps1")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
 
 _DEV_JOB = "real-agent-dev-validation"
@@ -214,6 +215,41 @@ def test_main_template_has_no_runtime_iam_or_wildcard_actions() -> None:
     assert "bedrock:InvokeModel" not in actions
     assert "bedrock:ListInferenceProfiles" not in actions
     assert not any(action.startswith("iam:") for action in actions)
+
+
+def test_main_setup_defaults_to_read_only_and_main_identity() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '[string]$StackName = "dusk-bedrock-mantle-main"' in script
+    assert '[string]$GitHubEnvironment = "real-agent"' in script
+    assert '$RoleName = "DuskRealAgentMainMantleRole"' in script
+    assert "if (-not $Deploy)" in script
+    assert "if (-not $Confirm)" in script
+
+
+def test_main_setup_requires_main_only_environment_protection() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '"ritiksah141" -notin $reviewerLogins' in script
+    assert "prevent_self_review" in script
+    assert '$allowedPatterns[0] -eq "main"' in script
+    assert "Only 'main' must be allowed" in script
+
+
+def test_main_setup_validates_exact_live_permissions() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "list-attached-role-policies" in script
+    assert "$policyNames.Count -ne 1" in script
+    assert "$policy.PolicyDocument.Statement.Count -ne 2" in script
+    assert "Unexpected action" in script
+    assert "SHORT_TERM" in script
+
+
+def test_main_setup_never_dispatches_or_changes_provider_variables() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "gh workflow run" not in script
+    assert 'gh variable set "AWS_ROLE_ARN"' in script
+    assert 'gh variable set "AWS_REGION"' not in script
+    assert 'gh variable set "BEDROCK_PROVIDER"' not in script
+    assert 'gh variable set "BEDROCK_MODEL_ID"' not in script
 
 
 # --- Dev IAM ---------------------------------------------------------------
