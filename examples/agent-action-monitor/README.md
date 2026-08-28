@@ -232,6 +232,31 @@ Every allowed action reached `mock-prod`, and every poisoned action was
 flagged `WOULD-BLOCK`. See `docs/gate-latency-notes.md` for the methodology,
 cold-start behavior, and limitations of this single small trial.
 
+## Protected real-agent model validation
+
+The dev qualification workflow runs one fixed Bedrock Mantle matrix through
+the same successful Kimi path. It preserves the same token generator, OpenAI
+compatible Mantle client, tool-call conversion, DUSK gate, Compose services,
+prompts, and security assertions for these exact model IDs:
+
+| Evidence slug | Model ID |
+|---|---|
+| `kimi-k2-5` | `moonshotai.kimi-k2.5` |
+| `glm-5` | `zai.glm-5` |
+| `nemotron-3-super-120b` | `nvidia.nemotron-super-3-120b` |
+
+The workflow first verifies that each exact ID is available through the
+authenticated London Mantle endpoint. It then creates an isolated evidence
+directory and artifact for each model. A valid manifest requires more than zero
+tests, with zero failures, zero errors, and zero skips. The final matrix gate
+fails unless every model job succeeds.
+
+The workflow file is the authoritative model allowlist. The legacy
+`BEDROCK_MODEL_ID` value in the `real-agent-dev` environment does not override
+or select a matrix entry. There is no automatic fallback to Kimi or another
+model. Operators still approve the protected `real-agent-dev` deployment, and
+the AWS OIDC role remains restricted to that environment on `dev`.
+
 ## What's in the box
 
 This example is self-contained and includes everything needed to run the
