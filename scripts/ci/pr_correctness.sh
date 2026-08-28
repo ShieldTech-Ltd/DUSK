@@ -50,6 +50,7 @@ vulture_example() {
 vulture_all() {
   vulture_root && vulture_example &&
     vulture services/control-plane/src services/control-plane/tests \
+      services/control-plane/scripts/vulture_whitelist.py \
       --min-confidence 60 \
       --ignore-decorators '@app.get,@app.middleware,@*.fixture' \
       --ignore-names testing,model_config,service,version,DEVELOPMENT,\

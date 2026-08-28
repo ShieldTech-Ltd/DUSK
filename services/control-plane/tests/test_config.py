@@ -35,6 +35,12 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_OIDC_MAX_JWKS_BYTES",
         "DUSK_CP_OIDC_MAX_JWKS_KEYS",
         "DUSK_CP_OIDC_MAX_TOKEN_BYTES",
+        "DUSK_CP_STORAGE_ENABLED",
+        "DUSK_CP_DATABASE_URL",
+        "DUSK_CP_DATABASE_POOL_SIZE",
+        "DUSK_CP_DATABASE_MAX_OVERFLOW",
+        "DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS",
+        "DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -46,6 +52,7 @@ def test_defaults_are_local_and_feature_flags_are_disabled() -> None:
     assert settings.port == 8080
     assert settings.api_docs_enabled is False
     assert settings.v2_enabled is False
+    assert settings.storage_enabled is False
 
 
 @pytest.mark.parametrize("environment", ("staging", "production"))
@@ -143,3 +150,22 @@ def test_complete_v2_configuration_builds_production_authenticator() -> None:
         oidc_jwks_uri="https://identity.example.test/.well-known/jwks.json",
     )
     assert isinstance(AppContainer.build(settings=settings).authenticator, OidcAuthenticator)
+
+
+def test_storage_requires_async_postgresql_url() -> None:
+    with pytest.raises(ValidationError, match="storage_enabled requires database_url"):
+        Settings(storage_enabled=True)
+    with pytest.raises(ValidationError, match=r"must use postgresql\+asyncpg"):
+        Settings(storage_enabled=True, database_url="sqlite+aiosqlite:///control-plane.db")
+
+
+def test_database_url_is_secret_and_storage_defaults_are_bounded() -> None:
+    settings = Settings(
+        storage_enabled=True,
+        database_url="postgresql+asyncpg://user:secret@database/control_plane",
+    )
+    assert "secret" not in repr(settings)
+    assert settings.database_url is not None
+    assert settings.database_url.get_secret_value().startswith("postgresql+asyncpg://")
+    assert settings.database_pool_size == 10
+    assert settings.database_statement_timeout_ms == 5000

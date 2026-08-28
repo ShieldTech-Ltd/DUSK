@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from dusk_control_plane.config import Settings
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
+from dusk_control_plane.storage.database import Database
 
 ProbeCheck = Callable[[], Awaitable[None]]
 
@@ -31,6 +32,7 @@ class AppContainer:
     settings: Settings
     readiness_probes: tuple[DependencyProbe, ...] = ()
     authenticator: Authenticator | None = None
+    database: Database | None = None
 
     @classmethod
     def build(
@@ -38,11 +40,26 @@ class AppContainer:
         settings: Settings | None = None,
         readiness_probes: Sequence[DependencyProbe] = (),
         authenticator: Authenticator | None = None,
+        database: Database | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
+        resolved_database = (
+            database
+            if database is not None
+            else Database.from_settings(resolved_settings)
+            if resolved_settings.storage_enabled
+            else None
+        )
+        resolved_probes = list(readiness_probes)
+        if resolved_database is not None and not any(
+            probe.name == "postgresql" for probe in resolved_probes
+        ):
+            resolved_probes.append(
+                DependencyProbe(name="postgresql", critical=True, check=resolved_database.probe)
+            )
         return cls(
             settings=resolved_settings,
-            readiness_probes=tuple(readiness_probes),
+            readiness_probes=tuple(resolved_probes),
             authenticator=(
                 authenticator
                 if authenticator is not None
@@ -50,4 +67,5 @@ class AppContainer:
                 if resolved_settings.v2_enabled
                 else None
             ),
+            database=resolved_database,
         )
