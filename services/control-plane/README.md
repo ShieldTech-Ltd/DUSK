@@ -50,3 +50,30 @@ settings fail startup.
 
 The service currently has no secret-valued settings. Identity, PostgreSQL, and
 other trust configuration is introduced only with the corresponding issues.
+
+When `DUSK_CP_V2_ENABLED=true`, the service requires `DUSK_CP_OIDC_ISSUER`,
+`DUSK_CP_OIDC_AUDIENCE`, and `DUSK_CP_OIDC_JWKS_URI`. Issuer and JWKS values must
+use HTTPS. Cache, timeout, token-size, JWKS-size, clock-skew, maximum-token-age,
+claim-name, and algorithm controls use the corresponding `DUSK_CP_OIDC_*`
+settings and have validated safe bounds. The complete claim and route contract is
+documented in
+[`docs/control-plane-identity-authorization.md`](../../docs/control-plane-identity-authorization.md).
+
+| OIDC variable | Default | Constraint |
+|---|---|---|
+| `DUSK_CP_OIDC_ISSUER` | unset | Required for v2; exact HTTPS issuer without credentials, query, or fragment |
+| `DUSK_CP_OIDC_AUDIENCE` | unset | Required for v2; exact API audience |
+| `DUSK_CP_OIDC_JWKS_URI` | unset | Required for v2; HTTPS endpoint without credentials or fragment |
+| `DUSK_CP_OIDC_ALGORITHMS` | `["RS256"]` | Non-empty, unique JSON array of supported asymmetric algorithms |
+| `DUSK_CP_OIDC_TENANT_CLAIM` | `dusk_tenant_id` | Bounded custom claim name |
+| `DUSK_CP_OIDC_IDENTITY_KIND_CLAIM` | `dusk_identity_kind` | Bounded custom claim name |
+| `DUSK_CP_OIDC_ROLES_CLAIM` | `dusk_roles` | Bounded custom claim name |
+| `DUSK_CP_OIDC_WORKLOAD_CLAIM` | `dusk_workload_id` | Bounded custom claim name; all four custom names must be distinct |
+| `DUSK_CP_OIDC_CLOCK_SKEW_SECONDS` | `30` | `0..120` |
+| `DUSK_CP_OIDC_MAX_TOKEN_AGE_SECONDS` | `3600` | `60..86400` |
+| `DUSK_CP_OIDC_JWKS_TTL_SECONDS` | `300` | `30..900`; stale keys are never used after expiry |
+| `DUSK_CP_OIDC_JWKS_MIN_REFRESH_SECONDS` | `5` | `1..60`; bounds repeated unknown-key refreshes |
+| `DUSK_CP_OIDC_HTTP_TIMEOUT_SECONDS` | `2.0` | `0.1..10.0` |
+| `DUSK_CP_OIDC_MAX_JWKS_BYTES` | `262144` | `1024..1048576` |
+| `DUSK_CP_OIDC_MAX_JWKS_KEYS` | `32` | `1..128` |
+| `DUSK_CP_OIDC_MAX_TOKEN_BYTES` | `16384` | `1024..65536` |

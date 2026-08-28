@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from dusk_control_plane.config import Settings
+from dusk_control_plane.identity import Authenticator, OidcAuthenticator
 
 ProbeCheck = Callable[[], Awaitable[None]]
 
@@ -29,14 +30,24 @@ class AppContainer:
 
     settings: Settings
     readiness_probes: tuple[DependencyProbe, ...] = ()
+    authenticator: Authenticator | None = None
 
     @classmethod
     def build(
         cls,
         settings: Settings | None = None,
         readiness_probes: Sequence[DependencyProbe] = (),
+        authenticator: Authenticator | None = None,
     ) -> AppContainer:
+        resolved_settings = settings if settings is not None else Settings()
         return cls(
-            settings=settings if settings is not None else Settings(),
+            settings=resolved_settings,
             readiness_probes=tuple(readiness_probes),
+            authenticator=(
+                authenticator
+                if authenticator is not None
+                else OidcAuthenticator.from_settings(resolved_settings)
+                if resolved_settings.v2_enabled
+                else None
+            ),
         )

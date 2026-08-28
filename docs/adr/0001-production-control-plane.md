@@ -1,9 +1,10 @@
 # ADR 0001: Separate production control plane
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-28
 - Decision owners: Security and Engineering
-- Approval record: pending Security owner and Engineering owner review
+- Approval record: Security and Engineering approved by TFT444; API conventions
+  approved by TAMIMTFT
 - Tracking issue: [#190](https://github.com/ShieldTech-Ltd/DUSK/issues/190)
 
 ## Context
@@ -167,14 +168,25 @@ permit routing rollback without destructive schema rollback.
 
 ## Approval checklist
 
-- [ ] Security owner approves trust boundaries, abuse cases, data classes, and
+- [x] Security owner approves trust boundaries, abuse cases, data classes, and
   fail-closed policy.
-- [ ] Engineering owner approves service ownership, compatibility boundary,
+- [x] Engineering owner approves service ownership, compatibility boundary,
   migrations, operations, and rollback.
-- [ ] API reviewers approve the v2 conventions and error/cursor contracts.
-- [ ] Decisions or exceptions raised in review are linked here before status is
+- [x] API reviewers approve the v2 conventions and error/cursor contracts.
+- [x] Decisions or exceptions raised in review are linked here before status is
   changed from Proposed to Accepted.
 
 Implementation issues remain blocked on this ADR until both owner approvals are
 recorded. Approval must be a named, dated review or pull-request approval; a
 checkbox changed by the author is not sufficient.
+
+## Review record
+
+| Role | Reviewer | Date | Decision | Evidence |
+|---|---|---|---|---|
+| Security owner | TFT444 | 2026-08-28 | Approved | [PR #211][pr-211] |
+| Engineering owner | TFT444 | 2026-08-28 | Approved | [PR #211][pr-211] |
+| API reviewer | TAMIMTFT | 2026-08-28 | Approved | [PR #209][pr-209] |
+
+[pr-209]: https://github.com/ShieldTech-Ltd/DUSK/pull/209
+[pr-211]: https://github.com/ShieldTech-Ltd/DUSK/pull/211

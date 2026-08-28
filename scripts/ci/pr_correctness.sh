@@ -53,7 +53,9 @@ vulture_all() {
       --min-confidence 60 \
       --ignore-decorators '@app.get,@app.middleware,@*.fixture' \
       --ignore-names testing,model_config,service,version,DEVELOPMENT,\
-protect_non_local_deployments,validation_error,http_error,unhandled_error,fail_for_test
+protect_non_local_deployments,validation_error,http_error,unhandled_error,fail_for_test,\
+authentication_error,identity_unavailable,authorization_error,require_route_policy,\
+evaluate,operations,protected,consequential
 }
 
 documentation_contracts() {
