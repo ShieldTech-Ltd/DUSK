@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 
-from scripts.validate_real_agent_evidence import (
-    parse_junit_counts,
-    validate_counts,
-    write_validated_manifest,
-)
+_MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "validate_real_agent_evidence.py"
+_SPEC = importlib.util.spec_from_file_location("validate_real_agent_evidence", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+
+parse_junit_counts = _MODULE.parse_junit_counts
+validate_counts = _MODULE.validate_counts
+write_validated_manifest = _MODULE.write_validated_manifest
 
 
 def _write_junit(path, suite_attributes: list[str]) -> None:

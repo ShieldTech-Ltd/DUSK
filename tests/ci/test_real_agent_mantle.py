@@ -17,8 +17,17 @@ _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
 _MAIN_SETUP_PATH = Path("scripts/setup-bedrock-mantle-main.ps1")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
+_EVIDENCE_VALIDATOR_PATH = Path(
+    "examples/agent-action-monitor/scripts/validate_real_agent_evidence.py"
+)
 
 _DEV_JOB = "real-agent-dev-validation"
+_MATRIX_GATE_JOB = "real-agent-dev-matrix-gate"
+EXPECTED_MODELS = [
+    {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
+    {"slug": "glm-5", "id": "zai.glm-5"},
+    {"slug": "nemotron-3-super-120b", "id": "nvidia.nemotron-super-3-120b"},
+]
 
 
 def _dev_workflow() -> dict:
@@ -82,7 +91,7 @@ def test_dev_workflow_uses_separate_environment() -> None:
 
 def test_dev_workflow_names_the_job_and_does_not_persist_checkout_credentials() -> None:
     job = _dev_workflow()["jobs"][_DEV_JOB]
-    assert job["name"] == "Real-agent Mantle dev validation"
+    assert "${{ matrix.model.slug }}" in job["name"]
     checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
     assert checkout["with"]["persist-credentials"] is False
 
@@ -115,11 +124,59 @@ def test_dev_workflow_requires_bedrock_provider_env_var() -> None:
         "AWS_ROLE_ARN",
         "AWS_REGION",
         "BEDROCK_PROVIDER",
-        "BEDROCK_MODEL_ID",
         "DUSK_GATE_API_KEY",
     ):
         assert var in run_script, f"Preflight must check {var}"
+    assert "BEDROCK_MODEL_ID" not in run_script
     assert "exit 1" in run_script
+
+
+def test_dev_workflow_runs_the_exact_approved_model_matrix() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["strategy"] == {"fail-fast": False, "matrix": {"model": EXPECTED_MODELS}}
+    assert job["env"]["BEDROCK_MODEL_ID"] == "${{ matrix.model.id }}"
+
+
+def test_dev_workflow_has_strict_aggregate_gate() -> None:
+    gate = _dev_workflow()["jobs"][_MATRIX_GATE_JOB]
+    assert gate["needs"] == _DEV_JOB
+    assert gate["if"] == "always()"
+    script = gate["steps"][0]["run"]
+    assert "needs.real-agent-dev-validation.result" in script
+    assert "exit 1" in script
+
+
+def test_dev_workflow_validates_each_matrix_model_before_inference() -> None:
+    step = next(s for s in _dev_steps() if s.get("name") == "Verify Mantle model availability")
+    assert step["env"]["MATRIX_MODEL_ID"] == "${{ matrix.model.id }}"
+    assert "require_mantle_model_available" in step["run"]
+    assert "MATRIX_MODEL_ID" in step["run"]
+
+
+def test_dev_workflow_writes_isolated_per_model_evidence() -> None:
+    steps = _dev_steps()
+    upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact@"))
+    assert "${{ matrix.model.slug }}" in upload["with"]["name"]
+    assert "${{ github.run_id }}" in upload["with"]["name"]
+    assert "${{ matrix.model.slug }}" in upload["with"]["path"]
+
+    validate = next(s for s in steps if s.get("name") == "Validate model evidence")
+    assert validate["env"]["MATRIX_MODEL_ID"] == "${{ matrix.model.id }}"
+    assert validate["env"]["MATRIX_MODEL_SLUG"] == "${{ matrix.model.slug }}"
+    assert '--model-id "$MATRIX_MODEL_ID"' in validate["run"]
+    assert '--model-slug "$MATRIX_MODEL_SLUG"' in validate["run"]
+
+
+def test_dev_workflow_has_no_model_fallback_or_dispatch_override() -> None:
+    workflow = _dev_workflow()
+    on = workflow[True] if True in workflow else workflow["on"]
+    inputs = on["workflow_dispatch"].get("inputs", {})
+    assert "model" not in inputs
+    assert "model_id" not in inputs
+
+    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8").lower()
+    assert "fallback" not in text
+    assert "continue-on-error" not in text
 
 
 def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
@@ -547,8 +604,11 @@ def test_dev_workflow_stop_containers_runs_always() -> None:
 
 
 def test_dev_workflow_fails_if_real_llm_tests_skipped() -> None:
-    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "skipped" in text.lower() and "exit 1" in text
+    validate = next(s for s in _dev_steps() if s.get("name") == "Validate model evidence")
+    assert "validate_real_agent_evidence.py" in validate["run"]
+    validator = _EVIDENCE_VALIDATOR_PATH.read_text(encoding="utf-8")
+    assert '("failures", "errors", "skipped")' in validator
+    assert "raise ValueError" in validator
 
 
 def test_dev_workflow_log_collection_is_stage_aware() -> None:
@@ -557,7 +617,7 @@ def test_dev_workflow_log_collection_is_stage_aware() -> None:
     assert "docker compose" in script
     assert "ps -q dusk-gate" in script
     assert "gate-not-started" in script
-    assert "if [ ! -s ci-logs/real-agent-gate.log ]" in script
+    assert 'if [ ! -s "$EVIDENCE_DIR/real-agent-gate.log" ]' in script
 
 
 def test_dev_workflow_never_generates_or_prints_bearer_token() -> None:

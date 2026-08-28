@@ -1,6 +1,6 @@
-name: Real-agent Bedrock Mantle dev validation (Kimi K2.5)
+name: Real-agent Bedrock Mantle dev validation
 
-# Dev-only validation of the Bedrock Mantle provider (Kimi K2.5) through the
+# Dev-only validation of the approved Bedrock Mantle model matrix through the
 # full agent to gate pipeline. Peer of real-agent-sandbox.yml, kept separate
 # so the production main-gated workflow is never coupled to dev iteration.
 #
@@ -10,8 +10,8 @@ name: Real-agent Bedrock Mantle dev validation (Kimi K2.5)
 #     and never touches a workflow step.
 #   - Missing environment configuration fails at the preflight step; it does
 #     NOT silently cause tests to skip and show green.
-#   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_PROVIDER,
-#     BEDROCK_MODEL_ID. Required secret: DUSK_GATE_API_KEY.
+#   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_PROVIDER.
+#     Required secret: DUSK_GATE_API_KEY. Model IDs are fixed below.
 #   - This workflow NEVER pushes to main or dev and NEVER merges anything.
 #   - AWS credentials are only issued when running from refs/heads/dev.
 
@@ -33,10 +33,20 @@ concurrency:
 
 jobs:
   real-agent-dev-validation:
-    name: Real-agent Mantle dev validation
+    name: Real-agent Mantle dev validation (${{ matrix.model.slug }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: real-agent-dev
+    strategy:
+      fail-fast: false
+      matrix:
+        model:
+          - slug: kimi-k2-5
+            id: moonshotai.kimi-k2.5
+          - slug: glm-5
+            id: zai.glm-5
+          - slug: nemotron-3-super-120b
+            id: nvidia.nemotron-super-3-120b
     permissions:
       contents: read
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.
@@ -46,7 +56,8 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
-      BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+      BEDROCK_MODEL_ID: ${{ matrix.model.id }}
+      EVIDENCE_DIR: ci-logs/${{ matrix.model.slug }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,14 +92,12 @@ jobs:
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
-          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           missing=""
           [ -z "$AWS_ROLE_ARN" ]       && missing="$missing AWS_ROLE_ARN"
           [ -z "$AWS_REGION" ]         && missing="$missing AWS_REGION"
           [ -z "$BEDROCK_PROVIDER" ]   && missing="$missing BEDROCK_PROVIDER"
-          [ -z "$BEDROCK_MODEL_ID" ]   && missing="$missing BEDROCK_MODEL_ID"
           [ -z "$DUSK_GATE_API_KEY" ]  && missing="$missing DUSK_GATE_API_KEY"
           if [ -n "$missing" ]; then
             echo "ERROR: the following real-agent-dev environment values are not configured:$missing"
@@ -116,10 +125,16 @@ jobs:
           IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
           echo "Assumed role: $IDENTITY"
 
+      - name: Verify Mantle model availability
+        env:
+          MATRIX_MODEL_ID: ${{ matrix.model.id }}
+        run: |
+          PYTHONPATH=agent-demo python -c "import os; from bedrock_client import require_mantle_model_available; require_mantle_model_available(os.environ['AWS_REGION'], os.environ['MATRIX_MODEL_ID'])"
+
       - name: Log validation parameters
         env:
           GH_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
-          GH_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          GH_MODEL_ID: ${{ matrix.model.id }}
           GH_REF: ${{ github.ref }}
           GH_RUN_ID: ${{ github.run_id }}
           GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
@@ -161,31 +176,27 @@ jobs:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
         run: |
-          mkdir -p ci-logs
+          mkdir -p "$EVIDENCE_DIR"
           pytest tests/real_llm/ -v --tb=short \
-            --junitxml=ci-logs/real-agent-results.xml
+            --junitxml="$EVIDENCE_DIR/real-agent-results.xml"
 
-      # Fail the workflow if any protected test was skipped. A skip means the
-      # credential or provider setup failed silently and the evidence is
-      # invalid. Regex extraction avoids XML parsing entirely (no XXE risk on
-      # the pytest-generated file; we only need two attributes from the root
-      # tag).
-      - name: Verify no real-LLM tests were skipped
+      - name: Validate model evidence
+        env:
+          MATRIX_MODEL_ID: ${{ matrix.model.id }}
+          MATRIX_MODEL_SLUG: ${{ matrix.model.slug }}
+          GH_COMMIT_SHA: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
         run: |
-          python - <<'PYEOF'
-          import re, sys
-          text = open("ci-logs/real-agent-results.xml", encoding="utf-8").read()
-          m_skip  = re.search(r'<testsuite[^>]+\bskipped="(\d+)"', text)
-          m_total = re.search(r'<testsuite[^>]+\btests="(\d+)"', text)
-          skipped = int(m_skip.group(1))  if m_skip  else 0
-          total   = int(m_total.group(1)) if m_total else 0
-          if skipped > 0:
-              print(f"ERROR: {skipped}/{total} real-LLM test(s) were skipped")
-              print("Skipped tests mean credentials or the provider were missing")
-              print("Real-agent dev evidence from this run is INVALID")
-              sys.exit(1)
-          print(f"All {total} real-LLM tests ran (0 skipped)")
-          PYEOF
+          python scripts/validate_real_agent_evidence.py \
+            --junit "$EVIDENCE_DIR/real-agent-results.xml" \
+            --output "$EVIDENCE_DIR/manifest.json" \
+            --provider "$BEDROCK_PROVIDER" \
+            --model-id "$MATRIX_MODEL_ID" \
+            --model-slug "$MATRIX_MODEL_SLUG" \
+            --commit-sha "$GH_COMMIT_SHA" \
+            --run-id "$GH_RUN_ID" \
+            --gate-mode "$GH_GATE_MODE"
 
       # Supply DUSK_ENFORCE and DUSK_GATE_API_KEY so compose.ci.yml
       # interpolation succeeds (it uses :? syntax that fails on missing vars).
@@ -197,17 +208,17 @@ jobs:
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
-          mkdir -p ci-logs
+          mkdir -p "$EVIDENCE_DIR"
           container_id=$(docker compose -f compose.yml -f compose.ci.yml ps -q dusk-gate 2>/dev/null || true)
           if [ -z "$container_id" ]; then
             echo "gate-not-started: no dusk-gate container was created" \
-              > ci-logs/real-agent-gate-status.txt
+              > "$EVIDENCE_DIR/real-agent-gate-status.txt"
             echo "Gate was not started, preserving the earlier workflow failure as the root cause."
             exit 0
           fi
           docker compose -f compose.yml -f compose.ci.yml logs dusk-gate \
-            > ci-logs/real-agent-gate.log 2>&1
-          if [ ! -s ci-logs/real-agent-gate.log ]; then
+            > "$EVIDENCE_DIR/real-agent-gate.log" 2>&1
+          if [ ! -s "$EVIDENCE_DIR/real-agent-gate.log" ]; then
             echo "ERROR: gate log file is empty; Compose may have failed to start the service" >&2
             exit 1
           fi
@@ -216,8 +227,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: real-agent-dev-evidence-${{ github.run_id }}
-          path: examples/agent-action-monitor/ci-logs/
+          name: real-agent-dev-evidence-${{ matrix.model.slug }}-${{ github.run_id }}
+          path: examples/agent-action-monitor/ci-logs/${{ matrix.model.slug }}/
           if-no-files-found: warn
           retention-days: 30
 
@@ -227,3 +238,19 @@ jobs:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
         run: docker compose -f compose.yml -f compose.ci.yml down --remove-orphans
+
+  real-agent-dev-matrix-gate:
+    name: Real-agent Mantle dev matrix gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: real-agent-dev-validation
+    permissions:
+      contents: read
+    steps:
+      - name: Require every model validation to pass
+        run: |
+          if [ "${{ needs.real-agent-dev-validation.result }}" != "success" ]; then
+            echo "ERROR: at least one required Mantle model validation did not pass"
+            exit 1
+          fi
+          echo "All required Mantle model validations passed"
