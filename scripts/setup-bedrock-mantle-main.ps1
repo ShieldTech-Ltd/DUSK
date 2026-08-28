@@ -481,4 +481,3 @@ Write-Host "Next steps (manual, after this change is merged to main):"
 Write-Host "  1. Ensure BEDROCK_PROVIDER=mantle and BEDROCK_MODEL_ID are set in the environment."
 Write-Host "  2. Trigger the workflow via GitHub Actions UI (requires ritiksah141 approval)."
 Write-Host "  3. Do not dispatch automatically from this script."
-
