@@ -11,7 +11,8 @@ name: Real-Agent Sandbox
 #   - No credentials are printed, echoed, or surfaced in logs.
 #   - Missing environment configuration causes the workflow to fail at preflight
 #     step; they do NOT silently cause tests to skip and show green.
-#   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_MODEL_ID.
+#   - Required variables: AWS_ROLE_ARN, AWS_REGION, BEDROCK_PROVIDER,
+#     BEDROCK_MODEL_ID.
 #   - Required secret: DUSK_GATE_API_KEY.
 #   - This workflow NEVER pushes to main or dev and NEVER merges anything.
 #   - AWS credentials are only issued when running from refs/heads/main.
@@ -46,9 +47,15 @@ jobs:
     defaults:
       run:
         working-directory: examples/agent-action-monitor
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
+      BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -76,12 +83,14 @@ jobs:
         env:
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
+          BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           missing=""
           [ -z "$AWS_ROLE_ARN" ]       && missing="$missing AWS_ROLE_ARN"
           [ -z "$AWS_REGION" ]         && missing="$missing AWS_REGION"
+          [ -z "$BEDROCK_PROVIDER" ]   && missing="$missing BEDROCK_PROVIDER"
           [ -z "$BEDROCK_MODEL_ID" ]   && missing="$missing BEDROCK_MODEL_ID"
           [ -z "$DUSK_GATE_API_KEY" ]  && missing="$missing DUSK_GATE_API_KEY"
           if [ -n "$missing" ]; then
@@ -112,27 +121,17 @@ jobs:
           IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
           echo "Assumed role: $IDENTITY"
 
-      - name: Verify Bedrock model access
-        env:
-          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-        run: |
-          PROFILE=$(aws bedrock list-inference-profiles \
-            --query "inferenceProfileSummaries[?inferenceProfileId=='$BEDROCK_MODEL_ID'].inferenceProfileId" \
-            --output text)
-          if [ -z "$PROFILE" ]; then
-            echo "ERROR: inference profile '$BEDROCK_MODEL_ID' not found in region $AWS_DEFAULT_REGION"
-            exit 1
-          fi
-          echo "Bedrock inference profile confirmed: $PROFILE"
-
       - name: Log validation parameters
         env:
+          GH_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
+          GH_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
           GH_REF: ${{ github.ref }}
           GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
           GH_RUN_ID: ${{ github.run_id }}
         run: |
           echo "=== Real-agent validation parameters ==="
+          echo "provider: $GH_PROVIDER"
+          echo "model_id: $GH_MODEL_ID"
           echo "gate_mode: $GH_GATE_MODE"
           echo "ref: $GH_REF"
           echo "run_id: $GH_RUN_ID"
@@ -149,7 +148,7 @@ jobs:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
         run: |
-          docker compose -f compose.yml -f compose.ci.yml up -d dusk-gate mock-prod
+          docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod
           # Wait for gate health endpoint (up to 30 s)
           _gate_healthy=false
           for _ in $(seq 1 15); do
@@ -169,8 +168,6 @@ jobs:
       - name: Run real-LLM gate tests
         env:
           USE_REAL_BEDROCK: "true"
-          AWS_DEFAULT_REGION: "${{ vars.AWS_REGION }}"
-          BEDROCK_MODEL_ID: "${{ vars.BEDROCK_MODEL_ID }}"
           DUSK_GATE_URL: "http://localhost:8000/v1/gate"
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
@@ -229,6 +226,13 @@ jobs:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           mkdir -p ci-logs
+          container_id=$(docker compose -f compose.yml -f compose.ci.yml ps -q dusk-gate 2>/dev/null || true)
+          if [ -z "$container_id" ]; then
+            echo "gate-not-started: no dusk-gate container was created" \
+              > ci-logs/real-agent-gate-status.txt
+            echo "Gate was not started, preserving the earlier workflow failure as the root cause."
+            exit 0
+          fi
           docker compose -f compose.yml -f compose.ci.yml logs dusk-gate \
             > ci-logs/real-agent-gate.log 2>&1
           if [ ! -s ci-logs/real-agent-gate.log ]; then
