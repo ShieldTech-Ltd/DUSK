@@ -53,6 +53,8 @@ def test_real_agent_workflow_requires_environment_configuration() -> None:
     assert "BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}" in text
     assert "BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}" in text
     assert "DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}" in text
+
+
 def test_main_job_exports_the_mantle_provider_contract() -> None:
     job = _workflow()["jobs"]["real-agent-validation"]
 

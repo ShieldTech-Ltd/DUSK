@@ -203,8 +203,7 @@ def test_main_template_scopes_mantle_permissions() -> None:
     )
     assert project_statement["Resource"] == {
         "Fn::Sub": (
-            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:"
-            "${AWS::AccountId}:project/*"
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*"
         )
     }
 
