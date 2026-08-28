@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -14,7 +15,9 @@ from bedrock_client import (
     MantleClient,
     build_provider_client,
     extract_function_call,
+    list_mantle_model_ids,
     propose_tool_call,
+    require_mantle_model_available,
     tool_config_to_openai_tools,
 )
 
@@ -85,7 +88,7 @@ def test_build_provider_client_mantle_calls_build_mantle_client(monkeypatch):
 # --- Mantle client construction --------------------------------------------
 
 
-def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token"):
+def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token", model_entries=None):
     """Stub aws_bedrock_token_generator and openai as importable modules.
 
     Returns the recording dict the fake OpenAI captures its kwargs into.
@@ -107,11 +110,74 @@ def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token"):
         def __init__(self, *, base_url: str, api_key: str):
             captured["base_url"] = base_url
             captured["api_key"] = api_key
+            self.models = SimpleNamespace(
+                list=lambda: SimpleNamespace(data=[] if model_entries is None else model_entries)
+            )
 
     openai_mod.OpenAI = _FakeOpenAI  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "openai", openai_mod)
 
     return captured
+
+
+def test_list_mantle_model_ids_returns_only_non_empty_ids(monkeypatch):
+    captured = _install_fake_token_and_openai(
+        monkeypatch,
+        model_entries=[
+            SimpleNamespace(id="moonshotai.kimi-k2.5"),
+            SimpleNamespace(id="zai.glm-5"),
+            SimpleNamespace(id=""),
+        ],
+    )
+
+    assert list_mantle_model_ids("eu-west-2") == {
+        "moonshotai.kimi-k2.5",
+        "zai.glm-5",
+    }
+    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
+
+
+def test_require_mantle_model_available_rejects_missing_model(monkeypatch):
+    _install_fake_token_and_openai(
+        monkeypatch,
+        model_entries=[SimpleNamespace(id="moonshotai.kimi-k2.5")],
+    )
+
+    with pytest.raises(RuntimeError, match="zai.glm-5"):
+        require_mantle_model_available("eu-west-2", "zai.glm-5")
+
+
+def test_list_mantle_model_ids_rejects_malformed_response(monkeypatch):
+    _install_fake_token_and_openai(monkeypatch, model_entries=None)
+    openai_module = sys.modules["openai"]
+    original = openai_module.OpenAI
+
+    class _MalformedOpenAI(original):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.models = SimpleNamespace(list=lambda: SimpleNamespace(data=None))
+
+    openai_module.OpenAI = _MalformedOpenAI
+
+    with pytest.raises(RuntimeError, match="data list"):
+        list_mantle_model_ids("eu-west-2")
+
+
+def test_list_mantle_model_ids_rejects_empty_token(monkeypatch):
+    _install_fake_token_and_openai(monkeypatch, token="")
+
+    with pytest.raises(RuntimeError, match="empty token"):
+        list_mantle_model_ids("eu-west-2")
+
+
+def test_require_mantle_model_available_does_not_leak_token(monkeypatch):
+    secret_token = "super-secret-token-xyz"
+    _install_fake_token_and_openai(monkeypatch, token=secret_token, model_entries=[])
+
+    with pytest.raises(RuntimeError) as exc_info:
+        require_mantle_model_available("eu-west-2", "zai.glm-5")
+
+    assert secret_token not in str(exc_info.value)
 
 
 def test_build_mantle_client_uses_london_mantle_endpoint(monkeypatch):
