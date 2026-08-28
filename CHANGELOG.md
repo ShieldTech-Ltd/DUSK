@@ -14,6 +14,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- PostgreSQL persistence boundary for the production control plane, including
+  tenant-qualified SQLAlchemy models and repositories, an Alembic baseline,
+  bounded async connection management, critical readiness probing, a
+  digest-pinned local database profile, and real PostgreSQL migration,
+  isolation, idempotency, retention, and rollback tests.
 - CloudFormation template for GitHub OIDC provider and least-privilege IAM role
   restricted to the `real-agent` environment, with only the model metadata and
   invocation permissions used by the workflow (`infra/aws/bedrock-real-agent/template.yaml`).
