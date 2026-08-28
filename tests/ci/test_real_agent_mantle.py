@@ -12,8 +12,10 @@ import yaml
 _DEV_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox-dev.yml")
 _PROD_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
+_MAIN_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-main/template.yaml")
 _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
+_MAIN_SETUP_PATH = Path("scripts/setup-bedrock-mantle-main.ps1")
 _LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
 
 _DEV_JOB = "real-agent-dev-validation"
@@ -34,6 +36,25 @@ def _dev_template() -> dict:
 def _dev_role() -> dict:
     t = _dev_template()
     return t["Resources"]["DuskMantleDevRole"]
+
+
+def _main_template() -> dict:
+    return yaml.safe_load(_MAIN_TEMPLATE_PATH.read_text(encoding="utf-8"))
+
+
+def _main_role() -> dict:
+    return _main_template()["Resources"]["DuskMantleMainRole"]
+
+
+def _main_actions() -> set[str]:
+    statements = _main_role()["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+    return {
+        action
+        for statement in statements
+        for action in (
+            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
+        )
+    }
 
 
 def _dev_steps() -> list[dict]:
@@ -130,6 +151,104 @@ def test_prod_workflow_remains_main_only() -> None:
     text = _PROD_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "refs/heads/main" in text
     assert "refs/heads/dev" not in text
+
+
+# --- Main Mantle IAM -------------------------------------------------------
+
+
+def test_main_template_defaults_are_main_only() -> None:
+    params = _main_template()["Parameters"]
+    assert params["GitHubEnvironment"]["Default"] == "real-agent"
+    assert params["RoleName"]["Default"] == "DuskRealAgentMainMantleRole"
+    assert params["RoleName"]["Default"] != _dev_template()["Parameters"]["RoleName"]["Default"]
+
+
+def test_main_template_uses_exact_immutable_oidc_subject() -> None:
+    statement = _main_role()["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]
+    assert statement["Condition"]["StringEquals"] == {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": {
+            "Fn::Sub": (
+                "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:"
+                "environment:${GitHubEnvironment}"
+            )
+        },
+    }
+
+
+def test_main_template_action_allowlist_is_exact() -> None:
+    assert _main_actions() == {
+        "bedrock-mantle:CallWithBearerToken",
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+
+
+def test_main_template_scopes_mantle_permissions() -> None:
+    statements = _main_role()["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+    token_statement = next(
+        statement
+        for statement in statements
+        if statement["Action"] == "bedrock-mantle:CallWithBearerToken"
+    )
+    assert token_statement["Resource"] == "*"
+    assert token_statement["Condition"]["StringEquals"] == {
+        "bedrock-mantle:bearerTokenType": "SHORT_TERM"
+    }
+
+    project_statement = next(
+        statement for statement in statements if isinstance(statement["Action"], list)
+    )
+    assert project_statement["Resource"] == {
+        "Fn::Sub": (
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*"
+        )
+    }
+
+
+def test_main_template_has_no_runtime_iam_or_wildcard_actions() -> None:
+    actions = _main_actions()
+    assert "*" not in actions
+    assert "bedrock:InvokeModel" not in actions
+    assert "bedrock:ListInferenceProfiles" not in actions
+    assert not any(action.startswith("iam:") for action in actions)
+
+
+def test_main_setup_defaults_to_read_only_and_main_identity() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '[string]$StackName = "dusk-bedrock-mantle-main"' in script
+    assert '[string]$GitHubEnvironment = "real-agent"' in script
+    assert '$RoleName = "DuskRealAgentMainMantleRole"' in script
+    assert "if (-not $Deploy)" in script
+    assert "if (-not $Confirm)" in script
+
+
+def test_main_setup_requires_main_only_environment_protection() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '"ritiksah141" -notin $reviewerLogins' in script
+    assert "prevent_self_review" in script
+    assert '$allowedPatterns[0] -eq "main"' in script
+    assert "Only 'main' must be allowed" in script
+
+
+def test_main_setup_validates_exact_live_permissions() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "list-attached-role-policies" in script
+    assert "$policyNames.Count -ne 1" in script
+    assert "$policy.PolicyDocument.Statement.Count -ne 2" in script
+    assert "Unexpected action" in script
+    assert "SHORT_TERM" in script
+
+
+def test_main_setup_never_dispatches_or_changes_provider_variables() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "gh workflow run" not in script
+    assert 'gh variable set "AWS_ROLE_ARN"' in script
+    assert 'gh variable set "AWS_REGION"' not in script
+    assert 'gh variable set "BEDROCK_PROVIDER"' not in script
+    assert 'gh variable set "BEDROCK_MODEL_ID"' not in script
 
 
 # --- Dev IAM ---------------------------------------------------------------
