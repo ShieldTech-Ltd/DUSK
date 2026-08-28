@@ -6,22 +6,29 @@ ruff_check() {
   ruff check src tests scripts examples/agent-action-monitor/src \
     examples/agent-action-monitor/tests examples/agent-action-monitor/agent-demo \
     examples/agent-action-monitor/mock-prod examples/agent-action-monitor/lab \
-    examples/agent-action-monitor/scripts
+    examples/agent-action-monitor/scripts services/control-plane/src \
+    services/control-plane/tests services/control-plane/scripts
 }
 
 ruff_format() {
   ruff format --check src tests scripts examples/agent-action-monitor/src \
     examples/agent-action-monitor/tests examples/agent-action-monitor/agent-demo \
     examples/agent-action-monitor/mock-prod examples/agent-action-monitor/lab \
-    examples/agent-action-monitor/scripts
+    examples/agent-action-monitor/scripts services/control-plane/src \
+    services/control-plane/tests services/control-plane/scripts
 }
 
-mypy_example() {
-  cd examples/agent-action-monitor || return
-  mypy src/dusk agent-demo/bedrock_client.py agent-demo/mock_bedrock.py \
-    agent-demo/harness.py agent-demo/load_driver.py agent-demo/run_scenario.py \
-    agent-demo/stub_gate.py mock-prod/app.py scripts/verify_ci_sandbox.py \
-    --ignore-missing-imports
+mypy_services() {
+  (
+    cd examples/agent-action-monitor || return
+    mypy src/dusk agent-demo/bedrock_client.py agent-demo/mock_bedrock.py \
+      agent-demo/harness.py agent-demo/load_driver.py agent-demo/run_scenario.py \
+      agent-demo/stub_gate.py mock-prod/app.py scripts/verify_ci_sandbox.py \
+      --ignore-missing-imports
+  ) && (
+    cd services/control-plane || return
+    mypy src/dusk_control_plane
+  )
 }
 
 vulture_root() {
@@ -31,15 +38,22 @@ vulture_root() {
 }
 
 vulture_example() {
-  cd examples/agent-action-monitor || return
-  vulture src tests agent-demo mock-prod scripts/vulture_whitelist.py \
-    scripts/verify_ci_sandbox.py --min-confidence 60 \
-    --ignore-decorators '@app.route,@app.get,@app.post,@click.*,@*.fixture' \
-    --ignore-names return_value,side_effect,testing
+  (
+    cd examples/agent-action-monitor || return
+    vulture src tests agent-demo mock-prod scripts/vulture_whitelist.py \
+      scripts/verify_ci_sandbox.py --min-confidence 60 \
+      --ignore-decorators '@app.route,@app.get,@app.post,@click.*,@*.fixture' \
+      --ignore-names return_value,side_effect,testing
+  )
 }
 
 vulture_all() {
-  vulture_root && vulture_example
+  vulture_root && vulture_example &&
+    vulture services/control-plane/src services/control-plane/tests \
+      --min-confidence 60 \
+      --ignore-decorators '@app.get,@app.middleware,@*.fixture' \
+      --ignore-names testing,model_config,service,version,DEVELOPMENT,\
+protect_non_local_deployments,validation_error,http_error,unhandled_error,fail_for_test
 }
 
 documentation_contracts() {
@@ -51,7 +65,15 @@ documentation_contracts() {
 compose_contract() {
   DUSK_ENFORCE=false DUSK_GATE_API_KEY=contract-check \
     docker compose -f examples/agent-action-monitor/compose.yml \
-      -f examples/agent-action-monitor/compose.ci.yml config --quiet
+      -f examples/agent-action-monitor/compose.ci.yml config --quiet &&
+    docker compose -f services/control-plane/compose.yml \
+      --profile control-plane config --quiet
+}
+
+openapi_contracts() {
+  openapi-spec-validator examples/agent-action-monitor/contracts/gate.openapi.yaml &&
+    openapi-spec-validator services/control-plane/contracts/openapi.json &&
+    (cd services/control-plane && python scripts/export_openapi.py --check)
 }
 
 root_tests() {
@@ -60,7 +82,8 @@ root_tests() {
 
 example_tests() {
   PYTHONPATH=examples/agent-action-monitor/src \
-    pytest -n auto --dist loadscope examples/agent-action-monitor
+    pytest -n auto --dist loadscope examples/agent-action-monitor &&
+    pytest -n auto --dist loadscope services/control-plane/tests
 }
 
 # Shell functions are not child-process executables. Dispatch them through this
@@ -68,8 +91,9 @@ example_tests() {
 if [ "${1:-}" = "--task" ]; then
   shift
   case "${1:-}" in
-    ruff_check | ruff_format | mypy_example | vulture_all | documentation_contracts | \
-      compose_contract | root_tests | example_tests)
+    ruff_check | ruff_format | mypy_services | vulture_all | \
+      documentation_contracts | compose_contract | openapi_contracts | root_tests | \
+      example_tests)
       "$1"
       ;;
     *)
@@ -103,11 +127,11 @@ run_controls "PR-002 PR-003 PR-004 PR-005 PR-006 PR-007 PR-008 PR-009 PR-010 PR-
 run_controls "PR-011 PR-012 PR-013 PR-014 PR-016 PR-017" sh "$0" --task ruff_check
 run_controls "PR-015" sh "$0" --task ruff_format
 run_controls "PR-021" mypy src/dusk
-run_controls "PR-022" sh "$0" --task mypy_example
-run_controls "PR-023" python -m compileall -q src examples/agent-action-monitor/src
+run_controls "PR-022" sh "$0" --task mypy_services
+run_controls "PR-023" python -m compileall -q src examples/agent-action-monitor/src \
+  services/control-plane/src
 run_controls "PR-019" sh "$0" --task vulture_all
-run_controls "PR-024" openapi-spec-validator \
-  examples/agent-action-monitor/contracts/gate.openapi.yaml
+run_controls "PR-024" sh "$0" --task openapi_contracts
 run_controls "PR-025" sh "$0" --task compose_contract
 run_controls "PR-028" sh "$0" --task documentation_contracts
 run_controls "PR-029" python scripts/ci/public_api_check.py "$base_sha"
