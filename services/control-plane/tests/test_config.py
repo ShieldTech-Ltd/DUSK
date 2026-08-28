@@ -19,6 +19,22 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_V2_ENABLED",
         "DUSK_CP_READINESS_TIMEOUT_MS",
         "DUSK_CP_MAX_REQUEST_BODY_BYTES",
+        "DUSK_CP_OIDC_ISSUER",
+        "DUSK_CP_OIDC_AUDIENCE",
+        "DUSK_CP_OIDC_JWKS_URI",
+        "DUSK_CP_OIDC_ALGORITHMS",
+        "DUSK_CP_OIDC_TENANT_CLAIM",
+        "DUSK_CP_OIDC_IDENTITY_KIND_CLAIM",
+        "DUSK_CP_OIDC_ROLES_CLAIM",
+        "DUSK_CP_OIDC_WORKLOAD_CLAIM",
+        "DUSK_CP_OIDC_CLOCK_SKEW_SECONDS",
+        "DUSK_CP_OIDC_MAX_TOKEN_AGE_SECONDS",
+        "DUSK_CP_OIDC_JWKS_TTL_SECONDS",
+        "DUSK_CP_OIDC_JWKS_MIN_REFRESH_SECONDS",
+        "DUSK_CP_OIDC_HTTP_TIMEOUT_SECONDS",
+        "DUSK_CP_OIDC_MAX_JWKS_BYTES",
+        "DUSK_CP_OIDC_MAX_JWKS_KEYS",
+        "DUSK_CP_OIDC_MAX_TOKEN_BYTES",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -73,3 +89,57 @@ def test_invalid_recognized_configuration_fails_startup(
 def test_unrelated_environment_variables_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUSK_GATE_API_KEY", "not-a-control-plane-setting")
     assert Settings().service_name == "dusk-control-plane"
+
+
+def test_v2_requires_complete_oidc_trust_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DUSK_CP_V2_ENABLED", "true")
+    with pytest.raises(ValidationError, match="oidc_issuer, oidc_audience, oidc_jwks_uri"):
+        Settings()
+
+
+@pytest.mark.parametrize("name", ("DUSK_CP_OIDC_ISSUER", "DUSK_CP_OIDC_JWKS_URI"))
+@pytest.mark.parametrize(
+    "value",
+    (
+        "http://identity.example.test/",
+        "https://user:password@identity.example.test/",
+        "https:///missing-host",
+        "https://identity.example.test/#fragment",
+        "https://identity.example.test:invalid/",
+    ),
+)
+def test_oidc_trust_urls_require_safe_https(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError, match="must use https"):
+        Settings()
+
+
+def test_oidc_issuer_rejects_query_parameters(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DUSK_CP_OIDC_ISSUER", "https://identity.example.test/?tenant=a")
+    with pytest.raises(ValidationError, match="must use https"):
+        Settings()
+
+
+def test_oidc_algorithms_and_custom_claim_names_must_be_unambiguous() -> None:
+    with pytest.raises(ValidationError, match="non-empty and unique"):
+        Settings(oidc_algorithms=("RS256", "RS256"))
+    with pytest.raises(ValidationError, match="claim names must be distinct"):
+        Settings(oidc_tenant_claim="same", oidc_identity_kind_claim="same")
+
+
+def test_complete_v2_configuration_builds_production_authenticator() -> None:
+    from dusk_control_plane.dependencies import AppContainer
+    from dusk_control_plane.identity import OidcAuthenticator
+
+    settings = Settings(
+        environment=Environment.TEST,
+        v2_enabled=True,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/.well-known/jwks.json",
+    )
+    assert isinstance(AppContainer.build(settings=settings).authenticator, OidcAuthenticator)

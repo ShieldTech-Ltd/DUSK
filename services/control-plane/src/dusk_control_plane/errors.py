@@ -9,6 +9,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from dusk_control_plane.identity import (
+    AuthenticationRejectedError,
+    AuthorizationDeniedError,
+    IdentityProviderUnavailableError,
+)
 from dusk_control_plane.models import ErrorDetail, ErrorEnvelope
 from dusk_control_plane.request_context import get_request_id
 
@@ -80,4 +85,39 @@ def install_error_handlers(app: FastAPI) -> None:
             code="INTERNAL_ERROR",
             message="Internal service error",
             retryable=True,
+        )
+
+    @app.exception_handler(AuthenticationRejectedError)
+    async def authentication_error(
+        _request: Request, _exc: AuthenticationRejectedError
+    ) -> JSONResponse:
+        response = error_response(
+            status_code=401,
+            code="AUTHENTICATION_REQUIRED",
+            message="Valid authentication is required",
+            retryable=False,
+        )
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response
+
+    @app.exception_handler(IdentityProviderUnavailableError)
+    async def identity_unavailable(
+        _request: Request, _exc: IdentityProviderUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="IDENTITY_PROVIDER_UNAVAILABLE",
+            message="Identity verification is temporarily unavailable",
+            retryable=True,
+        )
+
+    @app.exception_handler(AuthorizationDeniedError)
+    async def authorization_error(
+        _request: Request, _exc: AuthorizationDeniedError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Access is forbidden",
+            retryable=False,
         )
