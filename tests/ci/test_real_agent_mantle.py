@@ -146,6 +146,11 @@ def test_dev_workflow_has_strict_aggregate_gate() -> None:
     assert "exit 1" in script
 
 
+def test_dev_workflow_matrix_gate_has_bounded_runtime() -> None:
+    gate = _dev_workflow()["jobs"][_MATRIX_GATE_JOB]
+    assert gate["timeout-minutes"] == 5
+
+
 def test_dev_workflow_validates_each_matrix_model_before_inference() -> None:
     step = next(s for s in _dev_steps() if s.get("name") == "Verify Mantle model availability")
     assert step["env"]["MATRIX_MODEL_ID"] == "${{ matrix.model.id }}"

@@ -242,6 +242,7 @@ jobs:
   real-agent-dev-matrix-gate:
     name: Real-agent Mantle dev matrix gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: always()
     needs: real-agent-dev-validation
     permissions:
