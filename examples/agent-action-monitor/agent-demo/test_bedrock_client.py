@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 import types
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -15,9 +14,7 @@ from bedrock_client import (
     MantleClient,
     build_provider_client,
     extract_function_call,
-    list_mantle_model_ids,
     propose_tool_call,
-    require_mantle_model_available,
     tool_config_to_openai_tools,
 )
 
@@ -88,10 +85,12 @@ def test_build_provider_client_mantle_calls_build_mantle_client(monkeypatch):
 # --- Mantle client construction --------------------------------------------
 
 
-def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token", model_entries=None):
+def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token"):
     """Stub aws_bedrock_token_generator and openai as importable modules.
 
     Returns the recording dict the fake OpenAI captures its kwargs into.
+    All constructor keyword arguments (including timeout and max_retries)
+    are stored so tests can assert on the exact bounded configuration.
     """
     captured: dict[str, Any] = {}
 
@@ -107,12 +106,10 @@ def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token", mod
     openai_mod = types.ModuleType("openai")
 
     class _FakeOpenAI:
-        def __init__(self, *, base_url: str, api_key: str):
+        def __init__(self, *, base_url: str, api_key: str, **kwargs: Any):
             captured["base_url"] = base_url
             captured["api_key"] = api_key
-            self.models = SimpleNamespace(
-                list=lambda: SimpleNamespace(data=[] if model_entries is None else model_entries)
-            )
+            captured.update(kwargs)
 
     openai_mod.OpenAI = _FakeOpenAI  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "openai", openai_mod)
@@ -120,71 +117,11 @@ def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token", mod
     return captured
 
 
-def test_list_mantle_model_ids_returns_only_non_empty_ids(monkeypatch):
-    captured = _install_fake_token_and_openai(
-        monkeypatch,
-        model_entries=[
-            SimpleNamespace(id="moonshotai.kimi-k2.5"),
-            SimpleNamespace(id="zai.glm-5"),
-            SimpleNamespace(id=""),
-        ],
-    )
-
-    assert list_mantle_model_ids("eu-west-2") == {
-        "moonshotai.kimi-k2.5",
-        "zai.glm-5",
-    }
-    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
-
-
-def test_require_mantle_model_available_rejects_missing_model(monkeypatch):
-    _install_fake_token_and_openai(
-        monkeypatch,
-        model_entries=[SimpleNamespace(id="moonshotai.kimi-k2.5")],
-    )
-
-    with pytest.raises(RuntimeError, match="zai.glm-5"):
-        require_mantle_model_available("eu-west-2", "zai.glm-5")
-
-
-def test_list_mantle_model_ids_rejects_malformed_response(monkeypatch):
-    _install_fake_token_and_openai(monkeypatch, model_entries=None)
-    openai_module = sys.modules["openai"]
-    original = openai_module.OpenAI
-
-    class _MalformedOpenAI(original):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.models = SimpleNamespace(list=lambda: SimpleNamespace(data=None))
-
-    openai_module.OpenAI = _MalformedOpenAI
-
-    with pytest.raises(RuntimeError, match="data list"):
-        list_mantle_model_ids("eu-west-2")
-
-
-def test_list_mantle_model_ids_rejects_empty_token(monkeypatch):
-    _install_fake_token_and_openai(monkeypatch, token="")
-
-    with pytest.raises(RuntimeError, match="empty token"):
-        list_mantle_model_ids("eu-west-2")
-
-
-def test_require_mantle_model_available_does_not_leak_token(monkeypatch):
-    secret_token = "super-secret-token-xyz"
-    _install_fake_token_and_openai(monkeypatch, token=secret_token, model_entries=[])
-
-    with pytest.raises(RuntimeError) as exc_info:
-        require_mantle_model_available("eu-west-2", "zai.glm-5")
-
-    assert secret_token not in str(exc_info.value)
-
-
 def test_build_mantle_client_uses_london_mantle_endpoint(monkeypatch):
     captured = _install_fake_token_and_openai(monkeypatch)
     from bedrock_client import build_mantle_client
 
-    build_mantle_client(region="eu-west-2", model_id="kimi")
+    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
     assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
 
 
@@ -201,16 +138,164 @@ def test_build_mantle_client_raises_if_token_is_falsy(monkeypatch):
     from bedrock_client import build_mantle_client
 
     with pytest.raises(RuntimeError):
-        build_mantle_client(region="eu-west-2", model_id="kimi")
+        build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
 
 
 def test_mantle_client_does_not_echo_token_in_repr(monkeypatch):
     _install_fake_token_and_openai(monkeypatch, token="super-secret-token-xyz")
     from bedrock_client import build_mantle_client
 
-    client = build_mantle_client(region="eu-west-2", model_id="kimi")
+    client = build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
     assert "super-secret-token-xyz" not in repr(client)
     assert "super-secret-token-xyz" not in str(client)
+
+
+def test_build_mantle_client_passes_bounded_timeout(monkeypatch):
+    """build_mantle_client must pass timeout=120 to prevent unbounded inference hangs."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert captured.get("timeout") == 120
+
+
+def test_build_mantle_client_disables_sdk_retries(monkeypatch):
+    """build_mantle_client must pass max_retries=0 to prevent hidden retry amplification."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert captured.get("max_retries") == 0
+
+
+def test_mantle_client_sends_max_completion_tokens():
+    """Every chat_completions_create call must include max_completion_tokens=512."""
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "zai.glm-5")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "check route table"}],
+        tools=[{"type": "function", "function": {"name": "update_route_table"}}],
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["max_completion_tokens"] == 4096
+
+
+def test_mantle_client_retries_once_on_token_length_truncation():
+    """When finish_reason='length' and no tool calls, chat_completions_create retries once.
+
+    Reasoning models sometimes enter an extended chain-of-thought mode that exhausts
+    max_completion_tokens before the tool call JSON is written. The retry gives the
+    model a second chance at its short-mode reasoning path.
+    """
+    openai_client = MagicMock()
+
+    truncated = MagicMock()
+    truncated.choices = [MagicMock(finish_reason="length", message=MagicMock(tool_calls=None))]
+
+    success = MagicMock()
+    tc = MagicMock()
+    tc.id = "call_1"
+    tc.function = MagicMock(name="update_firewall_rule", arguments='{"target": "fw-1"}')
+    success.choices = [MagicMock(finish_reason="tool_calls", message=MagicMock(tool_calls=[tc]))]
+
+    openai_client.chat.completions.create.side_effect = [truncated, success]
+    client = MantleClient(openai_client, "qwen.qwen3-32b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert openai_client.chat.completions.create.call_count == 2
+    assert result is success
+
+
+def test_mantle_client_does_not_retry_when_length_but_no_tool_required():
+    """No retry for finish_reason='length' when require_tool_call is False."""
+    openai_client = MagicMock()
+
+    truncated = MagicMock()
+    truncated.choices = [MagicMock(finish_reason="length", message=MagicMock(tool_calls=None))]
+    openai_client.chat.completions.create.return_value = truncated
+
+    client = MantleClient(openai_client, "qwen.qwen3-32b")
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[],
+        require_tool_call=False,
+    )
+
+    assert openai_client.chat.completions.create.call_count == 1
+
+
+# --- Endpoint routing ---------------------------------------------------------
+
+
+def test_build_mantle_client_uses_v1_endpoint_for_kimi(monkeypatch):
+    """moonshotai.kimi-k2.5 must use the standard /v1 Mantle endpoint."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
+
+
+def test_build_mantle_client_uses_v1_endpoint_for_glm5(monkeypatch):
+    """zai.glm-5 must use the standard /v1 Mantle endpoint."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="zai.glm-5")
+    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
+
+
+def test_build_mantle_client_uses_v1_endpoint_for_qwen3_32b(monkeypatch):
+    """qwen.qwen3-32b must use the standard /v1 Mantle endpoint."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="qwen.qwen3-32b")
+    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
+
+
+def test_build_mantle_client_qwen_does_not_use_openai_v1_endpoint(monkeypatch):
+    """Qwen must not be routed to the /openai/v1 endpoint."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="qwen.qwen3-32b")
+    assert "/openai/" not in captured["base_url"]
+
+
+def test_build_mantle_client_raises_for_unknown_model_id(monkeypatch):
+    """build_mantle_client must reject model IDs not in the approved allowlist."""
+    _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    with pytest.raises(ValueError, match="not in the approved"):
+        build_mantle_client(region="eu-west-2", model_id="unknown.model-xyz")
+
+
+def test_build_mantle_client_raises_for_malformed_model_id(monkeypatch):
+    """build_mantle_client must reject model IDs not in the approved allowlist."""
+    _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    with pytest.raises(ValueError):
+        build_mantle_client(region="eu-west-2", model_id="../../etc/passwd")
+
+
+def test_build_mantle_client_token_absent_from_repr_and_exceptions(monkeypatch):
+    """Bearer token must never appear in repr or in exception messages."""
+    _install_fake_token_and_openai(monkeypatch, token="secret-bearer-XYZXYZ")
+    from bedrock_client import build_mantle_client
+
+    client = build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert "secret-bearer-XYZXYZ" not in repr(client)
+    assert "secret-bearer-XYZXYZ" not in str(client)
 
 
 def test_mantle_client_can_require_a_tool_call():

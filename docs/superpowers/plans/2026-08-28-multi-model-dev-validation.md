@@ -1,5 +1,10 @@
 # Strict Multi-Model Dev Validation Implementation Plan
 
+> Correction, 2026-08-29: The model-listing preflight described below was removed
+> after protected run 33217903459 showed that it requires broader IAM permission
+> than inference. The current workflow qualifies every matrix model through its
+> authenticated real inference scenarios and keeps the inference role least privileged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Run Kimi K2.5, GLM 5, and NVIDIA Nemotron 3 Super 120B independently through the protected DUSK dev sandbox and fail the aggregate gate unless all three complete with zero failures, errors, and skips.

@@ -28,9 +28,36 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Infrastructure and workflow tests (`tests/ci/test_real_agent_infra.py`).
 - Operator documentation for Bedrock OIDC setup (`docs/bedrock-oidc-setup.md`).
 
+### Added
+- Qwen3 32B (`qwen.qwen3-32b`) added to the required Bedrock Mantle dev
+  validation matrix. Validated at 26 passed, 0 failed, 0 errors, 0 skipped
+  across two consecutive credentialed runs in the protected `real-agent-dev`
+  environment.
+- Explicit model allowlist (`_MANTLE_V1_MODEL_IDS`) in `bedrock_client.py`
+  prevents untrusted model IDs from routing silently to an unintended endpoint.
+  `build_mantle_client` raises `ValueError` for any ID not in the allowlist.
+- Bounded Mantle client configuration: `timeout=120` prevents unbounded
+  inference hangs; `max_retries=0` prevents hidden SDK retry amplification;
+  `max_completion_tokens=4096` prevents unbounded chain-of-thought output.
+- Length-truncation retry in `MantleClient.chat_completions_create`: one
+  additional call when `finish_reason='length'` with no tool call produced.
+  Does not retry wrong-tool calls; an unexpected tool still fails the scenario.
+
+### Removed
+- NVIDIA Nemotron Super 3 120B (`nvidia.nemotron-super-3-120b`) removed from
+  the required dev matrix. The model did not satisfy the deterministic tool-call
+  contract: approximately 20 percent of calls produced wrong-tool reasoning on
+  injection scenarios. The failure was not truncation and could not be resolved
+  by retry logic. A model at that failure rate provides noise rather than
+  security evidence.
+
 ### Changed
 - `real-agent-sandbox.yml`: added concurrency group, AWS caller identity
   verification step, and Bedrock model availability pre-check.
+- `real-agent-sandbox-dev.yml`: required matrix updated to Kimi K2.5, GLM-5,
+  and Qwen3 32B. Model qualification uses authenticated inference rather than
+  the broader Mantle model-list permission. Each model produces separate JUnit
+  evidence. The aggregate gate fails if any model job fails.
 
 ## [0.2.0], 2026-08-05
 

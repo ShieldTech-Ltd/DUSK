@@ -5,6 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
+# Explicit allowlist for Mantle endpoint routing.
+# All currently approved models use the standard Chat Completions path (/v1).
+# Do not use substring matching: an untrusted model_id must not route silently.
+_MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
+    {
+        "moonshotai.kimi-k2.5",
+        "zai.glm-5",
+        "qwen.qwen3-32b",
+    }
+)
+
 
 class DuskBlockedError(Exception):
     """Raised when the gate returns a non-ALLOW verdict for a proposed action.
@@ -107,12 +118,14 @@ class MantleClient:
             "messages": messages,
             "tools": tools,
             "temperature": 0,
+            "max_completion_tokens": 4096,
         }
         if require_tool_call:
             request["tool_choice"] = "required"
-        return self._client.chat.completions.create(
-            **request,
-        )
+        response = self._client.chat.completions.create(**request)
+        if require_tool_call and _hit_token_limit(response):
+            response = self._client.chat.completions.create(**request)
+        return response
 
 
 def build_mantle_client(region: str, model_id: str) -> MantleClient:
@@ -143,41 +156,12 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
         )
 
     openai_client = OpenAI(
-        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
+        base_url=_mantle_base_url(region, model_id),
         api_key=token,
+        timeout=120,
+        max_retries=0,
     )
     return MantleClient(client=openai_client, model_id=model_id)
-
-
-def list_mantle_model_ids(region: str) -> set[str]:
-    """Return model IDs visible through the authenticated Mantle endpoint."""
-    from aws_bedrock_token_generator import provide_token
-    from openai import OpenAI
-
-    token = provide_token(region)
-    if not token:
-        raise RuntimeError("Bedrock token generator returned an empty token")
-
-    client = OpenAI(
-        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
-        api_key=token,
-    )
-    entries = getattr(client.models.list(), "data", None)
-    if not isinstance(entries, list):
-        raise RuntimeError("Mantle models response did not contain a data list")
-
-    model_ids: set[str] = set()
-    for entry in entries:
-        model_id = getattr(entry, "id", None)
-        if isinstance(model_id, str) and model_id:
-            model_ids.add(model_id)
-    return model_ids
-
-
-def require_mantle_model_available(region: str, model_id: str) -> None:
-    """Fail unless an exact model ID is visible in the selected region."""
-    if model_id not in list_mantle_model_ids(region):
-        raise RuntimeError(f"Mantle model is not available in {region}: {model_id}")
 
 
 def extract_function_call(openai_response: Any) -> dict[str, Any] | None:  # noqa: ANN401
@@ -262,6 +246,44 @@ def propose_tool_call(
         )
         return provider, extract_tool_use(response)
     raise ValueError(f"Unknown provider: {provider!r}")
+
+
+def _mantle_base_url(region: str, model_id: str) -> str:
+    """Return the Mantle base URL for an approved model.
+
+    Uses an explicit allowlist so an untrusted model_id cannot silently route
+    to an unintended endpoint. Raises ValueError for any unrecognised model_id.
+
+    Args:
+        region: AWS region (e.g. eu-west-2).
+        model_id: Exact Mantle model identifier from the approved matrix.
+
+    Raises:
+        ValueError: If model_id is not in the approved allowlist.
+    """
+    if model_id not in _MANTLE_V1_MODEL_IDS:
+        raise ValueError(
+            f"Model {model_id!r} is not in the approved Mantle allowlist. "
+            "Add it to _MANTLE_V1_MODEL_IDS after review."
+        )
+    return f"https://bedrock-mantle.{region}.api.aws/v1"
+
+
+def _hit_token_limit(response: Any) -> bool:  # noqa: ANN401 -- OpenAI response is dynamic
+    """Return True when the model was truncated before producing any tool call.
+
+    Reasoning models sometimes enter an extended chain-of-thought mode that
+    exhausts max_completion_tokens before the tool call JSON is written.
+    The caller can then retry to get another chance at the short-mode path.
+    """
+    choices = _get(response, "choices")
+    if not choices:
+        return False
+    first = choices[0]
+    if _get(first, "finish_reason") != "length":
+        return False
+    message = _get(first, "message")
+    return not _get(message, "tool_calls")
 
 
 def _get(obj: Any, key: str) -> Any:  # noqa: ANN401 -- dict or SDK object, both dynamic

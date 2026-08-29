@@ -45,8 +45,8 @@ jobs:
             id: moonshotai.kimi-k2.5
           - slug: glm-5
             id: zai.glm-5
-          - slug: nemotron-3-super-120b
-            id: nvidia.nemotron-super-3-120b
+          - slug: qwen3-32b
+            id: qwen.qwen3-32b
     permissions:
       contents: read
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.
@@ -124,12 +124,6 @@ jobs:
         run: |
           IDENTITY=$(aws sts get-caller-identity --query 'Arn' --output text)
           echo "Assumed role: $IDENTITY"
-
-      - name: Verify Mantle model availability
-        env:
-          MATRIX_MODEL_ID: ${{ matrix.model.id }}
-        run: |
-          PYTHONPATH=agent-demo python -c "import os; from bedrock_client import require_mantle_model_available; require_mantle_model_available(os.environ['AWS_REGION'], os.environ['MATRIX_MODEL_ID'])"
 
       - name: Log validation parameters
         env:

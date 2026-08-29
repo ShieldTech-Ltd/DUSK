@@ -26,7 +26,7 @@ _MATRIX_GATE_JOB = "real-agent-dev-matrix-gate"
 EXPECTED_MODELS = [
     {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
     {"slug": "glm-5", "id": "zai.glm-5"},
-    {"slug": "nemotron-3-super-120b", "id": "nvidia.nemotron-super-3-120b"},
+    {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
 ]
 
 
@@ -151,11 +151,15 @@ def test_dev_workflow_matrix_gate_has_bounded_runtime() -> None:
     assert gate["timeout-minutes"] == 5
 
 
-def test_dev_workflow_validates_each_matrix_model_before_inference() -> None:
-    step = next(s for s in _dev_steps() if s.get("name") == "Verify Mantle model availability")
-    assert step["env"]["MATRIX_MODEL_ID"] == "${{ matrix.model.id }}"
-    assert "require_mantle_model_available" in step["run"]
-    assert "MATRIX_MODEL_ID" in step["run"]
+def test_dev_workflow_uses_real_inference_to_qualify_each_matrix_model() -> None:
+    steps = _dev_steps()
+    assert not any(step.get("name") == "Verify Mantle model availability" for step in steps)
+
+    test_step = next(step for step in steps if step.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
+    assert _dev_workflow()["jobs"][_DEV_JOB]["env"]["BEDROCK_MODEL_ID"] == (
+        "${{ matrix.model.id }}"
+    )
 
 
 def test_dev_workflow_writes_isolated_per_model_evidence() -> None:

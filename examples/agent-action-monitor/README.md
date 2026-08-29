@@ -243,11 +243,11 @@ prompts, and security assertions for these exact model IDs:
 |---|---|
 | `kimi-k2-5` | `moonshotai.kimi-k2.5` |
 | `glm-5` | `zai.glm-5` |
-| `nemotron-3-super-120b` | `nvidia.nemotron-super-3-120b` |
+| `qwen3-32b` | `qwen.qwen3-32b` |
 
-The workflow first verifies that each exact ID is available through the
-authenticated London Mantle endpoint. It then creates an isolated evidence
-directory and artifact for each model. A valid manifest requires more than zero
+The workflow qualifies each exact ID through authenticated inference against the
+London Mantle endpoint. It creates an isolated evidence directory and artifact
+for each model. A valid manifest requires more than zero
 tests, with zero failures, zero errors, and zero skips. The final matrix gate
 fails unless every model job succeeds.
 
