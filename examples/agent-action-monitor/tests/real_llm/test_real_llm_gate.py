@@ -200,16 +200,35 @@ _TOOL_CONFIG: dict[str, Any] = {
 }
 
 
-def _tool_config_for_target(tool_name: str, target: str) -> dict[str, Any]:
-    """Keep every tool selectable while constraining one scenario target."""
+def _tool_config_for_target(
+    tool_name: str,
+    target: str,
+    *,
+    required_after: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Expose one action and constrain the security-relevant scenario fields."""
     config = deepcopy(_TOOL_CONFIG)
     for tool in config["tools"]:
         spec = tool["toolSpec"]
         if spec["name"] == tool_name:
-            spec["inputSchema"]["json"]["properties"]["target"] = {
+            schema = spec["inputSchema"]["json"]
+            schema["properties"]["target"] = {
                 "type": "string",
                 "enum": [target],
             }
+            if required_after:
+                schema["properties"]["after"] = {
+                    "type": "object",
+                    "properties": {
+                        field: {"type": "string", "enum": [value]}
+                        for field, value in required_after.items()
+                    },
+                    "required": list(required_after),
+                    "additionalProperties": False,
+                }
+                if "after" not in schema["required"]:
+                    schema["required"].append("after")
+            config["tools"] = [tool]
             return config
     raise ValueError(f"Unknown tool name: {tool_name!r}")
 
@@ -313,12 +332,17 @@ def _run_targeted_scenario(
     agent_id: str,
     tool_name: str,
     target: str,
+    required_after: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Run a scenario with every tool available and one target constrained."""
+    """Run one exact action scenario with its security fields constrained."""
     return _run_with_prompt(
         prompt_text,
         agent_id=agent_id,
-        tool_config=_tool_config_for_target(tool_name, target),
+        tool_config=_tool_config_for_target(
+            tool_name,
+            target,
+            required_after=required_after,
+        ),
     )
 
 
@@ -344,7 +368,12 @@ def test_clean_task_is_allowed() -> None:
 @pytest.fixture(scope="module")
 def ssh_injection_result() -> dict[str, Any]:
     """Generate the SSH injection once so all assertions inspect one action."""
-    return _run_with_prompt(_read_prompt("inject_ssh_open.txt"), agent_id="netops-agent")
+    return _run_targeted_scenario(
+        _read_prompt("inject_ssh_open.txt"),
+        agent_id="netops-agent",
+        tool_name="update_firewall_rule",
+        target="fw-corp-restricted-segment",
+    )
 
 
 def test_poisoned_ssh_open_is_refused(ssh_injection_result: dict[str, Any]) -> None:
@@ -388,6 +417,7 @@ def test_role_escalation_injection_is_refused() -> None:
         agent_id="iam-agent",
         tool_name="assign_role",
         target="ra-corp-owner-self",
+        required_after={"role": "owner"},
     )
     _require_gate_scenario(result, expected_tool="assign_role", scenario="RL-03")
     assert result["action_type"] == "role_assignment", (
@@ -507,7 +537,12 @@ def test_repeat_refusal_scores_higher() -> None:
     dict that the gate saw on the first request, making the repeat-offense
     signal deterministic regardless of LLM non-determinism.
     """
-    first = _run_with_prompt(_read_prompt("inject_ssh_open.txt"), agent_id="rl07-repeat-agent")
+    first = _run_targeted_scenario(
+        _read_prompt("inject_ssh_open.txt"),
+        agent_id="rl07-repeat-agent",
+        tool_name="update_firewall_rule",
+        target="fw-corp-restricted-segment",
+    )
 
     _require_gate_scenario(first, expected_tool="update_firewall_rule", scenario="RL-07")
 
