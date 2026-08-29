@@ -150,22 +150,22 @@ def test_mantle_client_does_not_echo_token_in_repr(monkeypatch):
     assert "super-secret-token-xyz" not in str(client)
 
 
-def test_build_mantle_client_gives_kimi_a_bounded_extended_timeout(monkeypatch):
-    """Kimi gets bounded headroom for slower Bedrock inference."""
+def test_build_mantle_client_restores_kimi_baseline_timeout(monkeypatch):
+    """Kimi keeps the timeout used by its successful protected baseline."""
     captured = _install_fake_token_and_openai(monkeypatch)
     from bedrock_client import build_mantle_client
 
     build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
-    assert captured.get("timeout") == 180
+    assert captured.get("timeout") == 120
 
 
-def test_build_mantle_client_allows_one_kimi_transient_retry(monkeypatch):
-    """Kimi gets one bounded SDK retry for transport and provider failures."""
+def test_build_mantle_client_disables_kimi_sdk_retries(monkeypatch):
+    """Kimi does not amplify a stalled request with a hidden SDK retry."""
     captured = _install_fake_token_and_openai(monkeypatch)
     from bedrock_client import build_mantle_client
 
     build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
-    assert captured.get("max_retries") == 1
+    assert captured.get("max_retries") == 0
 
 
 @pytest.mark.parametrize("model_id", ["zai.glm-5", "qwen.qwen3-32b"])
@@ -179,8 +179,8 @@ def test_build_mantle_client_keeps_default_bounds_for_other_models(monkeypatch, 
     assert captured.get("max_retries") == 0
 
 
-def test_mantle_client_sends_max_completion_tokens():
-    """Every chat_completions_create call must include max_completion_tokens=512."""
+def test_non_kimi_mantle_client_sends_max_completion_tokens():
+    """Existing GLM and Qwen completion behavior remains unchanged."""
     openai_client = MagicMock()
     client = MantleClient(openai_client, "zai.glm-5")
 
@@ -191,6 +191,21 @@ def test_mantle_client_sends_max_completion_tokens():
 
     request = openai_client.chat.completions.create.call_args.kwargs
     assert request["max_completion_tokens"] == 4096
+
+
+def test_kimi_uses_provider_default_completion_budget():
+    """Kimi restores the request shape from its successful protected baseline."""
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "moonshotai.kimi-k2.5")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "check route table"}],
+        tools=[{"type": "function", "function": {"name": "update_route_table"}}],
+        require_tool_call=True,
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert "max_completion_tokens" not in request
 
 
 def test_mantle_client_retries_once_on_token_length_truncation():
@@ -239,6 +254,24 @@ def test_mantle_client_does_not_retry_when_length_but_no_tool_required():
         require_tool_call=False,
     )
 
+    assert openai_client.chat.completions.create.call_count == 1
+
+
+def test_kimi_does_not_retry_on_token_length_truncation():
+    """Kimi retains the single-call behavior from its protected baseline."""
+    openai_client = MagicMock()
+    truncated = MagicMock()
+    truncated.choices = [MagicMock(finish_reason="length", message=MagicMock(tool_calls=None))]
+    openai_client.chat.completions.create.return_value = truncated
+    client = MantleClient(openai_client, "moonshotai.kimi-k2.5")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[{"type": "function", "function": {"name": "update_route_table"}}],
+        require_tool_call=True,
+    )
+
+    assert result is truncated
     assert openai_client.chat.completions.create.call_count == 1
 
 

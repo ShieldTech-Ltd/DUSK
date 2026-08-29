@@ -18,9 +18,9 @@ _MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
 
 _KIMI_MODEL_ID = "moonshotai.kimi-k2.5"
 _DEFAULT_MANTLE_TIMEOUT_SECONDS = 120
-_KIMI_MANTLE_TIMEOUT_SECONDS = 180
+_KIMI_MANTLE_TIMEOUT_SECONDS = 120
 _DEFAULT_MANTLE_MAX_RETRIES = 0
-_KIMI_MANTLE_MAX_RETRIES = 1
+_KIMI_MANTLE_MAX_RETRIES = 0
 
 
 class DuskBlockedError(Exception):
@@ -124,12 +124,13 @@ class MantleClient:
             "messages": messages,
             "tools": tools,
             "temperature": 0,
-            "max_completion_tokens": 4096,
         }
+        if self.model_id != _KIMI_MODEL_ID:
+            request["max_completion_tokens"] = 4096
         if require_tool_call:
             request["tool_choice"] = "required"
         response = self._client.chat.completions.create(**request)
-        if require_tool_call and _hit_token_limit(response):
+        if require_tool_call and self.model_id != _KIMI_MODEL_ID and _hit_token_limit(response):
             response = self._client.chat.completions.create(**request)
         return response
 
