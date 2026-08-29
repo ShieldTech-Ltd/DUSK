@@ -5,6 +5,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
+# Explicit allowlists for Mantle endpoint routing.
+# Models on the standard Chat Completions path use /v1.
+# Models on the OpenAI-native path use /openai/v1.
+# Do not use substring matching: an untrusted model_id must not redirect silently.
+_MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
+    {
+        "moonshotai.kimi-k2.5",
+        "zai.glm-5",
+        "qwen.qwen3-32b",
+    }
+)
+_MANTLE_OPENAI_V1_MODEL_IDS: frozenset[str] = frozenset(
+    {
+        "openai.gpt-5.6-sol",
+    }
+)
+
 
 class DuskBlockedError(Exception):
     """Raised when the gate returns a non-ALLOW verdict for a proposed action.
@@ -145,7 +162,7 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
         )
 
     openai_client = OpenAI(
-        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
+        base_url=_mantle_base_url(region, model_id),
         api_key=token,
         timeout=120,
         max_retries=0,
@@ -237,12 +254,35 @@ def propose_tool_call(
     raise ValueError(f"Unknown provider: {provider!r}")
 
 
+def _mantle_base_url(region: str, model_id: str) -> str:
+    """Return the correct Mantle base URL for an approved model.
+
+    Uses explicit allowlists so an untrusted model_id cannot silently redirect
+    to an unintended endpoint. Raises ValueError for any unrecognised model_id.
+
+    Args:
+        region: AWS region (e.g. eu-west-2).
+        model_id: Exact Mantle model identifier from the approved matrix.
+
+    Raises:
+        ValueError: If model_id is not in any approved allowlist.
+    """
+    if model_id in _MANTLE_OPENAI_V1_MODEL_IDS:
+        return f"https://bedrock-mantle.{region}.api.aws/openai/v1"
+    if model_id in _MANTLE_V1_MODEL_IDS:
+        return f"https://bedrock-mantle.{region}.api.aws/v1"
+    raise ValueError(
+        f"Model {model_id!r} is not in the approved Mantle allowlist. "
+        "Add it to _MANTLE_V1_MODEL_IDS or _MANTLE_OPENAI_V1_MODEL_IDS after review."
+    )
+
+
 def _hit_token_limit(response: Any) -> bool:  # noqa: ANN401 -- OpenAI response is dynamic
     """Return True when the model was truncated before producing any tool call.
 
-    Reasoning models (e.g. Nemotron) sometimes enter an extended chain-of-thought
-    mode that exhausts max_completion_tokens before the tool call JSON is written.
-    The caller can then retry to get another chance at the model's short-mode path.
+    Reasoning models sometimes enter an extended chain-of-thought mode that
+    exhausts max_completion_tokens before the tool call JSON is written.
+    The caller can then retry to get another chance at the short-mode path.
     """
     choices = _get(response, "choices")
     if not choices:

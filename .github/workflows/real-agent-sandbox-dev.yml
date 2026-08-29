@@ -45,6 +45,8 @@ jobs:
             id: moonshotai.kimi-k2.5
           - slug: glm-5
             id: zai.glm-5
+          - slug: qwen3-32b
+            id: qwen.qwen3-32b
     permissions:
       contents: read
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.

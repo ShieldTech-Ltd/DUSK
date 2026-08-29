@@ -26,7 +26,7 @@ _MATRIX_GATE_JOB = "real-agent-dev-matrix-gate"
 EXPECTED_MODELS = [
     {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
     {"slug": "glm-5", "id": "zai.glm-5"},
-    {"slug": "nemotron-3-super-120b", "id": "nvidia.nemotron-super-3-120b"},
+    {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
 ]
 
 
