@@ -89,6 +89,8 @@ def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token"):
     """Stub aws_bedrock_token_generator and openai as importable modules.
 
     Returns the recording dict the fake OpenAI captures its kwargs into.
+    All constructor keyword arguments (including timeout and max_retries)
+    are stored so tests can assert on the exact bounded configuration.
     """
     captured: dict[str, Any] = {}
 
@@ -104,9 +106,10 @@ def _install_fake_token_and_openai(monkeypatch, token="secret-bearer-token"):
     openai_mod = types.ModuleType("openai")
 
     class _FakeOpenAI:
-        def __init__(self, *, base_url: str, api_key: str):
+        def __init__(self, *, base_url: str, api_key: str, **kwargs: Any):
             captured["base_url"] = base_url
             captured["api_key"] = api_key
+            captured.update(kwargs)
 
     openai_mod.OpenAI = _FakeOpenAI  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "openai", openai_mod)
@@ -145,6 +148,88 @@ def test_mantle_client_does_not_echo_token_in_repr(monkeypatch):
     client = build_mantle_client(region="eu-west-2", model_id="kimi")
     assert "super-secret-token-xyz" not in repr(client)
     assert "super-secret-token-xyz" not in str(client)
+
+
+def test_build_mantle_client_passes_bounded_timeout(monkeypatch):
+    """build_mantle_client must pass timeout=120 to prevent unbounded inference hangs."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="nvidia.nemotron-super-3-120b")
+    assert captured.get("timeout") == 120
+
+
+def test_build_mantle_client_disables_sdk_retries(monkeypatch):
+    """build_mantle_client must pass max_retries=0 to prevent hidden retry amplification."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="nvidia.nemotron-super-3-120b")
+    assert captured.get("max_retries") == 0
+
+
+def test_mantle_client_sends_max_completion_tokens():
+    """Every chat_completions_create call must include max_completion_tokens=512."""
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "zai.glm-5")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "check route table"}],
+        tools=[{"type": "function", "function": {"name": "update_route_table"}}],
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["max_completion_tokens"] == 4096
+
+
+def test_mantle_client_retries_once_on_token_length_truncation():
+    """When finish_reason='length' and no tool calls, chat_completions_create retries once.
+
+    This covers reasoning models (e.g. Nemotron) that sometimes enter an extended
+    chain-of-thought mode and exhaust max_completion_tokens before producing the
+    tool call JSON. The retry gives the model a second chance to land in its
+    short-mode reasoning path.
+    """
+    openai_client = MagicMock()
+
+    truncated = MagicMock()
+    truncated.choices = [MagicMock(finish_reason="length", message=MagicMock(tool_calls=None))]
+
+    success = MagicMock()
+    tc = MagicMock()
+    tc.id = "call_1"
+    tc.function = MagicMock(name="update_firewall_rule", arguments='{"target": "fw-1"}')
+    success.choices = [MagicMock(finish_reason="tool_calls", message=MagicMock(tool_calls=[tc]))]
+
+    openai_client.chat.completions.create.side_effect = [truncated, success]
+    client = MantleClient(openai_client, "nvidia.nemotron-super-3-120b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert openai_client.chat.completions.create.call_count == 2
+    assert result is success
+
+
+def test_mantle_client_does_not_retry_when_length_but_no_tool_required():
+    """No retry for finish_reason='length' when require_tool_call is False."""
+    openai_client = MagicMock()
+
+    truncated = MagicMock()
+    truncated.choices = [MagicMock(finish_reason="length", message=MagicMock(tool_calls=None))]
+    openai_client.chat.completions.create.return_value = truncated
+
+    client = MantleClient(openai_client, "nvidia.nemotron-super-3-120b")
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[],
+        require_tool_call=False,
+    )
+
+    assert openai_client.chat.completions.create.call_count == 1
 
 
 def test_mantle_client_can_require_a_tool_call():

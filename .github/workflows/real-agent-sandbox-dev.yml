@@ -45,8 +45,6 @@ jobs:
             id: moonshotai.kimi-k2.5
           - slug: glm-5
             id: zai.glm-5
-          - slug: nemotron-3-super-120b
-            id: nvidia.nemotron-super-3-120b
     permissions:
       contents: read
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.

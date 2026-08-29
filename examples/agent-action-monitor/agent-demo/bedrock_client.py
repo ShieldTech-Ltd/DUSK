@@ -107,12 +107,14 @@ class MantleClient:
             "messages": messages,
             "tools": tools,
             "temperature": 0,
+            "max_completion_tokens": 4096,
         }
         if require_tool_call:
             request["tool_choice"] = "required"
-        return self._client.chat.completions.create(
-            **request,
-        )
+        response = self._client.chat.completions.create(**request)
+        if require_tool_call and _hit_token_limit(response):
+            response = self._client.chat.completions.create(**request)
+        return response
 
 
 def build_mantle_client(region: str, model_id: str) -> MantleClient:
@@ -145,6 +147,8 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
     openai_client = OpenAI(
         base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
         api_key=token,
+        timeout=120,
+        max_retries=0,
     )
     return MantleClient(client=openai_client, model_id=model_id)
 
@@ -231,6 +235,23 @@ def propose_tool_call(
         )
         return provider, extract_tool_use(response)
     raise ValueError(f"Unknown provider: {provider!r}")
+
+
+def _hit_token_limit(response: Any) -> bool:  # noqa: ANN401 -- OpenAI response is dynamic
+    """Return True when the model was truncated before producing any tool call.
+
+    Reasoning models (e.g. Nemotron) sometimes enter an extended chain-of-thought
+    mode that exhausts max_completion_tokens before the tool call JSON is written.
+    The caller can then retry to get another chance at the model's short-mode path.
+    """
+    choices = _get(response, "choices")
+    if not choices:
+        return False
+    first = choices[0]
+    if _get(first, "finish_reason") != "length":
+        return False
+    message = _get(first, "message")
+    return not _get(message, "tool_calls")
 
 
 def _get(obj: Any, key: str) -> Any:  # noqa: ANN401 -- dict or SDK object, both dynamic
