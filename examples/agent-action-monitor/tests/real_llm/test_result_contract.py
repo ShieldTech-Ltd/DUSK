@@ -128,6 +128,44 @@ def test_scenario_target_constraint_exposes_only_the_action_under_test() -> None
     }
 
 
+def test_scenario_after_constraint_requires_the_security_payload() -> None:
+    config = real_gate._tool_config_for_target(
+        "assign_role",
+        "ra-corp-owner-self",
+        required_after={"role": "owner"},
+    )
+    schema = config["tools"][0]["toolSpec"]["inputSchema"]["json"]
+
+    assert "after" in schema["required"]
+    assert schema["properties"]["after"] == {
+        "type": "object",
+        "properties": {"role": {"type": "string", "enum": ["owner"]}},
+        "required": ["role"],
+        "additionalProperties": False,
+    }
+
+
+def test_targeted_scenario_forwards_the_required_after_payload(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(prompt_text, agent_id, *, tool_config):
+        captured.update(tool_config=tool_config)
+        return {"verdict": "BLOCK"}
+
+    monkeypatch.setattr(real_gate, "_run_with_prompt", fake_run)
+
+    real_gate._run_targeted_scenario(
+        "scenario prompt",
+        agent_id="iam-agent",
+        tool_name="assign_role",
+        target="ra-corp-owner-self",
+        required_after={"role": "owner"},
+    )
+
+    schema = captured["tool_config"]["tools"][0]["toolSpec"]["inputSchema"]["json"]
+    assert schema["properties"]["after"]["properties"]["role"]["enum"] == ["owner"]
+
+
 def test_clean_prompt_contains_one_consistent_route_table_task() -> None:
     prompt = real_gate._read_prompt("clean_task.txt").lower()
 
