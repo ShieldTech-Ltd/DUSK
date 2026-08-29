@@ -261,24 +261,6 @@ def test_build_mantle_client_uses_v1_endpoint_for_qwen3_32b(monkeypatch):
     assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
 
 
-def test_build_mantle_client_uses_openai_v1_endpoint_for_gpt56_sol(monkeypatch):
-    """openai.gpt-5.6-sol must use /openai/v1, not /v1."""
-    captured = _install_fake_token_and_openai(monkeypatch)
-    from bedrock_client import build_mantle_client
-
-    build_mantle_client(region="eu-west-2", model_id="openai.gpt-5.6-sol")
-    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/openai/v1"
-
-
-def test_build_mantle_client_gpt56_sol_does_not_use_standard_v1_endpoint(monkeypatch):
-    """GPT-5.6 Sol must not be routed to the standard /v1 endpoint."""
-    captured = _install_fake_token_and_openai(monkeypatch)
-    from bedrock_client import build_mantle_client
-
-    build_mantle_client(region="eu-west-2", model_id="openai.gpt-5.6-sol")
-    assert captured["base_url"] != "https://bedrock-mantle.eu-west-2.api.aws/v1"
-
-
 def test_build_mantle_client_qwen_does_not_use_openai_v1_endpoint(monkeypatch):
     """Qwen must not be routed to the /openai/v1 endpoint."""
     captured = _install_fake_token_and_openai(monkeypatch)

@@ -5,20 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-# Explicit allowlists for Mantle endpoint routing.
-# Models on the standard Chat Completions path use /v1.
-# Models on the OpenAI-native path use /openai/v1.
-# Do not use substring matching: an untrusted model_id must not redirect silently.
+# Explicit allowlist for Mantle endpoint routing.
+# All currently approved models use the standard Chat Completions path (/v1).
+# Do not use substring matching: an untrusted model_id must not route silently.
 _MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
     {
         "moonshotai.kimi-k2.5",
         "zai.glm-5",
         "qwen.qwen3-32b",
-    }
-)
-_MANTLE_OPENAI_V1_MODEL_IDS: frozenset[str] = frozenset(
-    {
-        "openai.gpt-5.6-sol",
     }
 )
 
@@ -255,9 +249,9 @@ def propose_tool_call(
 
 
 def _mantle_base_url(region: str, model_id: str) -> str:
-    """Return the correct Mantle base URL for an approved model.
+    """Return the Mantle base URL for an approved model.
 
-    Uses explicit allowlists so an untrusted model_id cannot silently redirect
+    Uses an explicit allowlist so an untrusted model_id cannot silently route
     to an unintended endpoint. Raises ValueError for any unrecognised model_id.
 
     Args:
@@ -265,16 +259,14 @@ def _mantle_base_url(region: str, model_id: str) -> str:
         model_id: Exact Mantle model identifier from the approved matrix.
 
     Raises:
-        ValueError: If model_id is not in any approved allowlist.
+        ValueError: If model_id is not in the approved allowlist.
     """
-    if model_id in _MANTLE_OPENAI_V1_MODEL_IDS:
-        return f"https://bedrock-mantle.{region}.api.aws/openai/v1"
-    if model_id in _MANTLE_V1_MODEL_IDS:
-        return f"https://bedrock-mantle.{region}.api.aws/v1"
-    raise ValueError(
-        f"Model {model_id!r} is not in the approved Mantle allowlist. "
-        "Add it to _MANTLE_V1_MODEL_IDS or _MANTLE_OPENAI_V1_MODEL_IDS after review."
-    )
+    if model_id not in _MANTLE_V1_MODEL_IDS:
+        raise ValueError(
+            f"Model {model_id!r} is not in the approved Mantle allowlist. "
+            "Add it to _MANTLE_V1_MODEL_IDS after review."
+        )
+    return f"https://bedrock-mantle.{region}.api.aws/v1"
 
 
 def _hit_token_limit(response: Any) -> bool:  # noqa: ANN401 -- OpenAI response is dynamic

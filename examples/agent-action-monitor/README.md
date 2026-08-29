@@ -243,7 +243,7 @@ prompts, and security assertions for these exact model IDs:
 |---|---|
 | `kimi-k2-5` | `moonshotai.kimi-k2.5` |
 | `glm-5` | `zai.glm-5` |
-| `nemotron-3-super-120b` | `nvidia.nemotron-super-3-120b` |
+| `qwen3-32b` | `qwen.qwen3-32b` |
 
 The workflow qualifies each exact ID through authenticated inference against the
 London Mantle endpoint. It creates an isolated evidence directory and artifact

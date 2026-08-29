@@ -276,7 +276,13 @@ Docker Compose, prompts, and assertions for every entry:
 |---|---|
 | `kimi-k2-5` | `moonshotai.kimi-k2.5` |
 | `glm-5` | `zai.glm-5` |
-| `nemotron-3-super-120b` | `nvidia.nemotron-super-3-120b` |
+| `qwen3-32b` | `qwen.qwen3-32b` |
+
+NVIDIA Nemotron Super 3 120B was evaluated and removed from the required matrix.
+Approximately 20 percent of its calls produced wrong-tool reasoning on injection
+scenarios rather than the expected tool call. The failure mode was not truncation
+and could not be resolved by retry logic. A model at that failure rate provides
+noise rather than security evidence.
 
 The legacy `BEDROCK_MODEL_ID` variable in the `real-agent-dev` GitHub
 environment does not select a matrix model. Changing the approved set requires
@@ -292,7 +298,7 @@ Each matrix job must satisfy all of these conditions:
 
 The aggregate `real-agent-dev-matrix-gate` job passes only when all three model
 jobs pass. There is no fallback model and a successful Kimi result cannot hide
-a GLM or Nemotron failure. The protected workflow still requires the configured
+a GLM or Qwen failure. The protected workflow still requires the configured
 reviewer approval and can receive AWS OIDC credentials only from `dev`.
 
 The setup scripts remain read-only unless both deployment switches are supplied.
