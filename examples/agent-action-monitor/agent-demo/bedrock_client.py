@@ -16,6 +16,12 @@ _MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
     }
 )
 
+_KIMI_MODEL_ID = "moonshotai.kimi-k2.5"
+_DEFAULT_MANTLE_TIMEOUT_SECONDS = 120
+_KIMI_MANTLE_TIMEOUT_SECONDS = 180
+_DEFAULT_MANTLE_MAX_RETRIES = 0
+_KIMI_MANTLE_MAX_RETRIES = 1
+
 
 class DuskBlockedError(Exception):
     """Raised when the gate returns a non-ALLOW verdict for a proposed action.
@@ -155,11 +161,12 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
             "cannot authenticate to the Mantle endpoint"
         )
 
+    is_kimi = model_id == _KIMI_MODEL_ID
     openai_client = OpenAI(
         base_url=_mantle_base_url(region, model_id),
         api_key=token,
-        timeout=120,
-        max_retries=0,
+        timeout=(_KIMI_MANTLE_TIMEOUT_SECONDS if is_kimi else _DEFAULT_MANTLE_TIMEOUT_SECONDS),
+        max_retries=_KIMI_MANTLE_MAX_RETRIES if is_kimi else _DEFAULT_MANTLE_MAX_RETRIES,
     )
     return MantleClient(client=openai_client, model_id=model_id)
 

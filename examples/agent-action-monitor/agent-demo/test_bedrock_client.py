@@ -150,21 +150,32 @@ def test_mantle_client_does_not_echo_token_in_repr(monkeypatch):
     assert "super-secret-token-xyz" not in str(client)
 
 
-def test_build_mantle_client_passes_bounded_timeout(monkeypatch):
-    """build_mantle_client must pass timeout=120 to prevent unbounded inference hangs."""
+def test_build_mantle_client_gives_kimi_a_bounded_extended_timeout(monkeypatch):
+    """Kimi gets bounded headroom for slower Bedrock inference."""
     captured = _install_fake_token_and_openai(monkeypatch)
     from bedrock_client import build_mantle_client
 
     build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert captured.get("timeout") == 180
+
+
+def test_build_mantle_client_allows_one_kimi_transient_retry(monkeypatch):
+    """Kimi gets one bounded SDK retry for transport and provider failures."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
+    assert captured.get("max_retries") == 1
+
+
+@pytest.mark.parametrize("model_id", ["zai.glm-5", "qwen.qwen3-32b"])
+def test_build_mantle_client_keeps_default_bounds_for_other_models(monkeypatch, model_id):
+    """Models without timeout evidence retain the stricter existing bounds."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id=model_id)
     assert captured.get("timeout") == 120
-
-
-def test_build_mantle_client_disables_sdk_retries(monkeypatch):
-    """build_mantle_client must pass max_retries=0 to prevent hidden retry amplification."""
-    captured = _install_fake_token_and_openai(monkeypatch)
-    from bedrock_client import build_mantle_client
-
-    build_mantle_client(region="eu-west-2", model_id="moonshotai.kimi-k2.5")
     assert captured.get("max_retries") == 0
 
 
