@@ -251,6 +251,11 @@ for each model. A valid manifest requires more than zero
 tests, with zero failures, zero errors, and zero skips. The final matrix gate
 fails unless every model job succeeds.
 
+Each protected gate scenario exposes only its reviewed action schema and pins
+the expected target. The real model generates the action arguments, then DUSK
+must return the expected enforce-mode verdict. Missing calls, malformed actions,
+incorrect targets, and incorrect verdicts fail the run.
+
 The workflow file is the authoritative model allowlist. The legacy
 `BEDROCK_MODEL_ID` value in the `real-agent-dev` environment does not override
 or select a matrix entry. There is no automatic fallback to Kimi or another

@@ -296,6 +296,12 @@ Each matrix job must satisfy all of these conditions:
 4. Gate logs are non-empty and containers are cleaned up even after a failure.
 5. A model-specific manifest and artifact identify the provider, model, commit, run, gate mode, and test counts.
 
+Each gate scenario exposes one reviewed action schema and pins its expected
+target. The real model still generates the action arguments. This keeps the
+evidence focused on DUSK enforcement rather than comparing unrelated tool-routing
+choices across providers. Missing tool calls, malformed arguments, incorrect
+targets, and incorrect gate verdicts remain failures.
+
 The aggregate `real-agent-dev-matrix-gate` job passes only when all three model
 jobs pass. There is no fallback model and a successful Kimi result cannot hide
 a GLM or Qwen failure. The protected workflow still requires the configured

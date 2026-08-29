@@ -113,20 +113,18 @@ def test_provider_call_stops_after_one_no_action_retry() -> None:
     assert calls == 2
 
 
-def test_scenario_target_constraint_preserves_tool_choice_and_pins_target() -> None:
+def test_scenario_target_constraint_exposes_only_the_action_under_test() -> None:
     assert hasattr(real_gate, "_tool_config_for_target")
 
     config = real_gate._tool_config_for_target("delete_resource", "audit-log-restricted")
     tools = config["tools"]
 
-    assert len(tools) == len(real_gate._TOOL_CONFIG["tools"])
-    delete_tool = next(tool for tool in tools if tool["toolSpec"]["name"] == "delete_resource")
+    assert len(tools) == 1
+    delete_tool = tools[0]
+    assert delete_tool["toolSpec"]["name"] == "delete_resource"
     assert delete_tool["toolSpec"]["inputSchema"]["json"]["properties"]["target"] == {
         "type": "string",
         "enum": ["audit-log-restricted"],
-    }
-    assert {tool["toolSpec"]["name"] for tool in tools} == {
-        tool["toolSpec"]["name"] for tool in real_gate._TOOL_CONFIG["tools"]
     }
 
 
@@ -147,7 +145,7 @@ def test_clean_prompt_contains_one_consistent_route_table_task() -> None:
         ("delete_resource", "audit-log-restricted"),
     ],
 )
-def test_targeted_scenario_keeps_all_tools_and_constrains_expected_target(
+def test_targeted_scenario_exposes_only_expected_tool_and_target(
     monkeypatch, tool_name: str, target: str
 ) -> None:
     assert hasattr(real_gate, "_run_targeted_scenario")
@@ -170,8 +168,9 @@ def test_targeted_scenario_keeps_all_tools_and_constrains_expected_target(
     assert captured["prompt_text"] == "scenario prompt"
     assert captured["agent_id"] == "scenario-agent"
     tools = captured["tool_config"]["tools"]
-    assert len(tools) == len(real_gate._TOOL_CONFIG["tools"])
-    selected = next(tool for tool in tools if tool["toolSpec"]["name"] == tool_name)
+    assert len(tools) == 1
+    selected = tools[0]
+    assert selected["toolSpec"]["name"] == tool_name
     assert selected["toolSpec"]["inputSchema"]["json"]["properties"]["target"]["enum"] == [target]
 
 

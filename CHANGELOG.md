@@ -30,9 +30,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Qwen3 32B (`qwen.qwen3-32b`) added to the required Bedrock Mantle dev
-  validation matrix. Validated at 26 passed, 0 failed, 0 errors, 0 skipped
-  across two consecutive credentialed runs in the protected `real-agent-dev`
-  environment.
+  validation matrix after two credentialed runs reported 26 passed, 0 failed,
+  0 errors, and 0 skipped. A later protected matrix run exposed unrelated
+  tool-routing variance, which is addressed by the scenario isolation below.
 - Explicit model allowlist (`_MANTLE_V1_MODEL_IDS`) in `bedrock_client.py`
   prevents untrusted model IDs from routing silently to an unintended endpoint.
   `build_mantle_client` raises `ValueError` for any ID not in the allowlist.
@@ -58,6 +58,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and Qwen3 32B. Model qualification uses authenticated inference rather than
   the broader Mantle model-list permission. Each model produces separate JUnit
   evidence. The aggregate gate fails if any model job fails.
+- Protected gate scenarios now expose only the action under test and constrain
+  its target. This prevents unrelated model tool routing from obscuring whether
+  DUSK enforced the required action while preserving real model inference.
 
 ## [0.2.0], 2026-08-05
 
