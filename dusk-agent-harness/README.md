@@ -1,4 +1,4 @@
-# DUSK agent-action-monitor
+# DUSK Production Agent Harness
 
 Watching agent behaviour for what most tooling quietly misses, with
 Superlinked surfacing the anomalies.

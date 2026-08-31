@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dusk-agent-action-monitor"
 version = "0.2.0"
-description = "DUSK's agent action gate, judging a proposed agent action against a per-agent behavioural baseline, with Superlinked SIE surfacing the anomalies."
+description = "DUSK Production Agent Harness, judging a proposed agent action against a per-agent behavioural baseline, with Superlinked SIE surfacing anomalies."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
