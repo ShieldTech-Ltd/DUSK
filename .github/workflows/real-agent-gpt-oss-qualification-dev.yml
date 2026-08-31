@@ -96,7 +96,7 @@ jobs:
         run: |
           docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod
           gate_healthy=false
-          for attempt in $(seq 1 15); do
+          for _ in $(seq 1 15); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               gate_healthy=true
               break
