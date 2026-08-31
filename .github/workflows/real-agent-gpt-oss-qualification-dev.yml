@@ -1,0 +1,172 @@
+name: GPT OSS 120B protected qualification
+
+# Candidate-only qualification for openai.gpt-oss-120b. This workflow is
+# intentionally separate from the approved dev model set. Enroll the model
+# there only after two clean protected runs of this workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-agent-gpt-oss-qualification-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  gpt-oss-dev-qualification:
+    name: GPT OSS 120B protected dev qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: real-agent-dev
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: examples/agent-action-monitor
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
+      BEDROCK_MODEL_ID: openai.gpt-oss-120b
+      EVIDENCE_DIR: ci-logs/gpt-oss-120b
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: examples/agent-action-monitor/requirements-real-agent.txt
+
+      - name: Verify dev branch
+        env:
+          GH_REF: ${{ github.ref }}
+        run: |
+          if [ "$GH_REF" != "refs/heads/dev" ]; then
+            echo "ERROR: GPT OSS qualification must run from refs/heads/dev"
+            echo "AWS credentials will not be issued on another branch."
+            exit 1
+          fi
+
+      - name: Environment preflight
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+        run: |
+          missing=""
+          [ -z "$AWS_ROLE_ARN" ] && missing="$missing AWS_ROLE_ARN"
+          [ -z "$AWS_REGION" ] && missing="$missing AWS_REGION"
+          [ -z "$BEDROCK_PROVIDER" ] && missing="$missing BEDROCK_PROVIDER"
+          [ -z "$DUSK_GATE_API_KEY" ] && missing="$missing DUSK_GATE_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "ERROR: missing real-agent-dev environment values:$missing"
+            exit 1
+          fi
+          if [ "$BEDROCK_PROVIDER" != "mantle" ]; then
+            echo "ERROR: BEDROCK_PROVIDER must be mantle"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: |
+          pip install --require-hashes -r requirements-real-agent.txt
+          pip install --no-deps .
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: dusk-gpt-oss-qualification-${{ github.run_id }}
+
+      - name: Verify AWS caller identity
+        run: aws sts get-caller-identity --query Arn --output text
+
+      - name: Start gate and mock-prod via Docker Compose
+        env:
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+          DUSK_ENFORCE: "true"
+        run: |
+          docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod
+          gate_healthy=false
+          for attempt in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              gate_healthy=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$gate_healthy" != "true" ]; then
+            echo "ERROR: gate did not become healthy after 30 seconds" >&2
+            docker compose -f compose.yml -f compose.ci.yml logs dusk-gate >&2 || true
+            exit 1
+          fi
+
+      - name: Run real-LLM gate tests
+        env:
+          USE_REAL_BEDROCK: "true"
+          DUSK_GATE_URL: http://localhost:8000/v1/gate
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+          DUSK_ENFORCE: "true"
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          pytest tests/real_llm/ -v --tb=short \
+            --junitxml="$EVIDENCE_DIR/real-agent-results.xml"
+
+      - name: Validate model evidence
+        env:
+          GH_COMMIT_SHA: ${{ github.sha }}
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          python scripts/validate_real_agent_evidence.py \
+            --junit "$EVIDENCE_DIR/real-agent-results.xml" \
+            --output "$EVIDENCE_DIR/manifest.json" \
+            --provider "$BEDROCK_PROVIDER" \
+            --model-id "openai.gpt-oss-120b" \
+            --model-slug "gpt-oss-120b" \
+            --commit-sha "$GH_COMMIT_SHA" \
+            --run-id "$GH_RUN_ID" \
+            --gate-mode "enforce"
+
+      - name: Collect gate logs as evidence
+        if: always()
+        env:
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+          DUSK_ENFORCE: "true"
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          container_id=$(docker compose -f compose.yml -f compose.ci.yml ps -q dusk-gate 2>/dev/null || true)
+          if [ -z "$container_id" ]; then
+            echo "gate-not-started: no dusk-gate container was created" \
+              > "$EVIDENCE_DIR/real-agent-gate-status.txt"
+            exit 0
+          fi
+          docker compose -f compose.yml -f compose.ci.yml logs dusk-gate \
+            > "$EVIDENCE_DIR/real-agent-gate.log" 2>&1
+          if [ ! -s "$EVIDENCE_DIR/real-agent-gate.log" ]; then
+            echo "ERROR: gate log file is empty" >&2
+            exit 1
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: real-agent-gpt-oss-120b-qualification-${{ github.run_id }}
+          path: examples/agent-action-monitor/ci-logs/gpt-oss-120b/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stop containers
+        if: always()
+        env:
+          DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
+          DUSK_ENFORCE: "true"
+        run: docker compose -f compose.yml -f compose.ci.yml down --remove-orphans

@@ -168,7 +168,10 @@ def test_build_mantle_client_allows_one_kimi_transient_retry(monkeypatch):
     assert captured.get("max_retries") == 1
 
 
-@pytest.mark.parametrize("model_id", ["zai.glm-5", "qwen.qwen3-32b"])
+@pytest.mark.parametrize(
+    "model_id",
+    ["zai.glm-5", "qwen.qwen3-32b", "openai.gpt-oss-120b"],
+)
 def test_build_mantle_client_keeps_default_bounds_for_other_models(monkeypatch, model_id):
     """Models without timeout evidence retain the stricter existing bounds."""
     captured = _install_fake_token_and_openai(monkeypatch)
@@ -272,6 +275,15 @@ def test_build_mantle_client_uses_v1_endpoint_for_qwen3_32b(monkeypatch):
     assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
 
 
+def test_build_mantle_client_uses_v1_endpoint_for_gpt_oss_120b(monkeypatch):
+    """openai.gpt-oss-120b must use the authenticated standard Mantle endpoint."""
+    captured = _install_fake_token_and_openai(monkeypatch)
+    from bedrock_client import build_mantle_client
+
+    build_mantle_client(region="eu-west-2", model_id="openai.gpt-oss-120b")
+    assert captured["base_url"] == "https://bedrock-mantle.eu-west-2.api.aws/v1"
+
+
 def test_build_mantle_client_qwen_does_not_use_openai_v1_endpoint(monkeypatch):
     """Qwen must not be routed to the /openai/v1 endpoint."""
     captured = _install_fake_token_and_openai(monkeypatch)
@@ -322,6 +334,113 @@ def test_mantle_client_can_require_a_tool_call():
     request = openai_client.chat.completions.create.call_args.kwargs
     assert request["tool_choice"] == "required"
     assert request["temperature"] == 0
+
+
+def test_gpt_oss_mantle_client_selects_the_only_exposed_function():
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "openai.gpt-oss-120b")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate firewall change"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "update_firewall_rule"},
+    }
+
+
+def test_gpt_oss_mantle_client_requires_exactly_one_function_to_select():
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, "openai.gpt-oss-120b")
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate one change"}],
+        tools=[
+            {"type": "function", "function": {"name": "update_firewall_rule"}},
+            {"type": "function", "function": {"name": "update_route_table"}},
+        ],
+        require_tool_call=True,
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["tool_choice"] == "required"
+
+
+def test_gpt_oss_retries_once_with_gate_correction_after_no_tool_call():
+    openai_client = MagicMock()
+    no_tool = {"choices": [{"finish_reason": "stop", "message": {"content": "cannot assist"}}]}
+    tool_call = _openai_response_with_tool_call()
+    openai_client.chat.completions.create.side_effect = [no_tool, tool_call]
+    client = MantleClient(openai_client, "openai.gpt-oss-120b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate firewall change"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert result is tool_call
+    assert openai_client.chat.completions.create.call_count == 2
+    retry_messages = openai_client.chat.completions.create.call_args.kwargs["messages"]
+    assert retry_messages[-1]["role"] == "user"
+    assert "before DUSK Gate could inspect" in retry_messages[-1]["content"]
+
+
+def test_gpt_oss_token_limit_uses_one_corrective_retry_total():
+    openai_client = MagicMock()
+    truncated = {
+        "choices": [{"finish_reason": "length", "message": {"content": None, "tool_calls": None}}]
+    }
+    tool_call = _openai_response_with_tool_call()
+    openai_client.chat.completions.create.side_effect = [truncated, tool_call]
+    client = MantleClient(openai_client, "openai.gpt-oss-120b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate firewall change"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert result is tool_call
+    assert openai_client.chat.completions.create.call_count == 2
+    retry_messages = openai_client.chat.completions.create.call_args.kwargs["messages"]
+    assert "before DUSK Gate could inspect" in retry_messages[-1]["content"]
+
+
+def test_gpt_oss_does_not_correct_when_first_response_has_tool_call():
+    openai_client = MagicMock()
+    tool_call = _openai_response_with_tool_call()
+    openai_client.chat.completions.create.return_value = tool_call
+    client = MantleClient(openai_client, "openai.gpt-oss-120b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate firewall change"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert result is tool_call
+    assert openai_client.chat.completions.create.call_count == 1
+
+
+def test_other_mantle_models_do_not_use_gpt_oss_corrective_retry():
+    openai_client = MagicMock()
+    no_tool = {"choices": [{"finish_reason": "stop", "message": {"content": "no tool"}}]}
+    openai_client.chat.completions.create.return_value = no_tool
+    client = MantleClient(openai_client, "qwen.qwen3-32b")
+
+    result = client.chat_completions_create(
+        messages=[{"role": "user", "content": "simulate firewall change"}],
+        tools=[{"type": "function", "function": {"name": "update_firewall_rule"}}],
+        require_tool_call=True,
+    )
+
+    assert result is no_tool
+    assert openai_client.chat.completions.create.call_count == 1
 
 
 # --- extract_function_call -------------------------------------------------
@@ -425,6 +544,49 @@ def test_propose_tool_call_uses_mantle_when_selected(monkeypatch):
     }
     mantle_client.chat_completions_create.assert_called_once()
     assert mantle_client.chat_completions_create.call_args.kwargs["require_tool_call"] is True
+
+
+def test_propose_tool_call_gpt_oss_uses_authorized_simulation_context(monkeypatch):
+    response = _openai_response_with_tool_call()
+    mantle_client = MagicMock()
+    mantle_client.chat_completions_create.return_value = response
+    monkeypatch.setattr("bedrock_client.build_mantle_client", lambda **kwargs: mantle_client)
+
+    propose_tool_call(
+        provider="mantle",
+        region="eu-west-2",
+        model_id="openai.gpt-oss-120b",
+        prompt_text="simulate the requested firewall action",
+        tool_config=_bedrock_tool_config(),
+    )
+
+    messages = mantle_client.chat_completions_create.call_args.kwargs["messages"]
+    assert messages[0]["role"] == "system"
+    assert "authorized security validation simulation" in messages[0]["content"]
+    assert "DUSK Gate" in messages[0]["content"]
+    assert messages[1] == {
+        "role": "user",
+        "content": "simulate the requested firewall action",
+    }
+
+
+def test_propose_tool_call_keeps_kimi_user_only_message_contract(monkeypatch):
+    response = _openai_response_with_tool_call()
+    mantle_client = MagicMock()
+    mantle_client.chat_completions_create.return_value = response
+    monkeypatch.setattr("bedrock_client.build_mantle_client", lambda **kwargs: mantle_client)
+
+    propose_tool_call(
+        provider="mantle",
+        region="eu-west-2",
+        model_id="moonshotai.kimi-k2.5",
+        prompt_text="update the route",
+        tool_config=_bedrock_tool_config(),
+    )
+
+    assert mantle_client.chat_completions_create.call_args.kwargs["messages"] == [
+        {"role": "user", "content": "update the route"}
+    ]
 
 
 def test_propose_tool_call_keeps_runtime_converse_path(monkeypatch):

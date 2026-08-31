@@ -239,7 +239,7 @@ def _propose_tool_call_with_no_action_retry(
 ) -> tuple[str, dict[str, Any] | None]:
     """Retry once only when the provider returns no tool call."""
     selected_provider, tool_call = propose(**kwargs)
-    if tool_call is None:
+    if tool_call is None and kwargs.get("model_id") != "openai.gpt-oss-120b":
         selected_provider, tool_call = propose(**kwargs)
     return selected_provider, tool_call
 

@@ -28,7 +28,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Infrastructure and workflow tests (`tests/ci/test_real_agent_infra.py`).
 - Operator documentation for Bedrock OIDC setup (`docs/bedrock-oidc-setup.md`).
 
-### Added
+- GPT OSS 120B (`openai.gpt-oss-120b`) support for the Bedrock Mantle agent
+  harness, including a model-specific action-serialization contract, bounded
+  corrective retry, and a fixed protected qualification workflow. The model
+  remains outside the required dev matrix until two protected runs pass.
 - Qwen3 32B (`qwen.qwen3-32b`) added to the required Bedrock Mantle dev
   validation matrix after two credentialed runs reported 26 passed, 0 failed,
   0 errors, and 0 skipped. A later protected matrix run exposed unrelated
