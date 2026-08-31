@@ -33,6 +33,61 @@ def test_repository_integrity_policy_rejects_active_legacy_harness_reference(
 
 
 @pytest.mark.parametrize(
+    "relative_path",
+    [
+        Path(".github/CODEOWNERS"),
+        Path(".gitignore"),
+        Path("ci/example-requirements.lock"),
+        Path("dusk-agent-harness/Dockerfile"),
+    ],
+)
+def test_repository_integrity_policy_rejects_legacy_reference_in_all_utf8_files(
+    tmp_path: Path, monkeypatch, relative_path: Path
+) -> None:
+    legacy_reference = "/".join(("examples", "agent-action-monitor"))
+    target = tmp_path / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(f"Legacy path: {legacy_reference}\n".encode())
+    (tmp_path / "pyproject.toml").write_bytes(b'[project]\nlicense = "Apache-2.0"\n')
+    (tmp_path / "LICENSE").write_bytes(b"test license\n")
+    tracked = [relative_path, Path("pyproject.toml"), Path("LICENSE")]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(repository_checks, "tracked_files", lambda: tracked)
+
+    assert check() == [f"legacy harness reference in active file: {relative_path}"]
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "content"),
+    [
+        (
+            Path("docs/superpowers/plans/2026-09-01-future-plan.md"),
+            "Future command: " + "/".join(("examples", "agent-action-monitor")),
+        ),
+        (
+            Path("README.md"),
+            "https://github.com/superlinked/sie/tree/main/"
+            + "/".join(("examples", "agent-action-monitor"))
+            + "/runtime",
+        ),
+    ],
+)
+def test_repository_integrity_policy_rejects_unapproved_legacy_exceptions(
+    tmp_path: Path, monkeypatch, relative_path: Path, content: str
+) -> None:
+    target = tmp_path / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(f"{content}\n".encode())
+    (tmp_path / "pyproject.toml").write_bytes(b'[project]\nlicense = "Apache-2.0"\n')
+    (tmp_path / "LICENSE").write_bytes(b"test license\n")
+    tracked = [relative_path, Path("pyproject.toml"), Path("LICENSE")]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(repository_checks, "tracked_files", lambda: tracked)
+
+    assert check() == [f"legacy harness reference in active file: {relative_path}"]
+
+
+@pytest.mark.parametrize(
     ("relative_path", "content"),
     [
         (
@@ -43,6 +98,18 @@ def test_repository_integrity_policy_rejects_active_legacy_harness_reference(
         (
             Path("docs/superpowers/plans/2026-08-28-main-mantle-validation.md"),
             "Historical command: " + "/".join(("examples", "agent-action-monitor")),
+        ),
+        (
+            Path("docs/superpowers/plans/2026-08-28-multi-model-dev-validation.md"),
+            "Historical command: " + "/".join(("examples", "agent-action-monitor")),
+        ),
+        (
+            Path("docs/superpowers/plans/2026-08-31-production-agent-harness.md"),
+            "Migration history: " + "/".join(("examples", "agent-action-monitor")),
+        ),
+        (
+            Path("docs/superpowers/specs/2026-08-31-production-agent-harness-design.md"),
+            "Migration history: " + "/".join(("examples", "agent-action-monitor")),
         ),
     ],
 )
