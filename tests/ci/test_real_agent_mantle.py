@@ -10,7 +10,6 @@ import pytest
 import yaml
 
 _DEV_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox-dev.yml")
-_GPT_OSS_QUALIFICATION_PATH = Path(".github/workflows/real-agent-gpt-oss-qualification-dev.yml")
 _PROD_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
 _MAIN_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-main/template.yaml")
@@ -29,15 +28,12 @@ EXPECTED_MODELS = [
     {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
     {"slug": "glm-5", "id": "zai.glm-5"},
     {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
+    {"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"},
 ]
 
 
 def _dev_workflow() -> dict:
     return yaml.safe_load(_DEV_WORKFLOW_PATH.read_text(encoding="utf-8"))
-
-
-def _gpt_oss_qualification_workflow() -> dict:
-    return yaml.safe_load(_GPT_OSS_QUALIFICATION_PATH.read_text(encoding="utf-8"))
 
 
 def _prod_workflow() -> dict:
@@ -76,68 +72,38 @@ def _dev_steps() -> list[dict]:
     return _dev_workflow()["jobs"][_DEV_JOB]["steps"]
 
 
-def _gpt_oss_qualification_steps() -> list[dict]:
-    return _gpt_oss_qualification_workflow()["jobs"]["gpt-oss-dev-qualification"]["steps"]
-
-
-def test_gpt_oss_qualification_is_fixed_dev_only_and_not_a_matrix() -> None:
-    workflow = _gpt_oss_qualification_workflow()
-    job = workflow["jobs"]["gpt-oss-dev-qualification"]
-    text = _GPT_OSS_QUALIFICATION_PATH.read_text(encoding="utf-8")
-
-    assert job["environment"] == "real-agent-dev"
-    assert job["env"]["BEDROCK_MODEL_ID"] == "openai.gpt-oss-120b"
-    assert "strategy" not in job
-    assert "matrix." not in text
-    assert "refs/heads/dev" in text
-    assert "refs/heads/main" not in text
-
-
-def test_gpt_oss_qualification_has_no_model_or_mode_override() -> None:
-    workflow = _gpt_oss_qualification_workflow()
+def test_gpt_oss_qualification_is_integrated_into_the_registered_dev_workflow() -> None:
+    assert not Path(".github/workflows/real-agent-gpt-oss-qualification-dev.yml").exists()
+    workflow = _dev_workflow()
     on = workflow[True] if True in workflow else workflow["on"]
-    dispatch = on["workflow_dispatch"] or {}
-    inputs = dispatch.get("inputs", {}) or {}
+    inputs = on["workflow_dispatch"]["inputs"]
+    target = inputs["run_target"]
 
-    assert "model" not in inputs
-    assert "model_id" not in inputs
-    assert "gate_mode" not in inputs
+    assert target["type"] == "choice"
+    assert target["options"] == ["gpt-oss-qualification", "full-matrix"]
+    assert target["default"] == "gpt-oss-qualification"
 
 
-def test_gpt_oss_qualification_uses_oidc_locked_dependencies_and_real_gate() -> None:
-    workflow = _gpt_oss_qualification_workflow()
-    job = workflow["jobs"]["gpt-oss-dev-qualification"]
-    steps = _gpt_oss_qualification_steps()
-    text = _GPT_OSS_QUALIFICATION_PATH.read_text(encoding="utf-8")
+def test_dev_workflow_contains_the_complete_four_model_set() -> None:
+    model_expression = _dev_workflow()["jobs"][_DEV_JOB]["strategy"]["matrix"]["model"]
+    qualification_json = json.dumps([EXPECTED_MODELS[-1]], separators=(",", ":"))
+    full_matrix_json = json.dumps(EXPECTED_MODELS, separators=(",", ":"))
 
-    assert job["permissions"] == {"contents": "read", "id-token": "write"}
-    configure = next(
-        step
-        for step in steps
-        if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    assert f"'{qualification_json}'" in model_expression
+    assert f"'{full_matrix_json}'" in model_expression
+
+
+def test_gpt_oss_qualification_forces_enforce_mode() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["env"]["EFFECTIVE_GATE_MODE"] == (
+        "${{ github.event.inputs.run_target == 'gpt-oss-qualification' "
+        "&& 'enforce' || github.event.inputs.gate_mode }}"
     )
-    assert configure["uses"] == f"aws-actions/configure-aws-credentials@{_CONFIGURE_AWS_SHA}"
-    assert "--require-hashes" in text
-    assert "--no-deps" in text
-    test_step = next(step for step in steps if step.get("name") == "Run real-LLM gate tests")
-    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
-    assert test_step["env"]["DUSK_ENFORCE"] == "true"
-
-
-def test_gpt_oss_qualification_validates_exact_non_skipped_evidence() -> None:
-    steps = _gpt_oss_qualification_steps()
-    validate = next(step for step in steps if step.get("name") == "Validate model evidence")
-    upload = next(
-        step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@")
-    )
-    stop = next(step for step in steps if step.get("name") == "Stop containers")
-
-    assert '--model-id "openai.gpt-oss-120b"' in validate["run"]
-    assert '--model-slug "gpt-oss-120b"' in validate["run"]
-    assert '--gate-mode "enforce"' in validate["run"]
-    assert upload["if"] == "always()"
-    assert "gpt-oss-120b" in upload["with"]["name"]
-    assert stop["if"] == "always()"
+    for step in job["steps"]:
+        if "DUSK_ENFORCE" in step.get("env", {}):
+            assert step["env"]["DUSK_ENFORCE"] == (
+                "${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}"
+            )
 
 
 # --- Dev workflow structure ------------------------------------------------
@@ -203,7 +169,15 @@ def test_dev_workflow_requires_bedrock_provider_env_var() -> None:
 
 def test_dev_workflow_runs_the_exact_approved_model_matrix() -> None:
     job = _dev_workflow()["jobs"][_DEV_JOB]
-    assert job["strategy"] == {"fail-fast": False, "matrix": {"model": EXPECTED_MODELS}}
+    assert job["strategy"]["fail-fast"] is False
+    model_expression = job["strategy"]["matrix"]["model"]
+    qualification_json = json.dumps([EXPECTED_MODELS[-1]], separators=(",", ":"))
+    full_matrix_json = json.dumps(EXPECTED_MODELS, separators=(",", ":"))
+    assert model_expression == (
+        "${{ fromJSON(github.event.inputs.run_target == 'gpt-oss-qualification' "
+        + f"&& '{qualification_json}' || '{full_matrix_json}') "
+        + "}}"
+    )
     assert job["env"]["BEDROCK_MODEL_ID"] == "${{ matrix.model.id }}"
 
 
