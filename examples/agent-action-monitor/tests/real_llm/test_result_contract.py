@@ -113,6 +113,24 @@ def test_provider_call_stops_after_one_no_action_retry() -> None:
     assert calls == 2
 
 
+def test_gpt_oss_does_not_stack_harness_retry_on_client_correction() -> None:
+    calls = 0
+
+    def propose(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return "mantle", None
+
+    result = real_gate._propose_tool_call_with_no_action_retry(
+        propose,
+        provider="mantle",
+        model_id="openai.gpt-oss-120b",
+    )
+
+    assert result == ("mantle", None)
+    assert calls == 1
+
+
 def test_scenario_target_constraint_exposes_only_the_action_under_test() -> None:
     assert hasattr(real_gate, "_tool_config_for_target")
 
