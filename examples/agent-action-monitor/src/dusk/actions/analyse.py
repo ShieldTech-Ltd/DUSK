@@ -10,13 +10,28 @@ from typing import TYPE_CHECKING, Any
 
 from dusk.actions.baseline import Baseline, action_features
 from dusk.actions.event import AgentAction
-from dusk.trace.vector import sie_extract, sie_score
+from dusk.trace.vector import embed_text, sie_extract, sie_score
 
 if TYPE_CHECKING:
     from dusk.actions.offense_memory import OffenseRecord
+    from dusk.application.evaluator import SemanticEnrichmentPort
     from dusk.config import Config
 
 logger = logging.getLogger("dusk.actions.analyse")
+
+
+class _LegacySemanticEnrichment:
+    """Preserve the historical module-level SIE patch points for direct callers."""
+
+    def extract(self, text: str) -> list[Any]:
+        return sie_extract(text)
+
+    def score(self, query: str, candidates: list[str]) -> list[float] | None:
+        return sie_score(query, candidates)
+
+    def embed(self, text: str) -> list[float]:
+        return embed_text(text)
+
 
 #: Weight each novelty signal contributes to the anomaly score.
 _W_NEW_ACTION_TYPE = 0.55
@@ -150,7 +165,9 @@ def _predicted_next(action: AgentAction) -> str:
     )
 
 
-def _extracted_sensitive_terms(features: dict[str, Any]) -> set[str]:
+def _extracted_sensitive_terms(
+    features: dict[str, Any], semantic: SemanticEnrichmentPort
+) -> set[str]:
     """Pull privileged terms from the action's target/change text via SIE extract.
 
     Returns an empty set whenever SIE is not configured/reachable, or when
@@ -162,13 +179,15 @@ def _extracted_sensitive_terms(features: dict[str, Any]) -> set[str]:
         return set()
     return {
         term.text.lower()
-        for term in sie_extract(text)
+        for term in semantic.extract(text)
         if term.score >= _EXTRACT_CONFIDENCE_FLOOR and term.label.lower() in _PRIVILEGED_LABELS
     }
 
 
 def _semantic_novelty(
-    action: AgentAction, agent_history: list[AgentAction]
+    action: AgentAction,
+    agent_history: list[AgentAction],
+    semantic: SemanticEnrichmentPort,
 ) -> tuple[float, str | None]:
     """Rerank ``action`` against the agent's raw history via SIE's cross-encoder.
 
@@ -181,7 +200,7 @@ def _semantic_novelty(
 
     query = f"{action.action_type} {action.target}"
     candidates = [f"{a.action_type} {a.target}" for a in agent_history]
-    scores = sie_score(query, candidates)
+    scores = semantic.score(query, candidates)
     if not scores:
         return 0.0, None
 
@@ -195,7 +214,10 @@ def _semantic_novelty(
 
 
 def _extra_sie_signals(
-    action: AgentAction, features: dict[str, Any], agent_history: list[AgentAction]
+    action: AgentAction,
+    features: dict[str, Any],
+    agent_history: list[AgentAction],
+    semantic: SemanticEnrichmentPort,
 ) -> tuple[float, list[str]]:
     """Optional SIE-backed signals: extracted privileged terms and rerank novelty.
 
@@ -205,12 +227,12 @@ def _extra_sie_signals(
     extra_score = 0.0
     reasons: list[str] = []
 
-    extracted = _extracted_sensitive_terms(features) - _SENSITIVE
+    extracted = _extracted_sensitive_terms(features, semantic) - _SENSITIVE
     if extracted:
         extra_score += _W_EXTRACTED_SENSITIVE
         reasons.append(f"SIE extract flags additional privileged terms {sorted(extracted)}")
 
-    novelty_score, novelty_reason = _semantic_novelty(action, agent_history)
+    novelty_score, novelty_reason = _semantic_novelty(action, agent_history, semantic)
     if novelty_reason:
         extra_score += novelty_score
         reasons.append(novelty_reason)
@@ -240,9 +262,9 @@ def _offense_similarity(
     return min(1.0, similarity)
 
 
-def _decay(offense: OffenseRecord, half_life_days: float) -> float:
+def _decay(offense: OffenseRecord, half_life_days: float, now: datetime) -> float:
     """Exponential decay: 1.0 for a brand-new offense, 0.5 at one half-life, etc."""
-    age_days = max(0.0, (datetime.now(UTC) - offense.timestamp).total_seconds() / 86400)
+    age_days = max(0.0, (now - offense.timestamp).total_seconds() / 86400)
     return float(math.pow(0.5, age_days / half_life_days))
 
 
@@ -251,6 +273,7 @@ def _repeat_offense_signal(
     features: dict[str, Any],
     offenses: list[OffenseRecord] | None,
     config: Config | None,
+    now: datetime,
 ) -> tuple[float, str | None]:
     """Score how much ``action`` resembles this agent's own past refusals.
 
@@ -273,7 +296,7 @@ def _repeat_offense_signal(
         similarity = _offense_similarity(action, features, offense)
         if similarity <= 0.0:
             continue
-        weight = similarity * _decay(offense, cfg.repeat_offense_half_life_days)
+        weight = similarity * _decay(offense, cfg.repeat_offense_half_life_days, now)
         if weight > best_weight:
             best_weight = weight
             best_offense = offense
@@ -315,6 +338,8 @@ def analyse(
     agent_history: list[AgentAction] | None = None,
     offenses: list[OffenseRecord] | None = None,
     config: Config | None = None,
+    semantic: SemanticEnrichmentPort | None = None,
+    observed_at: datetime | None = None,
 ) -> AnalysisResult:
     """Score and explain ``action`` against ``baseline``.
 
@@ -336,6 +361,9 @@ def analyse(
     Returns:
         An :class:`AnalysisResult` with score, reasons, and mappings.
     """
+    if semantic is None:
+        semantic = _LegacySemanticEnrichment()
+    now = observed_at or datetime.now(UTC)
     features = action_features(action)
     profile = baseline.profile_for(action.agent_id)
     reasons: list[str] = []
@@ -373,11 +401,11 @@ def analyse(
                 f"newly introduces sensitive or privileged terms {sorted(sensitive_new)}"
             )
 
-    extra_score, extra_reasons = _extra_sie_signals(action, features, agent_history or [])
+    extra_score, extra_reasons = _extra_sie_signals(action, features, agent_history or [], semantic)
     score += extra_score
     reasons.extend(extra_reasons)
 
-    repeat_score, repeat_reason = _repeat_offense_signal(action, features, offenses, config)
+    repeat_score, repeat_reason = _repeat_offense_signal(action, features, offenses, config, now)
     if repeat_reason:
         score += repeat_score
         reasons.append(repeat_reason)
