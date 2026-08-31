@@ -257,11 +257,14 @@ the expected target. The real model generates the action arguments, then DUSK
 must return the expected enforce-mode verdict. Missing calls, malformed actions,
 incorrect targets, and incorrect verdicts fail the run.
 
-The workflow file is the authoritative model allowlist. The legacy
-`BEDROCK_MODEL_ID` value in the `real-agent-dev` environment does not override
-or select a matrix entry. There is no automatic fallback to Kimi or another
-model. Operators still approve the protected `real-agent-dev` deployment, and
-the AWS OIDC role remains restricted to that environment on `dev`.
+The workflow selects the registered qualification job or full matrix. The
+runtime registry in `models.registry.MODEL_PROFILES` enforces the supported
+model IDs, and CI contract tests keep both workflow JSON branches synchronized
+with that registry. The legacy `BEDROCK_MODEL_ID` value in the
+`real-agent-dev` environment does not override or select a matrix entry. There
+is no automatic fallback to Kimi or another model. Operators still approve the
+protected `real-agent-dev` deployment, and the AWS OIDC role remains restricted
+to that environment on `dev`.
 
 ## What's in the box
 

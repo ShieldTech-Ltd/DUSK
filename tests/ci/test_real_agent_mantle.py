@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,10 +17,9 @@ _MAIN_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-main/template.yaml")
 _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
 _MAIN_SETUP_PATH = Path("scripts/setup-bedrock-mantle-main.ps1")
-_LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
-_EVIDENCE_VALIDATOR_PATH = Path(
-    "examples/agent-action-monitor/scripts/validate_real_agent_evidence.py"
-)
+_HARNESS_ROOT = Path("dusk-agent-harness")
+_LOCK_FILE_PATH = _HARNESS_ROOT / "requirements-real-agent.txt"
+_EVIDENCE_VALIDATOR_PATH = _HARNESS_ROOT / "scripts/validate_real_agent_evidence.py"
 _CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
 
 _DEV_JOB = "real-agent-dev-validation"
@@ -72,6 +72,23 @@ def _dev_steps() -> list[dict]:
     return _dev_workflow()["jobs"][_DEV_JOB]["steps"]
 
 
+def _registered_model_pairs() -> list[tuple[str, str]]:
+    harness_path = str(_HARNESS_ROOT.resolve())
+    sys.path.insert(0, harness_path)
+    try:
+        from models.registry import MODEL_PROFILES
+    finally:
+        sys.path.pop(0)
+
+    return [(profile.slug, profile.model_id) for profile in MODEL_PROFILES]
+
+
+def _dev_workflow_matrix_branches() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    model_expression = _dev_workflow()["jobs"][_DEV_JOB]["strategy"]["matrix"]["model"]
+    qualification_json, full_matrix_json = model_expression.split("&& '", 1)[1].split("' || '", 1)
+    return json.loads(qualification_json), json.loads(full_matrix_json.removesuffix("') }}"))
+
+
 def test_gpt_oss_qualification_is_integrated_into_the_registered_dev_workflow() -> None:
     assert not Path(".github/workflows/real-agent-gpt-oss-qualification-dev.yml").exists()
     workflow = _dev_workflow()
@@ -85,12 +102,35 @@ def test_gpt_oss_qualification_is_integrated_into_the_registered_dev_workflow() 
 
 
 def test_dev_workflow_contains_the_complete_four_model_set() -> None:
-    model_expression = _dev_workflow()["jobs"][_DEV_JOB]["strategy"]["matrix"]["model"]
-    qualification_json = json.dumps([EXPECTED_MODELS[-1]], separators=(",", ":"))
-    full_matrix_json = json.dumps(EXPECTED_MODELS, separators=(",", ":"))
+    qualification, full_matrix = _dev_workflow_matrix_branches()
+    registered_pairs = _registered_model_pairs()
 
-    assert f"'{qualification_json}'" in model_expression
-    assert f"'{full_matrix_json}'" in model_expression
+    assert qualification == [{"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"}]
+    assert full_matrix == [
+        {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
+        {"slug": "glm-5", "id": "zai.glm-5"},
+        {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
+        {"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"},
+    ]
+    assert [(model["slug"], model["id"]) for model in qualification] == [registered_pairs[-1]]
+    assert [(model["slug"], model["id"]) for model in full_matrix] == registered_pairs
+
+
+def test_dev_workflow_uses_production_harness_paths() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    setup_python = next(
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    upload = next(
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")
+    )
+
+    assert job["defaults"]["run"]["working-directory"] == "dusk-agent-harness"
+    assert setup_python["with"]["cache-dependency-path"].strip() == (
+        "dusk-agent-harness/requirements-real-agent.txt"
+    )
+    assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/${{ matrix.model.slug }}/"
+    assert "examples/agent-action-monitor" not in _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_gpt_oss_qualification_forces_enforce_mode() -> None:

@@ -51,7 +51,7 @@ jobs:
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.
     defaults:
       run:
-        working-directory: examples/agent-action-monitor
+        working-directory: dusk-agent-harness
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
@@ -69,7 +69,7 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: |
-            examples/agent-action-monitor/requirements-real-agent.txt
+            dusk-agent-harness/requirements-real-agent.txt
 
       # Fail-closed before any AWS credential issuance. The OIDC trust already
       # restricts the sub claim to the real-agent-dev environment; this check
@@ -222,7 +222,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: real-agent-dev-evidence-${{ matrix.model.slug }}-${{ github.run_id }}
-          path: examples/agent-action-monitor/ci-logs/${{ matrix.model.slug }}/
+          path: dusk-agent-harness/ci-logs/${{ matrix.model.slug }}/
           if-no-files-found: warn
           retention-days: 30
 
