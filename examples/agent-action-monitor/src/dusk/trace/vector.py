@@ -6,6 +6,7 @@ import hashlib
 import logging
 import math
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -218,13 +219,14 @@ def _rank_candidates(
     query: str,
     scored: list[tuple[float, TraceDecision]],
     top_k: int,
+    scorer: Callable[[str, list[str]], list[float] | None] | None = None,
 ) -> list[SimilarDecision]:
     """Shared top_k selection + optional SIE rerank pass, given pre-scored candidates."""
     scored.sort(key=lambda x: x[0], reverse=True)
     top = scored[:top_k]
 
     # Prefer the cross-encoder ordering when SIE can rerank the shortlist.
-    rerank = sie_score(query, [f"{d.agent_id} {d.action}" for _, d in top])
+    rerank = (scorer or sie_score)(query, [f"{d.agent_id} {d.action}" for _, d in top])
     if rerank and len(rerank) == len(top):
         reranked = sorted(zip(rerank, top, strict=True), key=lambda x: x[0], reverse=True)
         top = [t for _, t in reranked]
@@ -280,6 +282,9 @@ def find_similar_cached(
     target_agent: str,
     past_decisions: list[tuple[TraceDecision, list[float]]],
     top_k: int = 3,
+    *,
+    embedder: Callable[[str], list[float]] | None = None,
+    scorer: Callable[[str, list[str]], list[float] | None] | None = None,
 ) -> list[SimilarDecision]:
     """Like find_similar, but each past decision already carries its embedding.
 
@@ -295,7 +300,7 @@ def find_similar_cached(
         return []
 
     query = f"{target_agent} {target_action}"
-    query_vec = embed_text(query)
+    query_vec = (embedder or embed_text)(query)
 
     scored: list[tuple[float, TraceDecision]] = []
     for decision, vec in past_decisions:
@@ -303,4 +308,4 @@ def find_similar_cached(
         if sim > 0.3:
             scored.append((sim, decision))
 
-    return _rank_candidates(query, scored, top_k)
+    return _rank_candidates(query, scored, top_k, scorer=scorer)

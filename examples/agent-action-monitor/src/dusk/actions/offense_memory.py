@@ -19,6 +19,11 @@ _MAX_OFFENSES_PER_AGENT = 50
 _MAX_TRACKED_AGENTS = 500
 
 
+def utc_now() -> datetime:
+    """Return the current UTC time through the legacy patch boundary."""
+    return datetime.now(UTC)
+
+
 @dataclass(frozen=True)
 class OffenseRecord:
     """One persisted refusal: enough to cite it later and judge similarity to it.
@@ -230,6 +235,7 @@ class OffenseMemory:
         target_class: str,
         tokens: set[str],
         verdict: str,
+        timestamp: datetime | None = None,
     ) -> None:
         """Record a refused verdict for ``agent_id`` and schedule a write."""
         entry = OffenseRecord(
@@ -239,7 +245,7 @@ class OffenseMemory:
             target_class=target_class,
             tokens=tuple(sorted(tokens)),
             verdict=verdict,
-            timestamp=datetime.now(UTC),
+            timestamp=timestamp or utc_now(),
         )
         with self._lock:
             offenses = self._touch(agent_id)

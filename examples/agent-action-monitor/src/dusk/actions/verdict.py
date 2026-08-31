@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from dusk.actions.analyse import AnalysisResult, analyse
@@ -13,7 +14,8 @@ from dusk.actions.event import AgentAction
 from dusk.config import Config, get_config
 
 if TYPE_CHECKING:
-    from dusk.actions.offense_memory import OffenseMemory
+    from dusk.actions.offense_memory import OffenseMemory, OffenseRecord
+    from dusk.application.evaluator import SemanticEnrichmentPort
 
 logger = logging.getLogger("dusk.actions.verdict")
 
@@ -21,6 +23,11 @@ logger = logging.getLogger("dusk.actions.verdict")
 ALLOW = "ALLOW"
 WOULD_BLOCK = "WOULD-BLOCK"
 BLOCK = "BLOCK"
+
+
+def new_trace_id() -> str:
+    """Return a trace identifier through the historical UUID patch boundary."""
+    return uuid.uuid4().hex
 
 
 @dataclass
@@ -37,7 +44,7 @@ class GateVerdict:
 
     verdict: str
     analysis: AnalysisResult
-    trace_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    trace_id: str = field(default_factory=new_trace_id)
 
     @property
     def refused(self) -> bool:
@@ -95,12 +102,37 @@ class ActionGate:
         offenses = (
             self.offense_memory.offenses_for(action.agent_id) if self.offense_memory else None
         )
+        gate_verdict = self.preview(action, offenses=offenses)
+        if gate_verdict.refused and self.offense_memory is not None:
+            features = action_features(action)
+            self.offense_memory.record(
+                trace_id=gate_verdict.trace_id,
+                agent_id=action.agent_id,
+                action_type=action.action_type,
+                target_class=features["target_class"],
+                tokens=features["tokens"],
+                verdict=gate_verdict.verdict,
+            )
+        return gate_verdict
+
+    def preview(
+        self,
+        action: AgentAction,
+        *,
+        offenses: list[OffenseRecord] | list[object] | None = None,
+        semantic: SemanticEnrichmentPort | None = None,
+        observed_at: datetime | None = None,
+        trace_id: str | None = None,
+    ) -> GateVerdict:
+        """Evaluate without updating offense memory or any external state."""
         result = analyse(
             self.baseline,
             action,
             agent_history=self._history.get(action.agent_id),
-            offenses=offenses,
+            offenses=offenses,  # type: ignore[arg-type]
             config=self.config,
+            semantic=semantic,
+            observed_at=observed_at,
         )
         if result.score >= self.config.gate_block_threshold:
             verdict = BLOCK if self.enforce else WOULD_BLOCK
@@ -118,18 +150,9 @@ class ActionGate:
             )
         else:
             verdict = ALLOW
-        gate_verdict = GateVerdict(verdict=verdict, analysis=result)
-        if gate_verdict.refused and self.offense_memory is not None:
-            features = action_features(action)
-            self.offense_memory.record(
-                trace_id=gate_verdict.trace_id,
-                agent_id=action.agent_id,
-                action_type=action.action_type,
-                target_class=features["target_class"],
-                tokens=features["tokens"],
-                verdict=verdict,
-            )
-        return gate_verdict
+        if trace_id is None:
+            return GateVerdict(verdict=verdict, analysis=result)
+        return GateVerdict(verdict=verdict, analysis=result, trace_id=trace_id)
 
     def evaluate_all(self, actions: list[AgentAction]) -> list[GateVerdict]:
         """Evaluate a sequence of actions in order."""
