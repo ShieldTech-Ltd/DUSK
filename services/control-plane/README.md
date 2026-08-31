@@ -2,9 +2,10 @@
 
 This directory contains the independently deployable FastAPI service. It does
 not import or run the Flask application in `examples/agent-action-monitor`, and
-it does not expose `/v1/gate`. The initial scaffold provides only operational
-endpoints; v2 evaluation and read APIs arrive in their ordered implementation
-issues.
+it does not expose `/v1/gate`. Operational endpoints are always available. The
+authenticated v2 evaluation route is registered only when its feature flag is
+enabled and fails closed until a policy/evaluation service with live evidence
+prerequisites is activated.
 
 ## Local development
 
@@ -44,7 +45,7 @@ settings fail startup.
 | `DUSK_CP_PORT` | `8080` | `1..65535` |
 | `DUSK_CP_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
 | `DUSK_CP_API_DOCS_ENABLED` | `false` | Forbidden in staging and production |
-| `DUSK_CP_V2_ENABLED` | `false` | Feature routing flag; scaffold exposes no v2 routes |
+| `DUSK_CP_V2_ENABLED` | `false` | Registers authenticated v2 routing; evaluation requires an activated service |
 | `DUSK_CP_READINESS_TIMEOUT_MS` | `1000` | `50..5000` per probe |
 | `DUSK_CP_MAX_REQUEST_BODY_BYTES` | `1048576` | `1024..10485760` |
 

@@ -1,6 +1,46 @@
 {
   "components": {
     "schemas": {
+      "CanonicalAction": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Action Type",
+            "type": "string"
+          },
+          "agent_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "consequential": {
+            "title": "Consequential",
+            "type": "boolean"
+          },
+          "target": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "action_type",
+          "target",
+          "consequential"
+        ],
+        "title": "CanonicalAction",
+        "type": "object"
+      },
       "ComponentHealth": {
         "additionalProperties": false,
         "properties": {
@@ -71,6 +111,215 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "EvaluationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/CanonicalAction"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceEnvelope"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "EvaluationRequest",
+        "type": "object"
+      },
+      "EvaluationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "behavioral_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Behavioral Score",
+            "type": "number"
+          },
+          "blast_radius": {
+            "title": "Blast Radius",
+            "type": "string"
+          },
+          "evidence_degraded": {
+            "title": "Evidence Degraded",
+            "type": "boolean"
+          },
+          "matched_rules": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyMatchResponse"
+            },
+            "title": "Matched Rules",
+            "type": "array"
+          },
+          "mitre_atlas": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mitre Atlas",
+            "type": "array"
+          },
+          "mitre_attack": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mitre Attack",
+            "type": "array"
+          },
+          "pipeline_timings": {
+            "$ref": "#/components/schemas/PipelineTimings"
+          },
+          "policy_decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL"
+            ],
+            "title": "Policy Decision",
+            "type": "string"
+          },
+          "policy_pack_version": {
+            "title": "Policy Pack Version",
+            "type": "string"
+          },
+          "predicted_next": {
+            "title": "Predicted Next",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "response_status": {
+            "const": "DECIDED",
+            "title": "Response Status",
+            "type": "string"
+          },
+          "similar_decision_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Similar Decision Ids",
+            "type": "array"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "WOULD-BLOCK",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "verdict",
+          "behavioral_score",
+          "blast_radius",
+          "reasons",
+          "reason_codes",
+          "mitre_attack",
+          "mitre_atlas",
+          "predicted_next",
+          "policy_decision",
+          "policy_pack_version",
+          "matched_rules",
+          "evidence_degraded",
+          "response_status",
+          "pipeline_timings",
+          "similar_decision_ids"
+        ],
+        "title": "EvaluationResponse",
+        "type": "object"
+      },
+      "EvidenceEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "domain": {
+            "pattern": "^[a-z][a-z_]{0,31}$",
+            "title": "Domain",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "provenance": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Provenance",
+            "type": "string"
+          },
+          "source_identity": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source Identity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "source_identity",
+          "provenance",
+          "observed_at",
+          "digest",
+          "payload"
+        ],
+        "title": "EvidenceEnvelope",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "LivenessResponse": {
         "additionalProperties": false,
         "properties": {
@@ -94,6 +343,80 @@
           "version"
         ],
         "title": "LivenessResponse",
+        "type": "object"
+      },
+      "PipelineTimings": {
+        "additionalProperties": false,
+        "properties": {
+          "behavioral_ms": {
+            "minimum": 0.0,
+            "title": "Behavioral Ms",
+            "type": "number"
+          },
+          "policy_ms": {
+            "minimum": 0.0,
+            "title": "Policy Ms",
+            "type": "number"
+          },
+          "total_ms": {
+            "minimum": 0.0,
+            "title": "Total Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "behavioral_ms",
+          "policy_ms",
+          "total_ms"
+        ],
+        "title": "PipelineTimings",
+        "type": "object"
+      },
+      "PolicyMatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "frameworks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "owner",
+          "severity",
+          "frameworks",
+          "reason"
+        ],
+        "title": "PolicyMatchResponse",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -131,6 +454,52 @@
         ],
         "title": "ReadinessResponse",
         "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -211,6 +580,92 @@
         "summary": "Readiness",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/v2/evaluations": {
+      "post": {
+        "operationId": "evaluate_action_v2_evaluations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Evaluate Action",
+        "tags": [
+          "evaluations"
         ]
       }
     }
