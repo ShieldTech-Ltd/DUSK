@@ -60,6 +60,7 @@ dusk = "dusk.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"dusk" = ["py.typed"]
 "dusk.policies" = ["*.yaml"]
 
 [tool.pytest.ini_options]

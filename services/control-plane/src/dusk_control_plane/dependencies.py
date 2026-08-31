@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from dusk_control_plane.config import Settings
+from dusk_control_plane.evaluations import EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
 from dusk_control_plane.storage.database import Database
 
@@ -33,6 +34,7 @@ class AppContainer:
     readiness_probes: tuple[DependencyProbe, ...] = ()
     authenticator: Authenticator | None = None
     database: Database | None = None
+    evaluation_service: EvaluationService | None = None
 
     @classmethod
     def build(
@@ -41,6 +43,7 @@ class AppContainer:
         readiness_probes: Sequence[DependencyProbe] = (),
         authenticator: Authenticator | None = None,
         database: Database | None = None,
+        evaluation_service: EvaluationService | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -68,4 +71,5 @@ class AppContainer:
                 else None
             ),
             database=resolved_database,
+            evaluation_service=evaluation_service,
         )

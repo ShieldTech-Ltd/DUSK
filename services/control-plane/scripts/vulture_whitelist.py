@@ -7,6 +7,8 @@ surfaces listed here are the intentionally public data-access contract for the
 subsequent ordered API, audit, outbox, and aggregate issues.
 """
 
+from dusk_control_plane.evaluations import PipelineTimings
+from dusk_control_plane.policy import EvidenceTrust
 from dusk_control_plane.storage.models import (
     AgentRiskRollup,
     AuditEvent,
@@ -104,3 +106,12 @@ down_revision
 branch_labels
 depends_on
 pytestmark
+
+# FastAPI discovers these nested handlers through decorators; response fields
+# and enum members are public contract values consumed by generated clients.
+evaluate_action
+evaluation_unavailable
+evidence_rejected
+policy_unavailable
+PipelineTimings.behavioral_ms
+EvidenceTrust.CONFLICTED
