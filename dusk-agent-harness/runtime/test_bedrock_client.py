@@ -77,9 +77,11 @@ def test_build_provider_client_mantle_calls_build_mantle_client(monkeypatch):
         return "mantle-client"
 
     monkeypatch.setattr("bedrock_client.build_mantle_client", _fake_build_mantle_client)
-    result = build_provider_client(region="eu-west-2", model_id="kimi", provider="mantle")
+    result = build_provider_client(
+        region="eu-west-2", model_id="moonshotai.kimi-k2.5", provider="mantle"
+    )
     assert result == "mantle-client"
-    assert captured == {"region": "eu-west-2", "model_id": "kimi"}
+    assert captured == {"region": "eu-west-2", "model_id": "moonshotai.kimi-k2.5"}
 
 
 # --- Mantle client construction --------------------------------------------
@@ -196,6 +198,28 @@ def test_mantle_client_sends_max_completion_tokens():
     assert request["max_completion_tokens"] == 4096
 
 
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "moonshotai.kimi-k2.5",
+        "zai.glm-5",
+        "qwen.qwen3-32b",
+        "openai.gpt-oss-120b",
+    ],
+)
+def test_mantle_client_keeps_exact_model_id_in_outgoing_request(model_id):
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, model_id)
+
+    client.chat_completions_create(
+        messages=[{"role": "user", "content": "check route table"}],
+        tools=[{"type": "function", "function": {"name": "update_route_table"}}],
+    )
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["model"] == model_id
+
+
 def test_mantle_client_retries_once_on_token_length_truncation():
     """When finish_reason='length' and no tool calls, chat_completions_create retries once.
 
@@ -298,7 +322,7 @@ def test_build_mantle_client_raises_for_unknown_model_id(monkeypatch):
     _install_fake_token_and_openai(monkeypatch)
     from bedrock_client import build_mantle_client
 
-    with pytest.raises(ValueError, match="not in the approved"):
+    with pytest.raises(ValueError, match="Unsupported Bedrock Mantle model"):
         build_mantle_client(region="eu-west-2", model_id="unknown.model-xyz")
 
 

@@ -33,7 +33,7 @@
 <text x="122" y="180" text-anchor="middle" class="sec">1. AGENT CLIENT</text>
 <rect x="34" y="204" width="177" height="92" rx="10" class="soft"/>
 <use href="#i-agent" x="48" y="218" width="25" height="25" class="icon"/>
-<text x="122" y="234" text-anchor="middle" class="card">agent-demo</text>
+<text x="122" y="234" text-anchor="middle" class="card">runtime</text>
 <text x="122" y="255" text-anchor="middle" class="body">Mock Bedrock by default</text>
 <text x="122" y="275" text-anchor="middle" class="body">Real Bedrock optional</text>
 <rect x="34" y="314" width="177" height="104" rx="10" class="soft"/>
@@ -191,7 +191,7 @@
 <rect x="20" y="878" width="1496" height="116" rx="16" class="box"/>
 <text x="768" y="908" text-anchor="middle" class="sec">7. LOCAL EXAMPLE RUNTIME: DOCKER COMPOSE</text>
 <line x1="260" y1="927" x2="260" y2="972" stroke="#aaa"/><line x1="510" y1="927" x2="510" y2="972" stroke="#aaa"/><line x1="760" y1="927" x2="760" y2="972" stroke="#aaa"/><line x1="1010" y1="927" x2="1010" y2="972" stroke="#aaa"/><line x1="1260" y1="927" x2="1260" y2="972" stroke="#aaa"/>
-<text x="140" y="949" text-anchor="middle" class="card">agent-demo</text><text x="140" y="969" text-anchor="middle" class="small">mock/optional Bedrock harness</text>
+<text x="140" y="949" text-anchor="middle" class="card">runtime</text><text x="140" y="969" text-anchor="middle" class="small">mock/optional Bedrock harness</text>
 <text x="385" y="949" text-anchor="middle" class="card">dusk-gate</text><text x="385" y="969" text-anchor="middle" class="small">Python 3.12 + Flask API</text>
 <text x="635" y="949" text-anchor="middle" class="card">sie</text><text x="635" y="969" text-anchor="middle" class="small">Pinned CPU-default image</text>
 <text x="885" y="949" text-anchor="middle" class="card">Webhook sink</text><text x="885" y="969" text-anchor="middle" class="small">Three bounded local endpoints</text>

@@ -1,7 +1,7 @@
 """Known-legitimate "unused" code, per vulture's whitelist convention.
 
 Referenced by name only, never imported or executed: this file exists to be
-scanned by vulture (`vulture src/ tests/ agent-demo/ mock-prod/
+scanned by vulture (`vulture src/ tests/ runtime/ mock-prod/
 scripts/vulture_whitelist.py`), not to run. Every entry here was checked
 against a real cross-reference search before being added.
 

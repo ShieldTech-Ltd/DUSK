@@ -62,10 +62,10 @@ pytestmark = pytest.mark.skipif(
 # Fixtures and helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Add the agent-demo directory to sys.path so we can import harness/mock_bedrock
-_AGENT_DEMO_DIR = str(Path(__file__).resolve().parent.parent.parent / "agent-demo")
-if _AGENT_DEMO_DIR not in sys.path:
-    sys.path.insert(0, _AGENT_DEMO_DIR)
+# Add the runtime directory to sys.path so we can import harness/mock_bedrock
+_RUNTIME_DIR = str(Path(__file__).resolve().parent.parent.parent / "runtime")
+if _RUNTIME_DIR not in sys.path:
+    sys.path.insert(0, _RUNTIME_DIR)
 
 
 def _read_prompt(filename: str) -> str:

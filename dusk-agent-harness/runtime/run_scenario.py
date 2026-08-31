@@ -36,7 +36,7 @@ def _result_matches_mode(scenario: str, result: dict[str, object], expect_mode: 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run DUSK agent-demo scenarios over HTTP")
+    parser = argparse.ArgumentParser(description="Run DUSK runtime scenarios over HTTP")
     parser.add_argument(
         "--scenario",
         choices=["clean", "poisoned", "both"],

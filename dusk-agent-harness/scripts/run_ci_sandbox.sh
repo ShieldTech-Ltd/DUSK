@@ -44,7 +44,7 @@ python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
 # then print; the if-condition context suppresses set -e so the exit code is
 # always captured.
 LOAD_LOG="$LOG_DIR/$MODE-load.log"
-if ! $COMPOSE run --rm --no-deps agent-demo \
+if ! $COMPOSE run --rm --no-deps runtime \
   python load_driver.py \
     --concurrency 10 --total 100 --poisoned-ratio 0.2 \
     --p50-limit-ms 100 --p95-limit-ms 200 \

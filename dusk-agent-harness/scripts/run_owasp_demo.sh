@@ -40,10 +40,10 @@ trap cleanup EXIT HUP INT TERM
 # Remove state from earlier demo runs so the result is deterministic.
 cleanup
 if [ "$BUILD" = true ]; then
-  $COMPOSE build dusk-gate mock-prod agent-demo
+  $COMPOSE build dusk-gate mock-prod runtime
 fi
 $COMPOSE up --detach --no-build --wait dusk-gate mock-prod
-$COMPOSE run --rm --pull never agent-demo \
+$COMPOSE run --rm --pull never runtime \
   python run_scenario.py --scenario both --expect-mode "$MODE"
 
 $COMPOSE exec -T \

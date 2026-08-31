@@ -45,7 +45,7 @@ class BedrockAdapter(SourceAdapter):
         and the generic ingest path. ``raw`` must additionally carry
         ``agent_id`` and ``timestamp`` (the harness's job to attach --
         see :func:`parse_tool_use` for the primary entry point used by
-        agent-demo).
+        runtime).
 
         Args:
             raw: A dict with ``tool_use`` (Bedrock's toolUse block) plus

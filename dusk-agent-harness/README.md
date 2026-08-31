@@ -54,7 +54,7 @@ DUSK_GATE_HOST_PORT=18000 MOCK_PROD_HOST_PORT=19000 docker compose up
 
 Brings up the gate service (`dusk-gate`, the real `/v1/gate` HTTP endpoint), a
 dummy downstream target and bounded webhook sink (`mock-prod`), and the agent
-harness (`agent-demo`) on one internal network. The default stack uses the
+harness (`runtime`) on one internal network. The default stack uses the
 deterministic gate, needs no API key, and makes no model request.
 
 For local bearer authentication, set `DUSK_GATE_API_KEY` at runtime and send
@@ -98,7 +98,7 @@ python -m dusk.api
 python mock-prod/app.py
 
 # terminal 3: the scenarios
-python agent-demo/run_scenario.py
+python runtime/run_scenario.py
 ```
 
 ### What you'll see
@@ -244,6 +244,7 @@ prompts, and security assertions for these exact model IDs:
 | `kimi-k2-5` | `moonshotai.kimi-k2.5` |
 | `glm-5` | `zai.glm-5` |
 | `qwen3-32b` | `qwen.qwen3-32b` |
+| `gpt-oss-120b` | `openai.gpt-oss-120b` |
 
 The workflow qualifies each exact ID through authenticated inference against the
 London Mantle endpoint. It creates an isolated evidence directory and artifact
@@ -268,7 +269,7 @@ This example is self-contained and includes everything needed to run the
 complete local flow:
 
 - `Dockerfile`, `compose.yml` -- the deterministic gate service, mock-prod
-  webhook sink, and agent-demo, wired on one internal network
+  webhook sink, and runtime, wired on one internal network
 - `contracts/gate.openapi.yaml` -- the frozen `/v1/gate` request/response
   contract
 - `contracts/v1-gate-golden.json` -- deterministic response and side-effect
@@ -278,7 +279,7 @@ complete local flow:
   `trace/` (SIE client, n8n webhooks), `config.py`, and `api.py`. This example
   deliberately contains only the agent-action gate; network packet detection
   is outside its scope
-- `agent-demo/` -- the Bedrock-or-mock agent harness, tool-call extraction,
+- `runtime/` -- the Bedrock-or-mock agent harness, tool-call extraction,
   load driver
 - `mock-prod/` -- the dummy downstream target
 - `n8n/dusk-webhooks.json` -- an optional workflow asset for an external,

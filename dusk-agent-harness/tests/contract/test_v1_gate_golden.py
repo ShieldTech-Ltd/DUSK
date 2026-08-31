@@ -373,7 +373,7 @@ def _mock_response(payload: dict[str, Any]) -> MagicMock:
 def test_downstream_execution_boundary_matches_golden(
     golden: dict[str, Any], monkeypatch: pytest.MonkeyPatch, verdict: str
 ) -> None:
-    monkeypatch.syspath_prepend(str(EXAMPLE_ROOT / "agent-demo"))
+    monkeypatch.syspath_prepend(str(EXAMPLE_ROOT / "runtime"))
     sys.modules.pop("harness", None)
     import harness
 

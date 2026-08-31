@@ -51,10 +51,10 @@ services:
     security_opt: [no-new-privileges:true]
     # Dummy controller/DB target: actions hit /apply on ALLOW, never on BLOCK.
 
-  agent-demo:
+  runtime:
     build:
       context: .
-      dockerfile: agent-demo/Dockerfile
+      dockerfile: runtime/Dockerfile
     environment:
       USE_REAL_BEDROCK: "false"
       DUSK_GATE_URL: "http://dusk-gate:8000/v1/gate"

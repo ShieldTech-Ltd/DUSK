@@ -74,7 +74,7 @@ def check_latency_limits(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="DUSK agent-demo load driver")
+    parser = argparse.ArgumentParser(description="DUSK runtime load driver")
     parser.add_argument("--concurrency", type=int, default=10, help="Concurrent requests.")
     parser.add_argument("--total", type=int, default=100, help="Total requests to send.")
     parser.add_argument(

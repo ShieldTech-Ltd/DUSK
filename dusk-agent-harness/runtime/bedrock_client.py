@@ -5,17 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-# Explicit allowlist for Mantle endpoint routing.
-# All currently approved models use the standard Chat Completions path (/v1).
-# Do not use substring matching: an untrusted model_id must not route silently.
-_MANTLE_V1_MODEL_IDS: frozenset[str] = frozenset(
-    {
-        "moonshotai.kimi-k2.5",
-        "zai.glm-5",
-        "qwen.qwen3-32b",
-        "openai.gpt-oss-120b",
-    }
-)
+from models.registry import get_model_profile
 
 _KIMI_MODEL_ID = "moonshotai.kimi-k2.5"
 _GPT_OSS_MODEL_ID = "openai.gpt-oss-120b"
@@ -185,6 +175,8 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
     Raises:
         RuntimeError: If the token generator returns a falsy token.
     """
+    profile = get_model_profile(model_id)
+
     from aws_bedrock_token_generator import provide_token
     from openai import OpenAI
 
@@ -196,14 +188,14 @@ def build_mantle_client(region: str, model_id: str) -> MantleClient:
             "cannot authenticate to the Mantle endpoint"
         )
 
-    is_kimi = model_id == _KIMI_MODEL_ID
+    is_kimi = profile.model_id == _KIMI_MODEL_ID
     openai_client = OpenAI(
-        base_url=_mantle_base_url(region, model_id),
+        base_url=_mantle_base_url(region, profile.model_id),
         api_key=token,
         timeout=(_KIMI_MANTLE_TIMEOUT_SECONDS if is_kimi else _DEFAULT_MANTLE_TIMEOUT_SECONDS),
         max_retries=_KIMI_MANTLE_MAX_RETRIES if is_kimi else _DEFAULT_MANTLE_MAX_RETRIES,
     )
-    return MantleClient(client=openai_client, model_id=model_id)
+    return MantleClient(client=openai_client, model_id=profile.model_id)
 
 
 def extract_function_call(openai_response: Any) -> dict[str, Any] | None:  # noqa: ANN401
@@ -268,9 +260,10 @@ def propose_tool_call(
 ) -> tuple[str, dict[str, Any] | None]:
     """Ask the selected provider for one action and normalize its tool call."""
     if provider == "mantle":
-        mantle_client = build_mantle_client(region=region, model_id=model_id)
+        profile = get_model_profile(model_id)
+        mantle_client = build_mantle_client(region=region, model_id=profile.model_id)
         messages = [{"role": "user", "content": prompt_text}]
-        if model_id == _GPT_OSS_MODEL_ID:
+        if profile.model_id == _GPT_OSS_MODEL_ID:
             messages.insert(
                 0,
                 {"role": "system", "content": _GPT_OSS_SIMULATION_CONTEXT},
@@ -309,11 +302,7 @@ def _mantle_base_url(region: str, model_id: str) -> str:
     Raises:
         ValueError: If model_id is not in the approved allowlist.
     """
-    if model_id not in _MANTLE_V1_MODEL_IDS:
-        raise ValueError(
-            f"Model {model_id!r} is not in the approved Mantle allowlist. "
-            "Add it to _MANTLE_V1_MODEL_IDS after review."
-        )
+    get_model_profile(model_id)
     return f"https://bedrock-mantle.{region}.api.aws/v1"
 
 
@@ -366,5 +355,6 @@ def build_provider_client(region: str, model_id: str, provider: str) -> Any:  # 
     if provider == "runtime":
         return DuskBedrockClient(client=build_real_client(region))
     if provider == "mantle":
-        return build_mantle_client(region=region, model_id=model_id)
+        profile = get_model_profile(model_id)
+        return build_mantle_client(region=region, model_id=profile.model_id)
     raise ValueError(f"Unknown provider: {provider!r}")

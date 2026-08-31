@@ -32,14 +32,14 @@ dev = [
     "mypy>=1.10.0",
     "bandit[toml]>=1.7.8",
     "types-PyYAML>=6.0",
-    "requests>=2.31", # agent-demo/harness.py's HTTP calls to the gate and mock-prod
+    "requests>=2.31", # runtime/harness.py's HTTP calls to the gate and mock-prod
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "agent-demo", "mock-prod"]
+testpaths = ["tests", "runtime", "mock-prod"]
 pythonpath = ["src"]
 env = ["PYTHONIOENCODING=utf-8"]
 
@@ -53,7 +53,7 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
 "lab/*" = ["S", "ANN"]
-"agent-demo/test_*.py" = ["S", "ANN"]
+"runtime/test_*.py" = ["S", "ANN"]
 "mock-prod/test_*.py" = ["S", "ANN"]
 # Bare-name statements are vulture's own documented whitelist syntax, not a
 # real code smell -- see scripts/vulture_whitelist.py's module docstring.

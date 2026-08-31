@@ -20,7 +20,7 @@ pytest-env>=1.1.0
 requests>=2.31
 types-PyYAML>=6.0
 
-# AWS Bedrock (agent-demo/requirements.txt - only needed when USE_REAL_BEDROCK=true)
+# AWS Bedrock (runtime/requirements.txt, only needed when USE_REAL_BEDROCK=true)
 boto3>=1.34
 
 # Bedrock Mantle provider (Kimi K2.5) - OpenAI-compatible client + token minting.
