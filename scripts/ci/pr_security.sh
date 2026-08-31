@@ -3,20 +3,20 @@
 set -u
 
 bandit_scan() {
-  bandit -r src examples/agent-action-monitor/src examples/agent-action-monitor/agent-demo \
-    examples/agent-action-monitor/mock-prod \
-    examples/agent-action-monitor/scripts/verify_ci_sandbox.py \
+  bandit -r src dusk-agent-harness/src dusk-agent-harness/runtime \
+    dusk-agent-harness/mock-prod \
+    dusk-agent-harness/scripts/verify_ci_sandbox.py \
     services/control-plane/src -ll -x '*/test_*.py'
 }
 
 semgrep_scan() {
   semgrep scan --config .semgrep.yml --error --metrics=off src \
-    examples/agent-action-monitor services/control-plane
+    dusk-agent-harness services/control-plane
 }
 
 example_audit() {
-  pip-audit -r examples/agent-action-monitor/agent-demo/requirements.txt &&
-    pip-audit -r examples/agent-action-monitor/mock-prod/requirements.txt &&
+  pip-audit -r dusk-agent-harness/runtime/requirements.txt &&
+    pip-audit -r dusk-agent-harness/mock-prod/requirements.txt &&
     pip-audit -r services/control-plane/requirements.txt
 }
 

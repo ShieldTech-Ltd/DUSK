@@ -23,7 +23,7 @@ The public interface rules are the
 ## Decision
 
 Build an independently deployable FastAPI service. Do not promote or import the
-Flask application in `examples/agent-action-monitor`. Shared evaluation logic
+Flask application in `dusk-agent-harness`. Shared evaluation logic
 may later move behind application-layer interfaces, but the v1 adapter remains
 the compatibility authority.
 

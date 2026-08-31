@@ -26,8 +26,8 @@ case "$MODE" in
 esac
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-EXAMPLE_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-cd "$EXAMPLE_DIR"
+HARNESS_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+cd "$HARNESS_DIR"
 
 PROJECT_NAME="agent-action-monitor"
 COMPOSE="docker compose --project-name $PROJECT_NAME $COMPOSE_FILES"
@@ -37,7 +37,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-# Remove state from earlier demo runs so the result is deterministic.
+# Remove state from earlier validation runs so the result is deterministic.
 cleanup
 if [ "$BUILD" = true ]; then
   $COMPOSE build dusk-gate mock-prod runtime
@@ -62,4 +62,4 @@ if actual != expected:
 print(f"downstream verification passed: applied_actions={actual}")
 '
 
-echo "OWASP demo passed in $MODE mode"
+echo "DUSK Production Agent Harness validation passed in $MODE mode"

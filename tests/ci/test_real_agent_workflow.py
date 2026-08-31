@@ -105,7 +105,8 @@ def test_main_workflow_uses_production_harness_paths() -> None:
         "dusk-agent-harness/requirements-real-agent.txt"
     )
     assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/"
-    assert "examples/agent-action-monitor" not in _WORKFLOW_PATH.read_text(encoding="utf-8")
+    legacy_root = "/".join(("examples", "agent-action-monitor"))
+    assert legacy_root not in _WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_main_gate_log_collection_preserves_an_earlier_startup_failure() -> None:

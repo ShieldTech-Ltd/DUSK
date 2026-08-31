@@ -11,11 +11,28 @@ from pathlib import Path
 
 TEXT_SUFFIXES = {".py", ".md", ".rst", ".toml", ".yml", ".yaml", ".json", ".txt", ".sh"}
 MAX_BYTES = 5 * 1024 * 1024
+LEGACY_HARNESS_REFERENCE = "/".join(("examples", "agent-action-monitor"))
+APPROVED_LEGACY_ARCHIVE_PREFIXES = (
+    "docs/superpowers/plans/",
+    "docs/superpowers/specs/",
+)
+APPROVED_UPSTREAM_EXAMPLE_URL = (
+    "https://github.com/superlinked/sie/tree/main/" + LEGACY_HARNESS_REFERENCE
+)
 
 
 def tracked_files() -> list[Path]:
     output = subprocess.check_output(["git", "ls-files", "-z"])  # noqa: S607
     return [Path(item.decode()) for item in output.split(b"\0") if item]
+
+
+def has_active_legacy_harness_reference(path: Path, text: str) -> bool:
+    """Return whether a tracked file points at the removed local harness root."""
+    repository_path = path.as_posix()
+    if repository_path.startswith(APPROVED_LEGACY_ARCHIVE_PREFIXES):
+        return False
+    active_text = text.replace(APPROVED_UPSTREAM_EXAMPLE_URL, "")
+    return LEGACY_HARNESS_REFERENCE in active_text
 
 
 def check() -> list[str]:  # noqa: C901
@@ -45,6 +62,8 @@ def check() -> list[str]:  # noqa: C901
                 errors.append(f"CRLF line endings: {path}")
             if re.search(r"^(<<<<<<<|=======|>>>>>>>)", text, re.MULTILINE):
                 errors.append(f"merge conflict marker: {path}")
+            if has_active_legacy_harness_reference(path, text):
+                errors.append(f"legacy harness reference in active file: {path}")
     metadata = Path("pyproject.toml").read_text(encoding="utf-8")
     if 'license = "Apache-2.0"' not in metadata or not Path("LICENSE").exists():
         errors.append("Apache-2.0 package metadata and LICENSE are required")

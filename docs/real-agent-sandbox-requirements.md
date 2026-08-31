@@ -98,7 +98,7 @@ No change from Sprint 1 assessment. `harness.py:80-81` calls `mock-prod`. A real
 
 ### FINDING-01: Webhook destinations not validated for SSRF (MEDIUM)
 
-**File:** `examples/agent-action-monitor/src/dusk/trace/n8n_client.py:80-81`
+**File:** `dusk-agent-harness/src/dusk/trace/n8n_client.py:80-81`
 
 The scheme check blocks `file://` and `data://` URLs but does not block RFC1918 addresses, loopback, or AWS link-local metadata (`169.254.169.254`). See full description in original document.
 
@@ -246,8 +246,8 @@ _(unchanged from Sprint 1 assessment; the architecture described is implemented 
 ## 7. Commands to Reproduce Tests
 
 ```bash
-# Example package unit + integration tests (including Sprint 2 additions)
-cd examples/agent-action-monitor
+# DUSK Production Agent Harness unit and integration tests
+cd dusk-agent-harness
 pip install -e ".[dev]"
 pytest tests/ -v
 

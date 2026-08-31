@@ -8,7 +8,7 @@ genuinely dead during that check got filed as its own issue instead of
 whitelisted (see #76).
 
 Categories:
-- Public API consumed by examples/agent-action-monitor/ (a separate package
+- Public API consumed by dusk-agent-harness/ (a separate package
   vulture can't see when scoped to this repo's own src/), not by anything in
   this repo's own src/ or tests/.
 - v0.2 stub classes (sensor/, detections/, respond/) that are deliberately
@@ -32,7 +32,7 @@ from dusk.sensor.zeek import ZeekSensor
 from dusk.trace.models import TraceDecision
 from dusk.trace.vector import SimilarDecision, find_similar, find_similar_cached
 
-# Public API only reached from examples/agent-action-monitor/'s api.py, not
+# Public API only reached from dusk-agent-harness/'s api.py, not
 # from anything in this repo's own src/ or tests/. TraceDecision's own dead
 # fields (raw_prompt_snippet, tavily_enrichment, replay_count) were removed
 # entirely rather than whitelisted -- see #76.

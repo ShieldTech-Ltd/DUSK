@@ -1,5 +1,5 @@
-# DUSK agent-action-monitor -- self-contained example stack. `docker compose
-# up` runs it keyless. Watch mode is the default; DUSK_ENFORCE switches to
+# DUSK Production Agent Harness. `docker compose up` runs the local stack
+# keyless. Watch mode is the default; DUSK_ENFORCE switches to
 # enforce. Optional SIE enrichment is external and disabled in the default
 # stack. Webhooks target the local metadata sink, so serving a request requires
 # no outbound network access.

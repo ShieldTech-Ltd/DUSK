@@ -1,29 +1,29 @@
 #!/bin/sh
 set -eu
 
-example=examples/agent-action-monitor
+harness=dusk-agent-harness
 control_plane=services/control-plane
 project=agent-action-monitor
-compose="docker compose --project-name $project -f $example/compose.yml -f $example/compose.ci.yml"
+compose="docker compose --project-name $project -f $harness/compose.yml -f $harness/compose.ci.yml"
 
 # Build each image once. Every later operation addresses the immutable local ID.
-DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate agent-demo mock-prod
+DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate runtime mock-prod
 docker build --tag dusk-control-plane:ci "$control_plane"
 gate_id=$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")
-agent_id=$(docker image inspect --format '{{.Id}}' "$project-agent-demo")
+runtime_id=$(docker image inspect --format '{{.Id}}' "$project-runtime")
 mock_id=$(docker image inspect --format '{{.Id}}' "$project-mock-prod")
 control_plane_id=$(docker image inspect --format '{{.Id}}' dusk-control-plane:ci)
 mkdir -p container-evidence
 cp ci/grype.yml container-evidence/grype.yaml
-printf '%s\n%s\n%s\n%s\n' "$gate_id" "$agent_id" "$mock_id" "$control_plane_id" \
+printf '%s\n%s\n%s\n%s\n' "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" \
   > container-evidence/image-ids.txt
 
-for dockerfile in "$example/Dockerfile" "$example/agent-demo/Dockerfile" \
-  "$example/mock-prod/Dockerfile" "$control_plane/Dockerfile"; do
+for dockerfile in "$harness/Dockerfile" "$harness/runtime/Dockerfile" \
+  "$harness/mock-prod/Dockerfile" "$control_plane/Dockerfile"; do
   docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint - < "$dockerfile"
 done
 
-for image_id in "$gate_id" "$agent_id" "$mock_id" "$control_plane_id"; do
+for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 \
     image --exit-code 1 --ignore-unfixed \
@@ -48,13 +48,13 @@ grep -q 'cap_drop:' container-evidence/control-plane-compose.json
 for image_id in "$gate_id" "$mock_id" "$control_plane_id"; do
   test "$(docker image inspect --format '{{json .Config.Healthcheck}}' "$image_id")" != "null"
 done
-for image_id in "$gate_id" "$agent_id" "$mock_id" "$control_plane_id"; do
+for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id"; do
   ! docker run --rm --entrypoint sh "$image_id" -c 'command -v pip || command -v gcc || command -v make'
 done
 
 # --no-build in the harness guarantees sandbox execution uses the IDs above.
-(cd "$example" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh watch)
-(cd "$example" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh enforce)
+(cd "$harness" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh watch)
+(cd "$harness" && DUSK_GATE_API_KEY=ci-control sh scripts/run_ci_sandbox.sh enforce)
 test "$gate_id" = "$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")"
-test "$agent_id" = "$(docker image inspect --format '{{.Id}}' "$project-agent-demo")"
+test "$runtime_id" = "$(docker image inspect --format '{{.Id}}' "$project-runtime")"
 test "$mock_id" = "$(docker image inspect --format '{{.Id}}' "$project-mock-prod")"

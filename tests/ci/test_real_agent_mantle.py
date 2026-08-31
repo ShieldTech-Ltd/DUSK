@@ -130,7 +130,8 @@ def test_dev_workflow_uses_production_harness_paths() -> None:
         "dusk-agent-harness/requirements-real-agent.txt"
     )
     assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/${{ matrix.model.slug }}/"
-    assert "examples/agent-action-monitor" not in _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
+    legacy_root = "/".join(("examples", "agent-action-monitor"))
+    assert legacy_root not in _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_gpt_oss_qualification_forces_enforce_mode() -> None:
@@ -291,7 +292,7 @@ def test_dev_workflow_starts_only_persistent_compose_services() -> None:
         "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
     ], (
         "The real-agent workflow must start only persistent services. Starting the one-shot "
-        "agent-demo service makes `docker compose up --wait` return exit code 1 after the "
+        "runtime service makes `docker compose up --wait` return exit code 1 after the "
         "container exits successfully."
     )
 

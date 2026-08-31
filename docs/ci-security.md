@@ -37,8 +37,8 @@ Docker Desktop or Docker Engine with Compose v2 is required. Build the images
 once, then run both authenticated modes:
 
 ```bash
-cd examples/agent-action-monitor
-docker compose --project-name agent-action-monitor -f compose.yml build dusk-gate agent-demo mock-prod
+cd dusk-agent-harness
+docker compose --project-name agent-action-monitor -f compose.yml build dusk-gate runtime mock-prod
 export DUSK_GATE_API_KEY=local-ci-test-only
 sh ./scripts/run_ci_sandbox.sh watch
 sh ./scripts/run_ci_sandbox.sh enforce
