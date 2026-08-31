@@ -18,6 +18,11 @@ name: Real-agent Bedrock Mantle dev validation
 on:
   workflow_dispatch:
     inputs:
+      run_target:
+        description: "Run GPT OSS qualification alone or the complete model matrix"
+        type: choice
+        options: [gpt-oss-qualification, full-matrix]
+        default: gpt-oss-qualification
       gate_mode:
         description: "Gate enforcement mode"
         type: choice
@@ -40,13 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model:
-          - slug: kimi-k2-5
-            id: moonshotai.kimi-k2.5
-          - slug: glm-5
-            id: zai.glm-5
-          - slug: qwen3-32b
-            id: qwen.qwen3-32b
+        model: ${{ fromJSON(github.event.inputs.run_target == 'gpt-oss-qualification' && '[{"slug":"gpt-oss-120b","id":"openai.gpt-oss-120b"}]' || '[{"slug":"kimi-k2-5","id":"moonshotai.kimi-k2.5"},{"slug":"glm-5","id":"zai.glm-5"},{"slug":"qwen3-32b","id":"qwen.qwen3-32b"},{"slug":"gpt-oss-120b","id":"openai.gpt-oss-120b"}]') }}
     permissions:
       contents: read
       id-token: write # Exchange the environment-bound OIDC token for short-lived AWS credentials.
@@ -58,6 +57,7 @@ jobs:
       BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}
       BEDROCK_MODEL_ID: ${{ matrix.model.id }}
       EVIDENCE_DIR: ci-logs/${{ matrix.model.slug }}
+      EFFECTIVE_GATE_MODE: ${{ github.event.inputs.run_target == 'gpt-oss-qualification' && 'enforce' || github.event.inputs.gate_mode }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +131,7 @@ jobs:
           GH_MODEL_ID: ${{ matrix.model.id }}
           GH_REF: ${{ github.ref }}
           GH_RUN_ID: ${{ github.run_id }}
-          GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
+          GH_GATE_MODE: ${{ env.EFFECTIVE_GATE_MODE }}
         run: |
           echo "=== Mantle dev validation parameters ==="
           echo "provider: $GH_PROVIDER"
@@ -144,7 +144,7 @@ jobs:
       - name: Start gate and mock-prod via Docker Compose
         env:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
-          DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
+          DUSK_ENFORCE: ${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}
         run: |
           docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod
           # Wait for gate health endpoint (up to 30 s)
@@ -168,7 +168,7 @@ jobs:
           USE_REAL_BEDROCK: "true"
           DUSK_GATE_URL: "http://localhost:8000/v1/gate"
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
-          DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
+          DUSK_ENFORCE: ${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}
         run: |
           mkdir -p "$EVIDENCE_DIR"
           pytest tests/real_llm/ -v --tb=short \
@@ -180,7 +180,7 @@ jobs:
           MATRIX_MODEL_SLUG: ${{ matrix.model.slug }}
           GH_COMMIT_SHA: ${{ github.sha }}
           GH_RUN_ID: ${{ github.run_id }}
-          GH_GATE_MODE: ${{ github.event.inputs.gate_mode || 'watch' }}
+          GH_GATE_MODE: ${{ env.EFFECTIVE_GATE_MODE }}
         run: |
           python scripts/validate_real_agent_evidence.py \
             --junit "$EVIDENCE_DIR/real-agent-results.xml" \
@@ -199,7 +199,7 @@ jobs:
       - name: Collect gate logs as evidence
         if: always()
         env:
-          DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
+          DUSK_ENFORCE: ${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
         run: |
           mkdir -p "$EVIDENCE_DIR"
@@ -230,7 +230,7 @@ jobs:
         if: always()
         env:
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
-          DUSK_ENFORCE: ${{ github.event.inputs.gate_mode == 'enforce' && 'true' || 'false' }}
+          DUSK_ENFORCE: ${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}
         run: docker compose -f compose.yml -f compose.ci.yml down --remove-orphans
 
   real-agent-dev-matrix-gate:
