@@ -24,7 +24,7 @@ APPROVED_UPSTREAM_EXAMPLE_URL = (
     "https://github.com/superlinked/sie/tree/main/" + LEGACY_HARNESS_REFERENCE
 )
 APPROVED_UPSTREAM_EXAMPLE_PATTERN = re.compile(
-    rf"{re.escape(APPROVED_UPSTREAM_EXAMPLE_URL)}(?=$|[\s`)\]}}>.,;])"
+    rf"{re.escape(APPROVED_UPSTREAM_EXAMPLE_URL)}(?=$|[\s`)\]>])"
 )
 
 

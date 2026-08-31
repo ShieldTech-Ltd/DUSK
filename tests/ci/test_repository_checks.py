@@ -70,6 +70,18 @@ def test_repository_integrity_policy_rejects_legacy_reference_in_all_utf8_files(
             + "/".join(("examples", "agent-action-monitor"))
             + "/runtime",
         ),
+        (
+            Path("README.md"),
+            "https://github.com/superlinked/sie/tree/main/"
+            + "/".join(("examples", "agent-action-monitor"))
+            + ".py",
+        ),
+        (
+            Path("README.md"),
+            "https://github.com/superlinked/sie/tree/main/"
+            + "/".join(("examples", "agent-action-monitor"))
+            + ";x",
+        ),
     ],
 )
 def test_repository_integrity_policy_rejects_unapproved_legacy_exceptions(
