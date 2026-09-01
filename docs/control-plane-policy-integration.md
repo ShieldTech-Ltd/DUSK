@@ -25,7 +25,9 @@ The v2 decision composer applies this fixed order:
 Responses expose the pack version, safe rule metadata, evidence degradation,
 stable reason codes, and only genuinely measured behavioral, policy, and total
 timings. They never echo policy context or evidence payloads. `DECIDED`
-describes the response lifecycle; it does not claim downstream execution.
+describes the in-memory policy result. `DELIVERY_PENDING` is returned only after
+the decision, signed audit event, and outbox intent commit atomically. Neither
+state claims downstream execution.
 
 ## Activation and rollback
 
@@ -36,6 +38,11 @@ a retryable fail-closed response until a complete evaluation service is
 injected. This prevents a partially configured policy pack from silently
 authorizing production actions.
 
+Production activation also requires PostgreSQL and a managed audit signer. The
+durability adapter is documented in
+[`control-plane-audit-evidence.md`](control-plane-audit-evidence.md).
+
 Policy packs are immutable and versioned. Rollback selects the previously
 reviewed pack and service image; mandatory rules are never silently disabled.
-This change adds no database migration and does not modify `/v1/gate`.
+Policy integration itself does not modify `/v1/gate`; durable audit evidence is
+added by a separate additive migration and adapter.

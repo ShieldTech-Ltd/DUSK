@@ -4,8 +4,8 @@ This directory contains the independently deployable FastAPI service. It does
 not import or run the Flask application in `dusk-agent-harness`, and
 it does not expose `/v1/gate`. Operational endpoints are always available. The
 authenticated v2 evaluation route is registered only when its feature flag is
-enabled and fails closed until a policy/evaluation service with live evidence
-prerequisites is activated.
+enabled and fails closed until a policy/evaluation service with live evidence,
+PostgreSQL, and managed audit-signing prerequisites is activated.
 
 ## Local development
 
@@ -116,3 +116,11 @@ integration health, transactional outbox deliveries, agent-risk rollups, and
 dashboard aggregates. It does not store raw requests, tokens, credentials,
 prompts, or unrestricted provider payloads. Decision details can be tombstoned
 without deleting decision identity or audit-integrity metadata.
+
+Consequential v2 activation additionally requires an `AuditSigner` backed by a
+managed KMS or HSM key. The application wraps the policy evaluator with the
+durable evidence boundary only when both PostgreSQL and the signer are injected;
+otherwise `/v2/evaluations` remains fail closed. The canonical transaction,
+signature, checkpoint, redaction, verification, and rollback contract is
+documented in
+[`docs/control-plane-audit-evidence.md`](../../docs/control-plane-audit-evidence.md).

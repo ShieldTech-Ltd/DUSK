@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
@@ -14,12 +16,40 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
+from dusk_control_plane.audit import (
+    DurableCommitUnavailableError,
+    OutboxIntent,
+    PostgresDecisionEvidenceStore,
+    verify_audit_chain,
+    verify_signed_audit_chain,
+)
 from dusk_control_plane.config import Environment, Settings
 from dusk_control_plane.dependencies import AppContainer
+from dusk_control_plane.evaluations import (
+    CanonicalAction as EvaluationAction,
+)
+from dusk_control_plane.evaluations import (
+    EvaluationRequest,
+    EvaluationResponse,
+    EvidenceEnvelope,
+    PipelineTimings,
+)
+from dusk_control_plane.identity import IdentityKind, Principal
 from dusk_control_plane.storage.database import Database
-from dusk_control_plane.storage.models import CanonicalAction, Decision, Tenant
+from dusk_control_plane.storage.models import (
+    AuditEvent,
+    CanonicalAction,
+    Decision,
+    OutboxDelivery,
+    Tenant,
+)
 from dusk_control_plane.storage.repositories import (
     DecisionWrite,
     IdempotencyConflictError,
@@ -289,3 +319,230 @@ async def test_tenant_leading_indexes_exist_in_postgresql(engine: AsyncEngine) -
         )
     for table_indexes in indexes.values():
         assert any(index["column_names"][0] == "tenant_id" for index in table_indexes)
+
+
+def _evaluation_request(key: str) -> EvaluationRequest:
+    return EvaluationRequest(
+        action=EvaluationAction(
+            agent_id="integration-agent",
+            action_type="storage.delete",
+            target="bucket-a",
+            consequential=True,
+            attributes={"credential": "must-not-persist"},
+        ),
+        evidence=(
+            EvidenceEnvelope(
+                domain="action",
+                source_identity="cloud-audit",
+                provenance="signed-event",
+                observed_at=datetime.now(UTC),
+                digest="sha256:" + "0" * 64,
+                payload={"token": "unrestricted-provider-token"},
+            ),
+        ),
+        idempotency_key=key,
+    )
+
+
+def _evaluation_response() -> EvaluationResponse:
+    return EvaluationResponse(
+        trace_id=str(uuid4()),
+        verdict="BLOCK",
+        behavioral_score=Decimal("0.90000"),
+        blast_radius="HIGH",
+        reasons=("destructive action",),
+        reason_codes=("POLICY_DENY",),
+        mitre_attack=("T1485",),
+        mitre_atlas=(),
+        predicted_next="none",
+        policy_decision="DENY",
+        policy_pack_version="1.0.0",
+        matched_rules=(),
+        evidence_degraded=False,
+        response_status="DECIDED",
+        pipeline_timings=PipelineTimings(behavioral_ms=1, policy_ms=1, total_ms=2),
+        similar_decision_ids=(),
+    )
+
+
+class _TestSigner:
+    key_id = "integration-test-key"
+
+    async def sign(self, digest: bytes) -> bytes:
+        return hmac.new(b"integration-test-only", digest, hashlib.sha256).digest()
+
+    async def verify(self, digest: bytes, signature: bytes, key_id: str) -> bool:
+        return key_id == self.key_id and hmac.compare_digest(await self.sign(digest), signature)
+
+
+def _store(engine: AsyncEngine, signer: _TestSigner | None = None) -> PostgresDecisionEvidenceStore:
+    database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    return PostgresDecisionEvidenceStore(database, signer or _TestSigner())
+
+
+@pytest.mark.anyio
+async def test_atomic_decision_audit_and_outbox_commit_is_redacted_and_verifiable(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "https://issuer.example",
+        "subject",
+        str(tenant_id),
+        IdentityKind.WORKLOAD,
+        workload_id="integration-agent",
+    )
+    result = await _store(engine).persist(
+        request=_evaluation_request("atomic-success"),
+        response=_evaluation_response(),
+        principal=principal,
+    )
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == result.decision_id))
+        action = await session.scalar(
+            select(CanonicalAction).where(CanonicalAction.id == decision.action_id)
+        )
+        events = list(
+            (
+                await session.scalars(
+                    select(AuditEvent)
+                    .where(AuditEvent.tenant_id == tenant_id)
+                    .order_by(AuditEvent.sequence)
+                )
+            ).all()
+        )
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == result.decision_id)
+        )
+    assert decision is not None and action is not None and delivery is not None
+    assert events[0].id == result.audit_event_id
+    verify_audit_chain(tenant_id, events, result.checkpoint)
+    await verify_signed_audit_chain(tenant_id, events, result.checkpoint, _TestSigner())
+    persisted = repr(
+        (action.redacted_action, decision.reasons, events[0].__dict__, delivery.redacted_payload)
+    )
+    assert "must-not-persist" not in persisted
+    assert "unrestricted-provider-token" not in persisted
+    assert action.redacted_action["attributes"]["credential"] == "[REDACTED]"
+
+
+@pytest.mark.anyio
+async def test_failure_at_outbox_boundary_rolls_back_decision_and_audit(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    with pytest.raises(DurableCommitUnavailableError):
+        await _store(engine).persist(
+            request=_evaluation_request("atomic-rollback"),
+            response=_evaluation_response(),
+            principal=principal,
+            intent=OutboxIntent(max_attempts=0),
+        )
+    async with AsyncSession(engine) as session:
+        assert await session.scalar(select(Decision).where(Decision.tenant_id == tenant_id)) is None
+        assert (
+            await session.scalar(select(AuditEvent).where(AuditEvent.tenant_id == tenant_id))
+            is None
+        )
+        assert (
+            await session.scalar(
+                select(OutboxDelivery).where(OutboxDelivery.tenant_id == tenant_id)
+            )
+            is None
+        )
+
+
+@pytest.mark.anyio
+async def test_concurrent_sequence_allocation_and_restart_recovery(engine: AsyncEngine) -> None:
+    import asyncio
+
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+
+    async def write(index: int):
+        # A new store instance models independent workers and process restarts.
+        return await _store(engine).persist(
+            request=_evaluation_request(f"concurrent-{index}"),
+            response=_evaluation_response(),
+            principal=principal,
+        )
+
+    results = await asyncio.gather(*(write(index) for index in range(8)))
+    async with AsyncSession(engine) as session:
+        events = list(
+            (
+                await session.scalars(
+                    select(AuditEvent)
+                    .where(AuditEvent.tenant_id == tenant_id)
+                    .order_by(AuditEvent.sequence)
+                )
+            ).all()
+        )
+    checkpoint = max((result.checkpoint for result in results), key=lambda value: value.sequence)
+    assert [event.sequence for event in events] == list(range(1, 9))
+    verify_audit_chain(tenant_id, events, checkpoint)
+
+
+@pytest.mark.anyio
+async def test_idempotent_retry_returns_original_durable_decision(engine: AsyncEngine) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    request = _evaluation_request("idempotent-bundle")
+    store = _store(engine)
+    first_response = _evaluation_response()
+    first = await store.persist(request=request, response=first_response, principal=principal)
+    changed = first_response.model_copy(
+        update={"trace_id": str(uuid4()), "verdict": "ALLOW", "policy_decision": "ALLOW"}
+    )
+    replay = await store.persist(request=request, response=changed, principal=principal)
+    assert replay.inserted is False
+    assert replay.decision_id == first.decision_id
+    assert replay.response.trace_id == first.response.trace_id
+    assert replay.response.verdict == "BLOCK"
+    async with AsyncSession(engine) as session:
+        for model in (Decision, AuditEvent, OutboxDelivery):
+            count = len(
+                list(
+                    (await session.scalars(select(model).where(model.tenant_id == tenant_id))).all()
+                )
+            )
+            assert count == 1
+
+
+class _FailingSigner(_TestSigner):
+    async def sign(self, digest: bytes) -> bytes:
+        raise TimeoutError("managed signing service unavailable")
+
+
+@pytest.mark.anyio
+async def test_signer_failure_rolls_back_every_evidence_record(engine: AsyncEngine) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    with pytest.raises(DurableCommitUnavailableError):
+        await _store(engine, _FailingSigner()).persist(
+            request=_evaluation_request("signer-rollback"),
+            response=_evaluation_response(),
+            principal=principal,
+        )
+    async with AsyncSession(engine) as session:
+        for model in (CanonicalAction, Decision, AuditEvent, OutboxDelivery):
+            assert await session.scalar(select(model).where(model.tenant_id == tenant_id)) is None

@@ -14,6 +14,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Atomic v2 decision evidence persistence: redacted canonical action, decision,
+  safe policy matches, tenant-scoped signed digest-chain event, and outbox intent
+  now commit in one PostgreSQL transaction. Managed signer or database failure
+  fails closed; trusted checkpoints detect mutation, deletion, reordering, and
+  cross-tenant splicing. Additive migration and real PostgreSQL tests cover
+  rollback, idempotent replay, concurrency, restart recovery, and redaction.
 - Trusted policy integration for v2 evaluations, including verifier-confirmed
   provenance, freshness and digest checks, live-evidence activation guards,
   deterministic policy/behavioral precedence, safe matched-rule metadata, and

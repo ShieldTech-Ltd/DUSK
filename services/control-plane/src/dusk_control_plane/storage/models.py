@@ -301,6 +301,9 @@ class AuditEvent(Base):
     tenant_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    chain_format: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="dusk.audit.v1", server_default=text("'dusk.audit.v1'")
+    )
     decision_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     principal_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     occurred_at: Mapped[datetime] = mapped_column(
@@ -308,6 +311,8 @@ class AuditEvent(Base):
     )
     previous_digest: Mapped[bytes | None] = mapped_column(LargeBinary)
     digest: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    signing_key_id: Mapped[str | None] = mapped_column(String(512))
+    signature: Mapped[bytes | None] = mapped_column(LargeBinary)
     integrity_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     sensitive_detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     detail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -214,7 +214,10 @@
             "type": "array"
           },
           "response_status": {
-            "const": "DECIDED",
+            "enum": [
+              "DECIDED",
+              "DELIVERY_PENDING"
+            ],
             "title": "Response Status",
             "type": "string"
           },

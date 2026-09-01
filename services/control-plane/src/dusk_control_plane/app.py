@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from dusk_control_plane.audit import DurableEvaluationService
 from dusk_control_plane.dependencies import AppContainer, DependencyProbe
 from dusk_control_plane.errors import error_response, install_error_handlers
 from dusk_control_plane.evaluations import (
@@ -53,7 +54,7 @@ def _install_v2_routes(
         principal: Annotated[Principal, Depends(_evaluation_authorization)],
     ) -> EvaluationResponse:
         service = container.evaluation_service
-        if service is None:
+        if service is None or not isinstance(service, DurableEvaluationService):
             raise EvaluationUnavailableError
         return await service.evaluate(body, principal)
 

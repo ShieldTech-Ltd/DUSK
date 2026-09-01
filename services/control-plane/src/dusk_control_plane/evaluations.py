@@ -80,7 +80,7 @@ class EvaluationResponse(EvaluationModel):
     policy_pack_version: str
     matched_rules: tuple[PolicyMatchResponse, ...]
     evidence_degraded: bool
-    response_status: Literal["DECIDED"]
+    response_status: Literal["DECIDED", "DELIVERY_PENDING"]
     pipeline_timings: PipelineTimings
     similar_decision_ids: tuple[str, ...]
 

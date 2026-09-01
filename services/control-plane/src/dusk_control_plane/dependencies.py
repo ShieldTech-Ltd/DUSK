@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
+from dusk_control_plane.audit import (
+    AuditSigner,
+    DurableEvaluationService,
+    PostgresDecisionEvidenceStore,
+)
 from dusk_control_plane.config import Settings
 from dusk_control_plane.evaluations import EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
@@ -35,6 +40,7 @@ class AppContainer:
     authenticator: Authenticator | None = None
     database: Database | None = None
     evaluation_service: EvaluationService | None = None
+    audit_signer: AuditSigner | None = None
 
     @classmethod
     def build(
@@ -44,6 +50,7 @@ class AppContainer:
         authenticator: Authenticator | None = None,
         database: Database | None = None,
         evaluation_service: EvaluationService | None = None,
+        audit_signer: AuditSigner | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -60,6 +67,18 @@ class AppContainer:
             resolved_probes.append(
                 DependencyProbe(name="postgresql", critical=True, check=resolved_database.probe)
             )
+        durable_evaluation_service: EvaluationService | None = None
+        if isinstance(evaluation_service, DurableEvaluationService):
+            durable_evaluation_service = evaluation_service
+        elif (
+            evaluation_service is not None
+            and resolved_database is not None
+            and audit_signer is not None
+        ):
+            durable_evaluation_service = DurableEvaluationService(
+                evaluation_service,
+                PostgresDecisionEvidenceStore(resolved_database, audit_signer),
+            )
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -71,5 +90,6 @@ class AppContainer:
                 else None
             ),
             database=resolved_database,
-            evaluation_service=evaluation_service,
+            evaluation_service=durable_evaluation_service,
+            audit_signer=audit_signer,
         )
