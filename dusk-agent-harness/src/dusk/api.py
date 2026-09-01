@@ -13,6 +13,11 @@ from dusk.auth import gate_request_is_authorized
 
 if TYPE_CHECKING:
     from dusk.actions.verdict import ActionGate
+    from dusk.application.evaluator import (
+        CanonicalEvaluator,
+        DecisionWrite,
+        SemanticEnrichmentPort,
+    )
     from dusk.trace.models import TraceDecision
 
 load_dotenv()
@@ -109,46 +114,96 @@ def reset_decision_history() -> None:
         _decision_history.clear()
 
 
-def _find_similar_decisions(agent_id: str, action_text: str) -> list[str]:
+def _find_similar_decisions(
+    agent_id: str,
+    action_text: str,
+    semantic: SemanticEnrichmentPort | None = None,
+) -> list[str]:
     from dusk.trace.vector import find_similar_cached
 
     with _decision_history_lock:
         history_snapshot = list(_decision_history)
-    similar = find_similar_cached(action_text, agent_id, history_snapshot, top_k=3)
+    similar = (
+        find_similar_cached(
+            action_text,
+            agent_id,
+            history_snapshot,
+            top_k=3,
+            embedder=semantic.embed,
+            scorer=semantic.score,
+        )
+        if semantic is not None
+        else find_similar_cached(action_text, agent_id, history_snapshot, top_k=3)
+    )
     return [s.id for s in similar]
 
 
-def _record_decision(
-    decision_id: str,
-    agent_id: str,
-    action_text: str,
-    score: float,
-    reasons: list[str],
-    similar_decision_ids: list[str],
-    verdict: str,
-) -> None:
+def _record_decision(decision: DecisionWrite, embedding: list[float]) -> None:
     from dusk.trace.models import TraceDecision
-    from dusk.trace.vector import embed_text
 
-    decision = TraceDecision(
-        id=decision_id,
-        agent_id=agent_id,
-        action=action_text,
-        score=round(score * 100),
-        reasoning=reasons[0] if reasons else "",
-        risk_flags=reasons,
-        similar_decision_ids=similar_decision_ids,
-        verdict=verdict,
+    trace = TraceDecision(
+        id=decision.trace_id,
+        agent_id=decision.agent_id,
+        action=decision.action_text,
+        score=round(decision.score * 100),
+        reasoning=decision.reasons[0] if decision.reasons else "",
+        risk_flags=list(decision.reasons),
+        similar_decision_ids=list(decision.similar_decision_ids),
+        verdict=decision.verdict,
+        timestamp=decision.occurred_at.timestamp(),
     )
-    # Candidate and stored embeddings must use the same text shape.
-    vec = embed_text(f"{agent_id} {action_text}")
     with _decision_history_lock:
-        agent_indices = [i for i, (d, _v) in enumerate(_decision_history) if d.agent_id == agent_id]
+        agent_indices = [
+            i
+            for i, (value, _vector) in enumerate(_decision_history)
+            if value.agent_id == decision.agent_id
+        ]
         if len(agent_indices) >= _DECISION_HISTORY_PER_AGENT_CAP:
             del _decision_history[agent_indices[0]]
-        _decision_history.append((decision, vec))
+        _decision_history.append((trace, embedding))
         if len(_decision_history) > _DECISION_HISTORY_CAP:
             del _decision_history[: len(_decision_history) - _DECISION_HISTORY_CAP]
+
+
+def _build_canonical_evaluator() -> CanonicalEvaluator:
+    from dusk.application.evaluator import CanonicalEvaluator, EvaluatorPorts
+    from dusk.application.legacy import (
+        AuthenticatedV1Identity,
+        BehavioralPassthroughPolicy,
+        LegacyBehavioralAnalysis,
+        LegacyClock,
+        LegacyDecisionPersistence,
+        LegacyOffenseMemory,
+        LegacyTraceIds,
+        LegacyWebhookDelivery,
+        SieSemanticEnrichment,
+    )
+    from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report
+
+    gate = _get_gate_engine()
+    if gate.offense_memory is None:
+        raise RuntimeError("legacy Gate offense memory is unavailable")
+    semantic = SieSemanticEnrichment()
+    return CanonicalEvaluator(
+        EvaluatorPorts(
+            clock=LegacyClock(),
+            trace_ids=LegacyTraceIds(),
+            identity=AuthenticatedV1Identity(),
+            semantic=semantic,
+            behavioral=LegacyBehavioralAnalysis(gate),
+            offenses=LegacyOffenseMemory(gate.offense_memory),
+            policy=BehavioralPassthroughPolicy(),
+            persistence=LegacyDecisionPersistence(
+                lambda agent_id, action_text: _find_similar_decisions(
+                    agent_id, action_text, semantic
+                ),
+                _record_decision,
+            ),
+            delivery=LegacyWebhookDelivery(
+                {"decision": fire_decision, "report": fire_report, "alert": fire_alert}
+            ),
+        )
+    )
 
 
 @app.route("/v1/gate", methods=["POST"])
@@ -173,52 +228,24 @@ def evaluate_gate_action() -> object:
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    verdict = _get_gate_engine().evaluate(action)
-    analysis = verdict.analysis
-    action_text = f"{action.action_type} {action.target}"
-    trace_id = verdict.trace_id
-    similar_decision_ids = _find_similar_decisions(action.agent_id, action_text)
+    from dusk.application.evaluator import EvaluationPrincipal
 
-    response: dict[str, object] = {
-        "trace_id": trace_id,
-        "verdict": verdict.verdict,
-        "score": round(analysis.score, 4),
-        "blast": analysis.blast_radius,
-        "mitre_attack": [analysis.mitre_attack] if analysis.mitre_attack else [],
-        "mitre_atlas": [analysis.mitre_atlas] if analysis.mitre_atlas else [],
-        "reasons": analysis.reasons,
-        "predicted_next": analysis.predicted_next,
-        "similar_decision_ids": similar_decision_ids,
-    }
+    output = _build_canonical_evaluator().evaluate(
+        action,
+        EvaluationPrincipal(
+            tenant_id="legacy-v1",
+            principal_id="authenticated-gate-client",
+            identity_kind="legacy-workload",
+        ),
+    )
+    response = output.response
     logger.info(
         "gate verdict trace_id=%s agent=%s verdict=%s score=%.2f",
         response["trace_id"],
         action.agent_id,
-        verdict.verdict,
-        analysis.score,
+        response["verdict"],
+        output.decision.score,
     )
-    _record_decision(
-        trace_id,
-        action.agent_id,
-        action_text,
-        analysis.score,
-        analysis.reasons,
-        similar_decision_ids,
-        verdict.verdict,
-    )
-
-    from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report
-
-    webhook_payload = {
-        **response,
-        "agent_id": action.agent_id,
-        "action_type": action.action_type,
-        "target": action.target,
-    }
-    fire_decision(webhook_payload)
-    fire_report(webhook_payload)
-    if verdict.refused:
-        fire_alert(webhook_payload)
 
     return jsonify(response), 200
 

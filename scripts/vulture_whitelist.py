@@ -22,6 +22,7 @@ Categories:
 """
 
 from dusk.actions.heal import AgentHealer
+from dusk.application.evaluator import DecisionWrite, EvaluationPrincipal, OffenseWrite
 from dusk.config import set_config
 from dusk.detections.lateral import LateralDetection
 from dusk.detections.telemetry import TelemetryDetection
@@ -39,6 +40,14 @@ from dusk.trace.vector import SimilarDecision, find_similar, find_similar_cached
 find_similar
 find_similar_cached
 SimilarDecision.similarity
+
+# Canonical application-boundary data consumed structurally by persistence,
+# identity, and legacy adapters. Vulture cannot follow Protocol-driven access.
+EvaluationPrincipal.tenant_id
+EvaluationPrincipal.principal_id
+EvaluationPrincipal.identity_kind
+OffenseWrite.occurred_at
+DecisionWrite.occurred_at
 
 set_config
 

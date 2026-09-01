@@ -9,12 +9,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from dusk_control_plane.evaluations import EvaluationUnavailableError
 from dusk_control_plane.identity import (
     AuthenticationRejectedError,
     AuthorizationDeniedError,
     IdentityProviderUnavailableError,
 )
 from dusk_control_plane.models import ErrorDetail, ErrorEnvelope
+from dusk_control_plane.policy import EvidenceRejectedError, PolicyUnavailableError
 from dusk_control_plane.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
@@ -120,4 +122,39 @@ def install_error_handlers(app: FastAPI) -> None:
             code="FORBIDDEN",
             message="Access is forbidden",
             retryable=False,
+        )
+
+    @app.exception_handler(EvaluationUnavailableError)
+    async def evaluation_unavailable(
+        _request: Request, _exc: EvaluationUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="EVALUATION_UNAVAILABLE",
+            message="Evaluation is temporarily unavailable",
+            retryable=True,
+        )
+
+    _install_evaluation_error_handlers(app)
+
+
+def _install_evaluation_error_handlers(app: FastAPI) -> None:
+    """Install v2 evaluation handlers without exposing dependency details."""
+
+    @app.exception_handler(EvidenceRejectedError)
+    async def evidence_rejected(_request: Request, _exc: EvidenceRejectedError) -> JSONResponse:
+        return error_response(
+            status_code=422,
+            code="EVIDENCE_REJECTED",
+            message="Evidence could not be trusted",
+            retryable=False,
+        )
+
+    @app.exception_handler(PolicyUnavailableError)
+    async def policy_unavailable(_request: Request, _exc: PolicyUnavailableError) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="POLICY_UNAVAILABLE",
+            message="Policy evaluation is temporarily unavailable",
+            retryable=True,
         )

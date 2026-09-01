@@ -1,5 +1,7 @@
-# Runtime dependencies used by the dependency-audit control.
-# Keep these constraints synchronized with pyproject.toml.
+# Third-party runtime dependencies used by the index-backed audit control.
+# Keep these constraints synchronized with pyproject.toml. The first-party
+# dusk-security package is built from this repository and audited by the root
+# manifest, so it is deliberately excluded from this index-only input.
 alembic>=1.19.1,<2
 asyncpg>=0.31,<1
 fastapi>=0.116,<1

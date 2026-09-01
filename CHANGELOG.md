@@ -14,6 +14,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Trusted policy integration for v2 evaluations, including verifier-confirmed
+  provenance, freshness and digest checks, live-evidence activation guards,
+  deterministic policy/behavioral precedence, safe matched-rule metadata, and
+  measured pipeline timings. The authenticated route fails closed until a
+  complete evaluation service is activated.
+- Framework-neutral canonical evaluation orchestration with explicit identity,
+  clock, trace, semantic-enrichment, behavioral-analysis, policy, offense-memory,
+  persistence, and delivery ports. The frozen `/v1/gate` now uses legacy
+  adapters, while isolated shadow evaluation performs no stateful or external
+  effects.
 - PostgreSQL persistence boundary for the production control plane, including
   tenant-qualified SQLAlchemy models and repositories, an Alembic baseline,
   bounded async connection management, critical readiness probing, a

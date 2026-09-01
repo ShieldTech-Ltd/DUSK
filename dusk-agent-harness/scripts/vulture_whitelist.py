@@ -28,12 +28,19 @@ against a real cross-reference search before being added.
 """
 
 from dusk.actions.verdict import ActionGate
+from dusk.application.evaluator import EvaluationOutput, EvaluationPrincipal
 from dusk.config import set_config
 from dusk.trace.vector import SimilarDecision
 
 ActionGate.evaluate_all
 set_config
 SimilarDecision.similarity
+
+# Canonical boundary values are accessed through Protocol-driven adapters or
+# returned to production callers, which vulture cannot resolve statically.
+EvaluationPrincipal.tenant_id
+EvaluationPrincipal.principal_id
+EvaluationOutput.delivery_intents
 
 # pytest discovers this variable by name; it is not dead code.
 pytestmark

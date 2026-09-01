@@ -8,7 +8,7 @@ compose="docker compose --project-name $project -f $harness/compose.yml -f $harn
 
 # Build each image once. Every later operation addresses the immutable local ID.
 DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate runtime mock-prod
-docker build --tag dusk-control-plane:ci "$control_plane"
+docker build --tag dusk-control-plane:ci --file "$control_plane/Dockerfile" .
 gate_id=$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")
 runtime_id=$(docker image inspect --format '{{.Id}}' "$project-runtime")
 mock_id=$(docker image inspect --format '{{.Id}}' "$project-mock-prod")

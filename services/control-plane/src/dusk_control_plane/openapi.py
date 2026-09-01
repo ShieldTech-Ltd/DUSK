@@ -11,6 +11,13 @@ from dusk_control_plane.dependencies import AppContainer
 
 def render_openapi() -> str:
     """Return stable, human-reviewable OpenAPI JSON."""
-    settings = Settings(environment=Environment.TEST, api_docs_enabled=False)
+    settings = Settings(
+        environment=Environment.TEST,
+        api_docs_enabled=False,
+        v2_enabled=True,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/.well-known/jwks.json",
+    )
     app = create_app(container=AppContainer.build(settings=settings))
     return json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"

@@ -7,12 +7,16 @@ RUN apt-get update \
     && apt-get upgrade --yes \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
-COPY alembic.ini ./
-COPY src/ ./src/
+COPY pyproject.toml README.md /tmp/dusk-package/
+COPY src/ /tmp/dusk-package/src/
+COPY services/control-plane/pyproject.toml services/control-plane/README.md ./
+COPY services/control-plane/alembic.ini ./
+COPY services/control-plane/src/ ./src/
 
 RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==83.0.0 wheel==0.47.0 \
+    && pip install --no-cache-dir /tmp/dusk-package \
     && pip install --no-cache-dir . \
+    && rm -rf /tmp/dusk-package \
     && pip uninstall --yes setuptools wheel pip \
     && useradd --no-create-home --uid 10001 --shell /usr/sbin/nologin dusk \
     && chown -R dusk:dusk /app

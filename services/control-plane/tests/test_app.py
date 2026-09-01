@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from dusk_control_plane.app import REQUEST_ID_HEADER, create_app
 from dusk_control_plane.config import Environment, Settings
 from dusk_control_plane.dependencies import AppContainer, DependencyProbe
+from dusk_control_plane.identity import IdentityKind, Principal
 
 REQUEST_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 
@@ -168,3 +169,56 @@ def test_service_does_not_import_or_mount_flask_boundary() -> None:
     assert "/v1/gate" not in paths
     assert "dusk.api" not in added
     assert all(not module.startswith("flask") for module in added)
+
+
+class _WorkloadAuthenticator:
+    async def authenticate(self, token: str) -> Principal:
+        return Principal(
+            issuer="https://identity.example.test/",
+            subject="subject-a",
+            tenant_id="tenant-a",
+            kind=IdentityKind.WORKLOAD,
+            workload_id="agent-a",
+        )
+
+
+def test_v2_evaluation_route_fails_closed_without_activated_service() -> None:
+    settings = _settings(
+        v2_enabled=True,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/jwks.json",
+    )
+    app = create_app(
+        container=AppContainer.build(
+            settings=settings,
+            authenticator=_WorkloadAuthenticator(),
+        )
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v2/evaluations",
+            headers={"Authorization": "Bearer valid-test-token"},
+            json={
+                "action": {
+                    "agent_id": "agent-a",
+                    "action_type": "network.firewall.update",
+                    "target": "firewall-prod",
+                    "consequential": True,
+                },
+                "evidence": [
+                    {
+                        "domain": "action",
+                        "source_identity": "aws-cloudtrail",
+                        "provenance": "signed-event",
+                        "observed_at": "2026-09-01T00:00:00Z",
+                        "digest": "sha256:" + "0" * 64,
+                        "payload": {"type": "network.firewall.update"},
+                    }
+                ],
+                "idempotency_key": "request-1",
+            },
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "EVALUATION_UNAVAILABLE"
+    assert response.json()["error"]["retryable"] is True

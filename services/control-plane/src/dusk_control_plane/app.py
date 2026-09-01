@@ -6,13 +6,19 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from dusk_control_plane.dependencies import AppContainer, DependencyProbe
 from dusk_control_plane.errors import error_response, install_error_handlers
+from dusk_control_plane.evaluations import (
+    EvaluationRequest,
+    EvaluationResponse,
+    EvaluationUnavailableError,
+)
+from dusk_control_plane.identity import Principal, require_route_policy
 from dusk_control_plane.models import (
     ComponentHealth,
     ErrorEnvelope,
@@ -23,6 +29,33 @@ from dusk_control_plane.request_context import new_request_id, reset_request_id,
 
 REQUEST_ID_HEADER = "X-Request-ID"
 logger = logging.getLogger(__name__)
+_evaluation_authorization = require_route_policy("POST", "/v2/evaluations")
+
+
+def _install_v2_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
+    @app.post(
+        "/v2/evaluations",
+        response_model=EvaluationResponse,
+        tags=["evaluations"],
+        responses={
+            401: {"model": ErrorEnvelope},
+            403: {"model": ErrorEnvelope},
+            503: {"model": ErrorEnvelope},
+            **common_errors,
+        },
+    )
+    async def evaluate_action(
+        body: EvaluationRequest,
+        principal: Annotated[Principal, Depends(_evaluation_authorization)],
+    ) -> EvaluationResponse:
+        service = container.evaluation_service
+        if service is None:
+            raise EvaluationUnavailableError
+        return await service.evaluate(body, principal)
 
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:
@@ -156,5 +189,8 @@ def create_app(
         if ready:
             return body
         return JSONResponse(status_code=503, content=body.model_dump(mode="json"))
+
+    if settings.v2_enabled:
+        _install_v2_routes(app, resolved, common_errors)
 
     return app
