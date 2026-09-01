@@ -278,6 +278,11 @@ def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
     assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
 
 
+def test_dev_workflow_exposes_the_harness_root_to_real_model_tests() -> None:
+    test_step = next(s for s in _dev_steps() if s.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["PYTHONPATH"] == ".:src:runtime"
+
+
 def test_dev_workflow_starts_only_persistent_compose_services() -> None:
     start_step = next(
         s for s in _dev_steps() if s.get("name") == "Start gate and mock-prod via Docker Compose"
