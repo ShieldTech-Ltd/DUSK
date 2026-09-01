@@ -3,27 +3,27 @@
 set -u
 
 ruff_check() {
-  ruff check src tests scripts examples/agent-action-monitor/src \
-    examples/agent-action-monitor/tests examples/agent-action-monitor/agent-demo \
-    examples/agent-action-monitor/mock-prod examples/agent-action-monitor/lab \
-    examples/agent-action-monitor/scripts services/control-plane/src \
+  ruff check src tests scripts dusk-agent-harness/src \
+    dusk-agent-harness/tests dusk-agent-harness/runtime \
+    dusk-agent-harness/mock-prod dusk-agent-harness/lab \
+    dusk-agent-harness/scripts services/control-plane/src \
     services/control-plane/tests services/control-plane/scripts
 }
 
 ruff_format() {
-  ruff format --check src tests scripts examples/agent-action-monitor/src \
-    examples/agent-action-monitor/tests examples/agent-action-monitor/agent-demo \
-    examples/agent-action-monitor/mock-prod examples/agent-action-monitor/lab \
-    examples/agent-action-monitor/scripts services/control-plane/src \
+  ruff format --check src tests scripts dusk-agent-harness/src \
+    dusk-agent-harness/tests dusk-agent-harness/runtime \
+    dusk-agent-harness/mock-prod dusk-agent-harness/lab \
+    dusk-agent-harness/scripts services/control-plane/src \
     services/control-plane/tests services/control-plane/scripts
 }
 
 mypy_services() {
   (
-    cd examples/agent-action-monitor || return
-    mypy src/dusk agent-demo/bedrock_client.py agent-demo/mock_bedrock.py \
-      agent-demo/harness.py agent-demo/load_driver.py agent-demo/run_scenario.py \
-      agent-demo/stub_gate.py mock-prod/app.py scripts/verify_ci_sandbox.py \
+    cd dusk-agent-harness || return
+    mypy src/dusk runtime/bedrock_client.py runtime/mock_bedrock.py \
+      runtime/harness.py runtime/load_driver.py runtime/run_scenario.py \
+      runtime/stub_gate.py mock-prod/app.py scripts/verify_ci_sandbox.py \
       --ignore-missing-imports
   ) && (
     cd services/control-plane || return
@@ -39,8 +39,8 @@ vulture_root() {
 
 vulture_example() {
   (
-    cd examples/agent-action-monitor || return
-    vulture src tests agent-demo mock-prod scripts/vulture_whitelist.py \
+    cd dusk-agent-harness || return
+    vulture src tests runtime mock-prod scripts/vulture_whitelist.py \
       scripts/verify_ci_sandbox.py --min-confidence 60 \
       --ignore-decorators '@app.route,@app.get,@app.post,@click.*,@*.fixture' \
       --ignore-names return_value,side_effect,testing
@@ -67,14 +67,14 @@ documentation_contracts() {
 
 compose_contract() {
   DUSK_ENFORCE=false DUSK_GATE_API_KEY=contract-check \
-    docker compose -f examples/agent-action-monitor/compose.yml \
-      -f examples/agent-action-monitor/compose.ci.yml config --quiet &&
+    docker compose -f dusk-agent-harness/compose.yml \
+      -f dusk-agent-harness/compose.ci.yml config --quiet &&
     docker compose -f services/control-plane/compose.yml \
       --profile control-plane config --quiet
 }
 
 openapi_contracts() {
-  openapi-spec-validator examples/agent-action-monitor/contracts/gate.openapi.yaml &&
+  openapi-spec-validator dusk-agent-harness/contracts/gate.openapi.yaml &&
     openapi-spec-validator services/control-plane/contracts/openapi.json &&
     (cd services/control-plane && python scripts/export_openapi.py --check)
 }
@@ -84,8 +84,10 @@ root_tests() {
 }
 
 example_tests() {
-  PYTHONPATH=examples/agent-action-monitor/src \
-    pytest -n auto --dist loadscope examples/agent-action-monitor &&
+  (
+    cd dusk-agent-harness || return
+    PYTHONPATH=.:src:runtime pytest -n auto --dist loadscope
+  ) &&
     pytest -n auto --dist loadscope services/control-plane/tests
 }
 
@@ -131,7 +133,7 @@ run_controls "PR-011 PR-012 PR-013 PR-014 PR-016 PR-017" sh "$0" --task ruff_che
 run_controls "PR-015" sh "$0" --task ruff_format
 run_controls "PR-021" mypy src/dusk
 run_controls "PR-022" sh "$0" --task mypy_services
-run_controls "PR-023" python -m compileall -q src examples/agent-action-monitor/src \
+run_controls "PR-023" python -m compileall -q src dusk-agent-harness/src \
   services/control-plane/src
 run_controls "PR-019" sh "$0" --task vulture_all
 run_controls "PR-024" sh "$0" --task openapi_contracts

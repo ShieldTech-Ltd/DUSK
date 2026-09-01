@@ -4,7 +4,7 @@ import yaml
 
 _WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
-_LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
+_LOCK_FILE_PATH = Path("dusk-agent-harness/requirements-real-agent.txt")
 
 
 def _workflow() -> dict[str, object]:
@@ -89,6 +89,24 @@ def test_main_workflow_starts_only_persistent_compose_services_with_wait() -> No
     assert compose_up_lines == [
         "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
     ]
+
+
+def test_main_workflow_uses_production_harness_paths() -> None:
+    job = _workflow()["jobs"]["real-agent-validation"]
+    setup_python = next(
+        step for step in _steps() if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    upload = next(
+        step for step in _steps() if step.get("uses", "").startswith("actions/upload-artifact@")
+    )
+
+    assert job["defaults"]["run"]["working-directory"] == "dusk-agent-harness"
+    assert setup_python["with"]["cache-dependency-path"].strip() == (
+        "dusk-agent-harness/requirements-real-agent.txt"
+    )
+    assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/"
+    legacy_root = "/".join(("examples", "agent-action-monitor"))
+    assert legacy_root not in _WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_main_gate_log_collection_preserves_an_earlier_startup_failure() -> None:

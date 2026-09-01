@@ -2,7 +2,7 @@
 
 These conventions govern the planned `/v2` FastAPI service. They do not change
 the frozen `/v1/gate` contract in
-`examples/agent-action-monitor/contracts/gate.openapi.yaml`.
+`dusk-agent-harness/contracts/gate.openapi.yaml`.
 
 ## Identity and authorization
 

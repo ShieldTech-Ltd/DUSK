@@ -65,6 +65,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   security evidence.
 
 ### Changed
+- Promoted the real-agent sandbox from the example tree to the production
+  `dusk-agent-harness` root. Runtime, Docker, protected Bedrock workflows,
+  evidence paths, model profiles, documentation, and repository policy now use
+  the production path, with unknown model IDs failing closed.
 - `real-agent-sandbox.yml`: added concurrency group, AWS caller identity
   verification step, and Bedrock model availability pre-check.
 - `real-agent-sandbox-dev.yml`: required matrix updated to Kimi K2.5, GLM-5,

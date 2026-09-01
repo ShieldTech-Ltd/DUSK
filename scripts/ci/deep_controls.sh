@@ -51,15 +51,17 @@ refresh_and_build() {
     ghcr.io/google/osv-scanner@sha256:385ff9dd9d50a573766fc226f24da1d61cd5843542ff7e04c563561bbd918e30 &&
     DUSK_ENFORCE=false DUSK_GATE_API_KEY=deep-ci \
     docker compose --project-name agent-action-monitor \
-      -f examples/agent-action-monitor/compose.yml \
-      -f examples/agent-action-monitor/compose.ci.yml \
-      build --pull --no-cache dusk-gate agent-demo mock-prod
+      -f dusk-agent-harness/compose.yml \
+      -f dusk-agent-harness/compose.ci.yml \
+      build --pull --no-cache dusk-gate runtime mock-prod
 }
 
 extended_properties() {
   HYPOTHESIS_PROFILE=ci python -m pytest -q &&
-    HYPOTHESIS_PROFILE=ci PYTHONPATH=examples/agent-action-monitor/src \
-    python -m pytest -q examples/agent-action-monitor
+    (
+      cd dusk-agent-harness || return
+      HYPOTHESIS_PROFILE=ci PYTHONPATH=.:src:runtime python -m pytest -q
+    )
 }
 
 parser_fuzz() {
@@ -77,10 +79,10 @@ root_mutation() {
 }
 
 auth_mutation() {
-  PYTHONPATH=examples/agent-action-monitor/src mutmut run \
-    --paths-to-mutate examples/agent-action-monitor/src/dusk/auth.py \
+  PYTHONPATH=dusk-agent-harness/src mutmut run \
+    --paths-to-mutate dusk-agent-harness/src/dusk/auth.py \
     --test-time-base 1 \
-    --runner 'env PYTHONPATH=examples/agent-action-monitor/src python -m pytest -q examples/agent-action-monitor/tests/test_auth.py'
+    --runner 'env PYTHONPATH=dusk-agent-harness/src python -m pytest -q dusk-agent-harness/tests/test_auth.py'
   rc=$?
   mutmut results > "$evidence/auth-mutation.txt" 2>&1 || true
   mv .mutmut-cache "$evidence/auth-mutmut-cache"

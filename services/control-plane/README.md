@@ -1,7 +1,7 @@
 # DUSK production control plane
 
 This directory contains the independently deployable FastAPI service. It does
-not import or run the Flask application in `examples/agent-action-monitor`, and
+not import or run the Flask application in `dusk-agent-harness`, and
 it does not expose `/v1/gate`. Operational endpoints are always available. The
 authenticated v2 evaluation route is registered only when its feature flag is
 enabled and fails closed until a policy/evaluation service with live evidence
