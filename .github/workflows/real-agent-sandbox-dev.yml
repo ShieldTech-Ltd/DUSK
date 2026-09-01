@@ -166,6 +166,7 @@ jobs:
       - name: Run real-LLM gate tests
         env:
           USE_REAL_BEDROCK: "true"
+          PYTHONPATH: ".:src:runtime"
           DUSK_GATE_URL: "http://localhost:8000/v1/gate"
           DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}
           DUSK_ENFORCE: ${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}

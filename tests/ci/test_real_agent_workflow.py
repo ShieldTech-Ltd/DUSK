@@ -67,6 +67,11 @@ def test_main_job_exports_the_mantle_provider_contract() -> None:
     assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
 
 
+def test_main_workflow_exposes_the_harness_root_to_real_model_tests() -> None:
+    test_step = next(step for step in _steps() if step.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["PYTHONPATH"] == ".:src:runtime"
+
+
 def test_main_workflow_does_not_run_claude_inference_profile_preflight() -> None:
     text = _WORKFLOW_PATH.read_text(encoding="utf-8")
 
