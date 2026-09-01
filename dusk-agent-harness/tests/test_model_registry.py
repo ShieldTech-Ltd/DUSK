@@ -8,6 +8,12 @@ EXPECTED = {
 }
 
 
+def test_registry_explicitly_exports_its_public_contract() -> None:
+    from models import registry
+
+    assert set(registry.__all__) == {"MODEL_PROFILES", "ModelProfile", "get_model_profile"}
+
+
 def test_registry_contains_exact_supported_model_set() -> None:
     assert {profile.model_id: profile.slug for profile in MODEL_PROFILES} == EXPECTED
 

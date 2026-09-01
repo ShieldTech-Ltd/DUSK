@@ -4,6 +4,8 @@ from models.kimi import PROFILE as KIMI_PROFILE
 from models.profile import ModelProfile
 from models.qwen import PROFILE as QWEN_PROFILE
 
+__all__ = ["MODEL_PROFILES", "ModelProfile", "get_model_profile"]
+
 MODEL_PROFILES = (
     KIMI_PROFILE,
     GLM_PROFILE,
