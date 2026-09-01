@@ -51,6 +51,7 @@ PolicyMatch.safe_metadata
 
 AuditEvent.sequence
 AuditEvent.event_type
+AuditEvent.chain_format
 AuditEvent.principal_id
 AuditEvent.occurred_at
 AuditEvent.previous_digest
