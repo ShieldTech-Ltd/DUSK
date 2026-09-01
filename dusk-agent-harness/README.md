@@ -38,7 +38,7 @@ Two scenarios, both keyless by default:
 > Security boundary: this Compose stack is a localhost-only demonstration. It
 > intentionally uses keyless local services and must not be exposed to an
 > untrusted network. Follow
-> [production hardening](../../docs/production-hardening.md) before using the
+> [production hardening](../docs/production-hardening.md) before using the
 > gate on a real action path.
 
 ```bash
@@ -316,7 +316,7 @@ complete local flow:
 - `/v1/gate` permits keyless local use when `DUSK_GATE_API_KEY` is unset.
   Compose binds it to localhost and CORS is disabled by default. A production
   deployment must configure authentication, TLS, rate limits, and network
-  restrictions as described in `../../docs/production-hardening.md`.
+  restrictions as described in `../docs/production-hardening.md`.
 - If `DUSK_GATE_BASELINE_PATH` is set but the file fails to load, the gate
   still serves requests -- every agent just reads as unknown, which is a
   real degradation of what the gate actually catches, not just a startup

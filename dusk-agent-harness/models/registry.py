@@ -1,19 +1,14 @@
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True, slots=True)
-class ModelProfile:
-    name: str
-    slug: str
-    model_id: str
-    provider: str = "mantle"
-
+from models.glm import PROFILE as GLM_PROFILE
+from models.gpt_oss import PROFILE as GPT_OSS_PROFILE
+from models.kimi import PROFILE as KIMI_PROFILE
+from models.profile import ModelProfile
+from models.qwen import PROFILE as QWEN_PROFILE
 
 MODEL_PROFILES = (
-    ModelProfile("Kimi K2.5", "kimi-k2-5", "moonshotai.kimi-k2.5"),
-    ModelProfile("GLM-5", "glm-5", "zai.glm-5"),
-    ModelProfile("Qwen3 32B", "qwen3-32b", "qwen.qwen3-32b"),
-    ModelProfile("GPT OSS 120B", "gpt-oss-120b", "openai.gpt-oss-120b"),
+    KIMI_PROFILE,
+    GLM_PROFILE,
+    QWEN_PROFILE,
+    GPT_OSS_PROFILE,
 )
 
 

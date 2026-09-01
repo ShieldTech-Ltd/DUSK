@@ -467,6 +467,24 @@ def test_other_mantle_models_do_not_use_gpt_oss_corrective_retry():
     assert openai_client.chat.completions.create.call_count == 1
 
 
+def test_mantle_client_uses_profile_token_limit(monkeypatch):
+    from models.registry import ModelProfile
+
+    profile = ModelProfile(
+        "Test model",
+        "test-model",
+        "test.model",
+        max_completion_tokens=1234,
+    )
+    openai_client = MagicMock()
+    client = MantleClient(openai_client, profile)
+
+    client.chat_completions_create(messages=[], tools=[])
+
+    request = openai_client.chat.completions.create.call_args.kwargs
+    assert request["max_completion_tokens"] == 1234
+
+
 # --- extract_function_call -------------------------------------------------
 
 
