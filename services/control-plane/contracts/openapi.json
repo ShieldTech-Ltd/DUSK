@@ -1,6 +1,50 @@
 {
   "components": {
     "schemas": {
+      "AuditContinuity": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "previous_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Digest"
+          },
+          "sequence": {
+            "exclusiveMinimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "event_type",
+          "occurred_at",
+          "digest"
+        ],
+        "title": "AuditContinuity",
+        "type": "object"
+      },
       "CanonicalAction": {
         "additionalProperties": false,
         "properties": {
@@ -67,6 +111,367 @@
           "critical"
         ],
         "title": "ComponentHealth",
+        "type": "object"
+      },
+      "DecisionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SafeCanonicalAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "action_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Type"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/AuditContinuity"
+          },
+          "behavioral_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Behavioral Score",
+            "type": "number"
+          },
+          "blast_radius": {
+            "title": "Blast Radius",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail_available": {
+            "title": "Detail Available",
+            "type": "boolean"
+          },
+          "detail_deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Deleted At"
+          },
+          "evidence_degraded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Degraded"
+          },
+          "evidence_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence State"
+          },
+          "input_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Input Digest",
+            "type": "string"
+          },
+          "mitre_mappings": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Mappings"
+          },
+          "pipeline_timings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Timings"
+          },
+          "policy_decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL",
+              "NOT_APPLICABLE"
+            ],
+            "title": "Policy Decision",
+            "type": "string"
+          },
+          "policy_matches": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyMatchDetail"
+            },
+            "title": "Policy Matches",
+            "type": "array"
+          },
+          "policy_pack_version": {
+            "title": "Policy Pack Version",
+            "type": "string"
+          },
+          "predicted_next": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predicted Next"
+          },
+          "reasons": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasons"
+          },
+          "response_status": {
+            "enum": [
+              "PENDING",
+              "DELIVERY_PENDING",
+              "DELIVERED",
+              "FAILED",
+              "EXECUTED"
+            ],
+            "title": "Response Status",
+            "type": "string"
+          },
+          "similar_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarDecisionReference"
+            },
+            "title": "Similar Decisions",
+            "type": "array"
+          },
+          "trace_id": {
+            "format": "uuid",
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "WOULD-BLOCK",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "created_at",
+          "agent_id",
+          "action_type",
+          "verdict",
+          "behavioral_score",
+          "blast_radius",
+          "policy_decision",
+          "evidence_degraded",
+          "response_status",
+          "detail_available",
+          "input_digest",
+          "action",
+          "reasons",
+          "mitre_mappings",
+          "predicted_next",
+          "policy_pack_version",
+          "policy_matches",
+          "evidence_state",
+          "pipeline_timings",
+          "audit",
+          "similar_decisions",
+          "detail_deleted_at"
+        ],
+        "title": "DecisionDetail",
+        "type": "object"
+      },
+      "DecisionPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "snapshot_at": {
+            "format": "date-time",
+            "title": "Snapshot At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "snapshot_at"
+        ],
+        "title": "DecisionPage",
+        "type": "object"
+      },
+      "DecisionSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Type"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "behavioral_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Behavioral Score",
+            "type": "number"
+          },
+          "blast_radius": {
+            "title": "Blast Radius",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail_available": {
+            "title": "Detail Available",
+            "type": "boolean"
+          },
+          "evidence_degraded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Degraded"
+          },
+          "policy_decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL",
+              "NOT_APPLICABLE"
+            ],
+            "title": "Policy Decision",
+            "type": "string"
+          },
+          "response_status": {
+            "enum": [
+              "PENDING",
+              "DELIVERY_PENDING",
+              "DELIVERED",
+              "FAILED",
+              "EXECUTED"
+            ],
+            "title": "Response Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "format": "uuid",
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "WOULD-BLOCK",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "created_at",
+          "agent_id",
+          "action_type",
+          "verdict",
+          "behavioral_score",
+          "blast_radius",
+          "policy_decision",
+          "evidence_degraded",
+          "response_status",
+          "detail_available"
+        ],
+        "title": "DecisionSummary",
         "type": "object"
       },
       "ErrorDetail": {
@@ -375,6 +780,41 @@
         "title": "PipelineTimings",
         "type": "object"
       },
+      "PolicyMatchDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "rule_version",
+          "effect",
+          "metadata"
+        ],
+        "title": "PolicyMatchDetail",
+        "type": "object"
+      },
       "PolicyMatchResponse": {
         "additionalProperties": false,
         "properties": {
@@ -456,6 +896,89 @@
           "components"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "SafeCanonicalAction": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "consequential": {
+            "title": "Consequential",
+            "type": "boolean"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "action_type",
+          "target",
+          "consequential",
+          "attributes"
+        ],
+        "title": "SafeCanonicalAction",
+        "type": "object"
+      },
+      "SimilarDecisionReference": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Type"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "trace_id": {
+            "format": "uuid",
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "WOULD-BLOCK",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "created_at",
+          "verdict",
+          "agent_id",
+          "action_type"
+        ],
+        "title": "SimilarDecisionReference",
         "type": "object"
       },
       "ValidationError": {
@@ -583,6 +1106,382 @@
         "summary": "Readiness",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/v2/decisions": {
+      "get": {
+        "operationId": "list_decisions_v2_decisions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ALLOW",
+                    "WOULD-BLOCK",
+                    "BLOCK"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "policy_decision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ALLOW",
+                    "DENY",
+                    "REQUIRE_APPROVAL",
+                    "NOT_APPLICABLE"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Policy Decision"
+            }
+          },
+          {
+            "in": "query",
+            "name": "response_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "PENDING",
+                    "DELIVERY_PENDING",
+                    "DELIVERED",
+                    "FAILED",
+                    "EXECUTED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Response Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evidence_degraded",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Degraded"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Decisions",
+        "tags": [
+          "decisions"
+        ]
+      }
+    },
+    "/v2/decisions/{trace_id}": {
+      "get": {
+        "operationId": "get_decision_v2_decisions__trace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Decision",
+        "tags": [
+          "decisions"
         ]
       }
     },

@@ -7,6 +7,7 @@ surfaces listed here are the intentionally public data-access contract for the
 subsequent ordered API, audit, outbox, and aggregate issues.
 """
 
+from dusk_control_plane.decisions import DecisionListQuery
 from dusk_control_plane.evaluations import PipelineTimings
 from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
 from dusk_control_plane.policy import EvidenceTrust
@@ -124,6 +125,14 @@ evaluate_action
 evaluation_unavailable
 evidence_rejected
 policy_unavailable
+invalid_decision_cursor
+decision_not_found
+decision_query_unavailable
+list_decisions
+get_decision
+DecisionListQuery.require_utc
+DecisionListQuery.reject_control_characters
+DecisionListQuery.validate_range
 PipelineTimings.behavioral_ms
 EvidenceTrust.CONFLICTED
 OutboxWorkerConfig.from_settings

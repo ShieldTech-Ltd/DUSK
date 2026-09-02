@@ -7,6 +7,12 @@ authenticated v2 evaluation route is registered only when its feature flag is
 enabled and fails closed until a policy/evaluation service with live evidence,
 PostgreSQL, and managed audit-signing prerequisites is activated.
 
+When separately activated, the PostgreSQL-backed decision investigation API
+provides tenant-scoped `GET /v2/decisions` and
+`GET /v2/decisions/{trace_id}`. Its filters, pagination consistency,
+authorization projections, and redaction contract are documented in
+[`docs/control-plane-decision-investigation-api.md`](../../docs/control-plane-decision-investigation-api.md).
+
 ## Local development
 
 ```bash
@@ -93,6 +99,13 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_MAX_OVERFLOW` | `10` | `0..100` temporary overflow connections |
 | `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
+| `DUSK_CP_DECISION_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
+| `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
+
+The decision investigation API is separately activated with
+`DUSK_CP_DECISION_READ_API_ENABLED=true`. Its opaque cursors are authenticated
+with `DUSK_CP_DECISION_CURSOR_SIGNING_KEY`; supply that value from the deployment
+secret manager and keep it consistent across replicas.
 
 Transactional outbox workers are separately disabled by default. Enabling them
 requires storage plus injected destination, credential, DNS, pinned transport,

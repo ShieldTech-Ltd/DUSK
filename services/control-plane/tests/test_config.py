@@ -41,6 +41,8 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_DATABASE_MAX_OVERFLOW",
         "DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS",
         "DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS",
+        "DUSK_CP_DECISION_READ_API_ENABLED",
+        "DUSK_CP_DECISION_CURSOR_SIGNING_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -53,6 +55,7 @@ def test_defaults_are_local_and_feature_flags_are_disabled() -> None:
     assert settings.api_docs_enabled is False
     assert settings.v2_enabled is False
     assert settings.storage_enabled is False
+    assert settings.decision_read_api_enabled is False
 
 
 @pytest.mark.parametrize("environment", ("staging", "production"))
@@ -169,6 +172,32 @@ def test_database_url_is_secret_and_storage_defaults_are_bounded() -> None:
     assert settings.database_url.get_secret_value().startswith("postgresql+asyncpg://")
     assert settings.database_pool_size == 10
     assert settings.database_statement_timeout_ms == 5000
+
+
+def test_decision_read_api_requires_v2_storage_and_secret_key() -> None:
+    with pytest.raises(ValidationError, match="requires v2_enabled and storage_enabled"):
+        Settings(decision_read_api_enabled=True, decision_cursor_signing_key="x" * 32)
+    with pytest.raises(ValidationError, match="requires decision_cursor_signing_key"):
+        Settings(
+            v2_enabled=True,
+            oidc_issuer="https://identity.example.test/",
+            oidc_audience="dusk-control-plane",
+            oidc_jwks_uri="https://identity.example.test/jwks.json",
+            storage_enabled=True,
+            database_url="postgresql+asyncpg://user:secret@database/control_plane",
+            decision_read_api_enabled=True,
+        )
+    configured = Settings(
+        v2_enabled=True,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/jwks.json",
+        storage_enabled=True,
+        database_url="postgresql+asyncpg://user:secret@database/control_plane",
+        decision_read_api_enabled=True,
+        decision_cursor_signing_key="cursor-secret-value-that-is-long-enough",
+    )
+    assert "cursor-secret-value" not in repr(configured)
 
 
 def test_outbox_worker_is_disabled_by_default_and_requires_storage() -> None:

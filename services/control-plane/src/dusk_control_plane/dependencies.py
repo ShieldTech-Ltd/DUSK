@@ -11,6 +11,7 @@ from dusk_control_plane.audit import (
     PostgresDecisionEvidenceStore,
 )
 from dusk_control_plane.config import Settings
+from dusk_control_plane.decisions import DecisionCursorCodec, DecisionReader, PostgresDecisionReader
 from dusk_control_plane.evaluations import EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
 from dusk_control_plane.outbox import OutboxWorker
@@ -43,6 +44,7 @@ class AppContainer:
     evaluation_service: EvaluationService | None = None
     audit_signer: AuditSigner | None = None
     outbox_worker: OutboxWorker | None = None
+    decision_reader: DecisionReader | None = None
 
     @classmethod
     def build(
@@ -54,6 +56,7 @@ class AppContainer:
         evaluation_service: EvaluationService | None = None,
         audit_signer: AuditSigner | None = None,
         outbox_worker: OutboxWorker | None = None,
+        decision_reader: DecisionReader | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -84,6 +87,16 @@ class AppContainer:
             )
         if resolved_settings.outbox_worker_enabled and outbox_worker is None:
             raise ValueError("outbox_worker_enabled requires an injected outbox worker")
+        resolved_decision_reader = decision_reader
+        if resolved_settings.decision_read_api_enabled and resolved_decision_reader is None:
+            if resolved_database is None or resolved_settings.decision_cursor_signing_key is None:
+                raise ValueError("decision_read_api_enabled requires decision query dependencies")
+            resolved_decision_reader = PostgresDecisionReader(
+                resolved_database,
+                DecisionCursorCodec(
+                    resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
+                ),
+            )
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -98,4 +111,5 @@ class AppContainer:
             evaluation_service=durable_evaluation_service,
             audit_signer=audit_signer,
             outbox_worker=outbox_worker,
+            decision_reader=resolved_decision_reader,
         )
