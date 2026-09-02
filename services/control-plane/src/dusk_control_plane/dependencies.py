@@ -13,6 +13,7 @@ from dusk_control_plane.audit import (
 from dusk_control_plane.config import Settings
 from dusk_control_plane.evaluations import EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
+from dusk_control_plane.outbox import OutboxWorker
 from dusk_control_plane.storage.database import Database
 
 ProbeCheck = Callable[[], Awaitable[None]]
@@ -41,6 +42,7 @@ class AppContainer:
     database: Database | None = None
     evaluation_service: EvaluationService | None = None
     audit_signer: AuditSigner | None = None
+    outbox_worker: OutboxWorker | None = None
 
     @classmethod
     def build(
@@ -51,6 +53,7 @@ class AppContainer:
         database: Database | None = None,
         evaluation_service: EvaluationService | None = None,
         audit_signer: AuditSigner | None = None,
+        outbox_worker: OutboxWorker | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -79,6 +82,8 @@ class AppContainer:
                 evaluation_service,
                 PostgresDecisionEvidenceStore(resolved_database, audit_signer),
             )
+        if resolved_settings.outbox_worker_enabled and outbox_worker is None:
+            raise ValueError("outbox_worker_enabled requires an injected outbox worker")
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -92,4 +97,5 @@ class AppContainer:
             database=resolved_database,
             evaluation_service=durable_evaluation_service,
             audit_signer=audit_signer,
+            outbox_worker=outbox_worker,
         )

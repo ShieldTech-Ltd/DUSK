@@ -94,6 +94,23 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
 
+Transactional outbox workers are separately disabled by default. Enabling them
+requires storage plus injected destination, credential, DNS, pinned transport,
+and acknowledgement-verification dependencies.
+
+| Outbox variable | Default | Constraint |
+|---|---|---|
+| `DUSK_CP_OUTBOX_WORKER_ENABLED` | `false` | Requires PostgreSQL and an injected worker |
+| `DUSK_CP_OUTBOX_BATCH_SIZE` | `20` | `1..200` rows claimed per transaction |
+| `DUSK_CP_OUTBOX_MAX_CONCURRENCY` | `4` | `1..32` and no greater than batch size |
+| `DUSK_CP_OUTBOX_POLL_INTERVAL_SECONDS` | `1.0` | `0.1..60.0` |
+| `DUSK_CP_OUTBOX_LEASE_SECONDS` | `30` | `5..600` and longer than the bounded external attempt |
+| `DUSK_CP_OUTBOX_CONNECT_TIMEOUT_SECONDS` | `3.0` | `0.1..10.0` |
+| `DUSK_CP_OUTBOX_RESPONSE_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` |
+| `DUSK_CP_OUTBOX_RETRY_BASE_SECONDS` | `1.0` | `0.1..60.0` |
+| `DUSK_CP_OUTBOX_RETRY_MAX_SECONDS` | `300.0` | `1.0..3600.0` and at least retry base |
+| `DUSK_CP_OUTBOX_ACKNOWLEDGEMENT_MAX_AGE_SECONDS` | `300` | `30..3600` |
+
 Start the pinned local PostgreSQL profile and apply the schema with:
 
 ```bash
@@ -124,3 +141,6 @@ otherwise `/v2/evaluations` remains fail closed. The canonical transaction,
 signature, checkpoint, redaction, verification, and rollback contract is
 documented in
 [`docs/control-plane-audit-evidence.md`](../../docs/control-plane-audit-evidence.md).
+Reliable delivery, SSRF enforcement, retry, lease, deduplication, and broker
+acknowledgement semantics are documented in
+[`docs/control-plane-outbox-delivery.md`](../../docs/control-plane-outbox-delivery.md).
