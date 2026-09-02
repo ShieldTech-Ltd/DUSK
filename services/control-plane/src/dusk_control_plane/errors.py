@@ -9,6 +9,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from dusk_control_plane.dashboard import (
+    AgentNotFoundError,
+    DashboardQueryUnavailableError,
+    InvalidAgentRiskCursorError,
+)
 from dusk_control_plane.decisions import (
     DecisionNotFoundError,
     DecisionQueryUnavailableError,
@@ -142,6 +147,40 @@ def install_error_handlers(app: FastAPI) -> None:
 
     _install_evaluation_error_handlers(app)
     _install_decision_error_handlers(app)
+    _install_dashboard_error_handlers(app)
+
+
+def _install_dashboard_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(InvalidAgentRiskCursorError)
+    async def invalid_agent_risk_cursor(
+        _request: Request, _exc: InvalidAgentRiskCursorError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=422,
+            code="INVALID_CURSOR",
+            message="Pagination cursor is invalid for this query",
+            retryable=False,
+        )
+
+    @app.exception_handler(AgentNotFoundError)
+    async def agent_not_found(_request: Request, _exc: AgentNotFoundError) -> JSONResponse:
+        return error_response(
+            status_code=404,
+            code="AGENT_NOT_FOUND",
+            message="Agent was not found",
+            retryable=False,
+        )
+
+    @app.exception_handler(DashboardQueryUnavailableError)
+    async def dashboard_query_unavailable(
+        _request: Request, _exc: DashboardQueryUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="DASHBOARD_QUERY_UNAVAILABLE",
+            message="Dashboard data is temporarily unavailable",
+            retryable=True,
+        )
 
 
 def _install_decision_error_handlers(app: FastAPI) -> None:

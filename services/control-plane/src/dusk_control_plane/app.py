@@ -9,10 +9,21 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Query, Request, Response
+from fastapi import Depends, FastAPI, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from dusk_control_plane.audit import DurableEvaluationService
+from dusk_control_plane.dashboard import (
+    ActionBreakdown,
+    AgentDetail,
+    AgentRiskPage,
+    AgentRiskQuery,
+    DashboardQueryUnavailableError,
+    DashboardReader,
+    DashboardSummary,
+    DashboardWindowQuery,
+    DecisionVolume,
+)
 from dusk_control_plane.decisions import (
     DecisionDetail,
     DecisionListQuery,
@@ -40,6 +51,11 @@ logger = logging.getLogger(__name__)
 _evaluation_authorization = require_route_policy("POST", "/v2/evaluations")
 _decision_list_authorization = require_route_policy("GET", "/v2/decisions")
 _decision_detail_authorization = require_route_policy("GET", "/v2/decisions/{trace_id}")
+_dashboard_summary_authorization = require_route_policy("GET", "/v2/dashboard/summary")
+_dashboard_volume_authorization = require_route_policy("GET", "/v2/dashboard/decision-volume")
+_dashboard_breakdown_authorization = require_route_policy("GET", "/v2/dashboard/action-breakdown")
+_agent_risk_authorization = require_route_policy("GET", "/v2/agents/risk")
+_agent_detail_authorization = require_route_policy("GET", "/v2/agents/{agent_id}")
 
 
 def _install_v2_routes(
@@ -66,6 +82,9 @@ def _install_v2_routes(
         if service is None or not isinstance(service, DurableEvaluationService):
             raise EvaluationUnavailableError
         return await service.evaluate(body, principal)
+
+    if container.settings.dashboard_read_api_enabled:
+        _install_dashboard_routes(app, container, common_errors)
 
     if not container.settings.decision_read_api_enabled:
         return
@@ -118,6 +137,87 @@ def _install_v2_routes(
         if reader is None:
             raise DecisionQueryUnavailableError
         return await reader.get_decision(trace_id, principal)
+
+
+def _install_dashboard_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
+    standard_responses: dict[int | str, dict[str, Any]] = {
+        401: {"model": ErrorEnvelope},
+        403: {"model": ErrorEnvelope},
+        422: {"model": ErrorEnvelope, "description": "Request validation failed"},
+        503: {"model": ErrorEnvelope},
+        **common_errors,
+    }
+
+    def reader() -> DashboardReader:
+        value = container.dashboard_reader
+        if value is None:
+            raise DashboardQueryUnavailableError
+        return value
+
+    @app.get(
+        "/v2/dashboard/summary",
+        response_model=DashboardSummary,
+        tags=["dashboard"],
+        responses=standard_responses,
+    )
+    async def dashboard_summary(
+        query: Annotated[DashboardWindowQuery, Query()],
+        principal: Annotated[Principal, Depends(_dashboard_summary_authorization)],
+    ) -> DashboardSummary:
+        return await reader().summary(query, principal)
+
+    @app.get(
+        "/v2/dashboard/decision-volume",
+        response_model=DecisionVolume,
+        tags=["dashboard"],
+        responses=standard_responses,
+    )
+    async def dashboard_decision_volume(
+        query: Annotated[DashboardWindowQuery, Query()],
+        principal: Annotated[Principal, Depends(_dashboard_volume_authorization)],
+    ) -> DecisionVolume:
+        return await reader().decision_volume(query, principal)
+
+    @app.get(
+        "/v2/dashboard/action-breakdown",
+        response_model=ActionBreakdown,
+        tags=["dashboard"],
+        responses=standard_responses,
+    )
+    async def dashboard_action_breakdown(
+        query: Annotated[DashboardWindowQuery, Query()],
+        principal: Annotated[Principal, Depends(_dashboard_breakdown_authorization)],
+    ) -> ActionBreakdown:
+        return await reader().action_breakdown(query, principal)
+
+    @app.get(
+        "/v2/agents/risk",
+        response_model=AgentRiskPage,
+        tags=["agents"],
+        responses=standard_responses,
+    )
+    async def agent_risk(
+        query: Annotated[AgentRiskQuery, Query()],
+        principal: Annotated[Principal, Depends(_agent_risk_authorization)],
+    ) -> AgentRiskPage:
+        return await reader().agent_risk(query, principal)
+
+    @app.get(
+        "/v2/agents/{agent_id}",
+        response_model=AgentDetail,
+        tags=["agents"],
+        responses={404: {"model": ErrorEnvelope}, **standard_responses},
+    )
+    async def agent_detail(
+        agent_id: Annotated[str, Path(min_length=1, max_length=256)],
+        query: Annotated[DashboardWindowQuery, Query()],
+        principal: Annotated[Principal, Depends(_agent_detail_authorization)],
+    ) -> AgentDetail:
+        return await reader().agent_detail(agent_id, query, principal)
 
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:

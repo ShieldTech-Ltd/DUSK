@@ -33,6 +33,13 @@ from dusk_control_plane.audit import (
     verify_signed_audit_chain,
 )
 from dusk_control_plane.config import Environment, Settings
+from dusk_control_plane.dashboard import (
+    AgentNotFoundError,
+    AgentRiskCursorCodec,
+    AgentRiskQuery,
+    DashboardWindowQuery,
+    PostgresDashboardReader,
+)
 from dusk_control_plane.decisions import (
     DecisionCursorCodec,
     DecisionListQuery,
@@ -1002,6 +1009,8 @@ async def _insert_investigation_decision(
     policy_decision: str = "ALLOW",
     response_status: str = "DELIVERED",
     degraded: bool = False,
+    behavioral_score: Decimal = Decimal("0.75000"),
+    total_ms: float = 4.2,
 ) -> UUID:
     action = CanonicalAction(
         tenant_id=tenant_id,
@@ -1025,7 +1034,7 @@ async def _insert_investigation_decision(
         idempotency_key=f"query-{tenant_id}-{sequence}",
         agent_id=agent_id,
         verdict=verdict,
-        behavioral_score=Decimal("0.75000"),
+        behavioral_score=behavioral_score,
         blast_radius="HIGH" if verdict != "ALLOW" else "LOW",
         reasons=[{"code": "POLICY_MATCH"}],
         mitre_mappings=[{"framework": "MITRE ATT&CK", "id": "T1098"}],
@@ -1033,7 +1042,7 @@ async def _insert_investigation_decision(
         policy_decision=policy_decision,
         policy_pack_version="2026.09",
         evidence_state={"degraded": degraded},
-        pipeline_timings={"total_ms": 4.2},
+        pipeline_timings={"total_ms": total_ms},
         response_status=response_status,
         created_at=created_at,
     )
@@ -1071,6 +1080,13 @@ def _investigation_reader(engine: AsyncEngine) -> PostgresDecisionReader:
     database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
     return PostgresDecisionReader(
         database, DecisionCursorCodec(b"integration-cursor-key-value-32!!")
+    )
+
+
+def _dashboard_reader(engine: AsyncEngine) -> PostgresDashboardReader:
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    return PostgresDashboardReader(
+        Database(engine, factory), AgentRiskCursorCodec(b"dashboard-integration-key-32bytes")
     )
 
 
@@ -1339,3 +1355,188 @@ async def test_large_decision_dataset_remains_bounded_and_uses_query_indexes(
         "ix_decisions_search_agent",
         "ix_canonical_actions_search_document",
     } <= indexes
+
+
+@pytest.mark.anyio
+async def test_dashboard_metrics_match_source_decisions_and_isolate_tenants(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    other_tenant = uuid4()
+    now = datetime.now(UTC)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"dash-{tenant_id}", display_name="Dashboard"),
+                Tenant(id=other_tenant, slug=f"dash-{other_tenant}", display_name="Other"),
+            )
+        )
+        await session.flush()
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=1,
+            created_at=now - timedelta(hours=2),
+            agent_id="agent-critical",
+            action_type="iam.role.assign",
+            verdict="BLOCK",
+            policy_decision="DENY",
+            behavioral_score=Decimal("0.95000"),
+            total_ms=10,
+        )
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=2,
+            created_at=now - timedelta(hours=1),
+            agent_id="agent-safe",
+            action_type="storage.read",
+            behavioral_score=Decimal("0.20000"),
+            total_ms=20,
+        )
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=3,
+            created_at=now - timedelta(hours=25),
+            agent_id="agent-prior",
+            action_type="storage.read",
+            behavioral_score=Decimal("0.10000"),
+        )
+        await _insert_investigation_decision(
+            session,
+            tenant_id=other_tenant,
+            sequence=1,
+            created_at=now - timedelta(minutes=5),
+            agent_id="foreign-agent",
+            action_type="secret.read",
+            verdict="BLOCK",
+            behavioral_score=Decimal("1.00000"),
+        )
+
+    reader = _dashboard_reader(engine)
+    principal = _human(tenant_id)
+    summary = await reader.summary(DashboardWindowQuery(window="24h"), principal)
+    assert summary.decisions.value == 2
+    assert summary.decisions.previous_value == 1
+    assert summary.blocked.value == 1
+    assert summary.active_agents.value == 2
+    assert summary.high_risk_decisions.value == 1
+    assert summary.evaluation_latency.p95_ms == pytest.approx(19.5)
+    assert summary.freshness.state == "available"
+    assert summary.freshness.poll_after_seconds == 30
+
+    volume = await reader.decision_volume(DashboardWindowQuery(window="24h"), principal)
+    assert sum(point.total for point in volume.points) == 2
+    assert sum(point.block for point in volume.points) == 1
+    breakdown = await reader.action_breakdown(DashboardWindowQuery(window="24h"), principal)
+    assert [(item.action_type, item.decision_count) for item in breakdown.items] == [
+        ("iam.role.assign", 1),
+        ("storage.read", 1),
+    ]
+    assert sum(item.share_percent for item in breakdown.items) == 100
+    assert "foreign-agent" not in summary.model_dump_json()
+
+
+@pytest.mark.anyio
+async def test_agent_risk_ranking_cursor_detail_and_cross_tenant_not_found(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    other_tenant = uuid4()
+    now = datetime.now(UTC)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"risk-{tenant_id}", display_name="Risk"),
+                Tenant(id=other_tenant, slug=f"risk-{other_tenant}", display_name="Other"),
+            )
+        )
+        await session.flush()
+        for sequence, agent, score in (
+            (1, "agent-high", Decimal("0.95000")),
+            (2, "agent-medium", Decimal("0.75000")),
+            (3, "agent-low", Decimal("0.25000")),
+        ):
+            await _insert_investigation_decision(
+                session,
+                tenant_id=tenant_id,
+                sequence=sequence,
+                created_at=now - timedelta(minutes=sequence),
+                agent_id=agent,
+                action_type="compute.start",
+                verdict="BLOCK" if sequence == 1 else "ALLOW",
+                behavioral_score=score,
+                total_ms=sequence * 5,
+            )
+
+    reader = _dashboard_reader(engine)
+    first = await reader.agent_risk(AgentRiskQuery(window="30d", limit=2), _human(tenant_id))
+    assert [item.agent_id for item in first.items] == ["agent-high", "agent-medium"]
+    assert first.next_cursor is not None
+    async with AsyncSession(engine) as session, session.begin():
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=4,
+            created_at=datetime.now(UTC),
+            agent_id="agent-late",
+            action_type="compute.start",
+            behavioral_score=Decimal("1.00000"),
+        )
+    second = await reader.agent_risk(
+        AgentRiskQuery(window="30d", limit=2, cursor=first.next_cursor), _human(tenant_id)
+    )
+    assert [item.agent_id for item in second.items] == ["agent-low"]
+    assert set(item.agent_id for item in first.items + second.items) == {
+        "agent-high",
+        "agent-medium",
+        "agent-low",
+    }
+    assert "agent-late" not in {item.agent_id for item in first.items + second.items}
+
+    detail = await reader.agent_detail(
+        "agent-high", DashboardWindowQuery(window="30d"), _human(tenant_id)
+    )
+    assert detail.risk_score == 0.95
+    assert detail.block_count == 1
+    assert detail.recent_decisions[0].action_type == "compute.start"
+    with pytest.raises(AgentNotFoundError):
+        await reader.agent_detail(
+            "agent-high", DashboardWindowQuery(window="30d"), _human(other_tenant)
+        )
+
+
+@pytest.mark.anyio
+async def test_empty_dashboard_is_explicit_and_launch_load_is_bounded(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"empty-{tenant_id}", display_name="Empty"))
+    reader = _dashboard_reader(engine)
+    empty = await reader.summary(DashboardWindowQuery(), _human(tenant_id))
+    assert empty.freshness.state == "empty"
+    assert empty.freshness.source_last_updated_at is None
+    assert empty.decisions.value == 0
+    assert empty.evaluation_latency.p95_ms is None
+
+    now = datetime.now(UTC)
+    async with AsyncSession(engine) as session, session.begin():
+        for sequence in range(1, 501):
+            await _insert_investigation_decision(
+                session,
+                tenant_id=tenant_id,
+                sequence=sequence,
+                created_at=now - timedelta(seconds=sequence),
+                agent_id=f"agent-{sequence % 50:02d}",
+                action_type=f"action.{sequence % 10}",
+                behavioral_score=Decimal(sequence % 100) / Decimal(100),
+            )
+    durations: list[float] = []
+    for _ in range(20):
+        started = time.perf_counter()
+        page = await reader.agent_risk(AgentRiskQuery(limit=50), _human(tenant_id))
+        durations.append((time.perf_counter() - started) * 1000)
+        assert len(page.items) == 50
+    assert sorted(durations)[18] <= 1000

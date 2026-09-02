@@ -14,6 +14,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Tenant-scoped dashboard summary, decision-volume, action-breakdown, and
+  agent-risk investigation APIs backed only by persisted PostgreSQL decisions,
+  with UTC comparison windows, measured p95 latency, explicit freshness and
+  empty states, signed stable-ranking cursors, and default-disabled activation.
 - Tenant-scoped decision list and investigation endpoints with signed keyset
   cursors, PostgreSQL full-text search, redacted projections, policy and audit
   continuity, and default-disabled activation.

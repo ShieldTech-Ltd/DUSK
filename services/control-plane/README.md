@@ -100,6 +100,7 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
 | `DUSK_CP_DECISION_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
+| `DUSK_CP_DASHBOARD_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
 
 The decision investigation API is separately activated with
@@ -146,6 +147,14 @@ integration health, transactional outbox deliveries, agent-risk rollups, and
 dashboard aggregates. It does not store raw requests, tokens, credentials,
 prompts, or unrestricted provider payloads. Decision details can be tombstoned
 without deleting decision identity or audit-integrity metadata.
+
+The dashboard and agent-risk read API is separately controlled by
+`DUSK_CP_DASHBOARD_READ_API_ENABLED` and remains disabled by default. When
+enabled with v2, PostgreSQL, and the cursor signing key, it exposes
+tenant-qualified summaries, UTC decision volume, action breakdown, and analyst
+agent investigation views. Metric definitions, freshness semantics, and
+rollback are documented in
+[`docs/control-plane-dashboard-agent-api.md`](../../docs/control-plane-dashboard-agent-api.md).
 
 Consequential v2 activation additionally requires an `AuditSigner` backed by a
 managed KMS or HSM key. The application wraps the policy evaluator with the
