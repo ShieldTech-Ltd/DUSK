@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Request, Response
@@ -67,6 +67,35 @@ async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> Co
     return ComponentHealth(name=probe.name, status="ready", critical=probe.critical)
 
 
+def _create_lifespan(
+    container: AppContainer,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        application.state.started = True
+        outbox_task: asyncio.Task[None] | None = None
+        if container.settings.outbox_worker_enabled and container.outbox_worker is not None:
+            outbox_task = asyncio.create_task(
+                container.outbox_worker.run_forever(), name="dusk-outbox-worker"
+            )
+        try:
+            yield
+        finally:
+            if container.outbox_worker is not None:
+                container.outbox_worker.stop()
+            if outbox_task is not None:
+                try:
+                    await asyncio.wait_for(outbox_task, timeout=5)
+                except TimeoutError:
+                    outbox_task.cancel()
+                    await asyncio.gather(outbox_task, return_exceptions=True)
+            if container.database is not None:
+                await container.database.close()
+            application.state.started = False
+
+    return lifespan
+
+
 def create_app(
     *,
     container: AppContainer | None = None,
@@ -79,16 +108,6 @@ def create_app(
         else AppContainer.build(readiness_probes=readiness_probes)
     )
     settings = resolved.settings
-
-    @asynccontextmanager
-    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        application.state.started = True
-        try:
-            yield
-        finally:
-            if resolved.database is not None:
-                await resolved.database.close()
-            application.state.started = False
 
     docs_url = "/docs" if settings.api_docs_enabled else None
     openapi_url = "/openapi.json" if settings.api_docs_enabled else None
@@ -103,7 +122,7 @@ def create_app(
         docs_url=docs_url,
         redoc_url=None,
         openapi_url=openapi_url,
-        lifespan=lifespan,
+        lifespan=_create_lifespan(resolved),
     )
     app.state.container = resolved
     app.state.started = False

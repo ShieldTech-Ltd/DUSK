@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -42,6 +43,15 @@ from dusk_control_plane.evaluations import (
     PipelineTimings,
 )
 from dusk_control_plane.identity import IdentityKind, Principal
+from dusk_control_plane.outbox import (
+    DeliveryDestination,
+    DeliveryError,
+    DestinationKind,
+    OutboxWorker,
+    OutboxWorkerConfig,
+    StaticDestinationRegistry,
+    TransportResponse,
+)
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import (
     AuditEvent,
@@ -546,3 +556,426 @@ async def test_signer_failure_rolls_back_every_evidence_record(engine: AsyncEngi
     async with AsyncSession(engine) as session:
         for model in (CanonicalAction, Decision, AuditEvent, OutboxDelivery):
             assert await session.scalar(select(model).where(model.tenant_id == tenant_id)) is None
+
+
+class _PublicResolver:
+    async def resolve(self, hostname: str, port: int):
+        return ("8.8.8.8",)
+
+
+class _PrivateResolver:
+    async def resolve(self, hostname: str, port: int):
+        return ("169.254.169.254",)
+
+
+class _Credentials:
+    async def headers_for(self, destination_key: str):
+        return {"Authorization": "Bearer test-only"}
+
+
+class _AckVerifier:
+    def __init__(self, valid: bool = True) -> None:
+        self.valid = valid
+        self.calls = 0
+
+    async def verify(self, acknowledgement, payload: bytes) -> bool:
+        self.calls += 1
+        return self.valid and acknowledgement.signature == b"test-signature"
+
+
+class _RecordingTransport:
+    def __init__(self, responses=None) -> None:
+        self.responses = list(responses or [TransportResponse(204, {})])
+        self.claims = []
+        self.active = 0
+        self.max_active = 0
+
+    async def send(self, claim, destination, credential_headers):
+        import asyncio
+
+        self.claims.append(claim)
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0)
+            value = self.responses[min(len(self.claims) - 1, len(self.responses) - 1)]
+            if callable(value):
+                value = value(claim)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        finally:
+            self.active -= 1
+
+
+def _worker_config(*, batch_size: int = 20, concurrency: int = 4) -> OutboxWorkerConfig:
+    return OutboxWorkerConfig(
+        batch_size=batch_size,
+        max_concurrency=concurrency,
+        poll_interval_seconds=0.1,
+        lease_seconds=10,
+        connect_timeout_seconds=1,
+        response_timeout_seconds=1,
+        retry_base_seconds=1,
+        retry_max_seconds=8,
+        acknowledgement_max_age_seconds=300,
+    )
+
+
+def _worker(
+    engine: AsyncEngine,
+    transport,
+    *,
+    kind: DestinationKind = DestinationKind.WEBHOOK,
+    verifier=None,
+    batch_size: int = 20,
+    concurrency: int = 4,
+    now: datetime | None = None,
+    resolver=None,
+) -> OutboxWorker:
+    database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    return OutboxWorker(
+        database=database,
+        destinations=StaticDestinationRegistry(
+            [
+                DeliveryDestination(
+                    "decision-events", kind, "https://delivery.example.test/v1/events"
+                )
+            ]
+        ),
+        resolver=resolver or _PublicResolver(),
+        credentials=_Credentials(),
+        transport=transport,
+        acknowledgement_verifier=verifier or _AckVerifier(),
+        config=_worker_config(batch_size=batch_size, concurrency=concurrency),
+        random=lambda: 0,
+        clock=(lambda: now) if now is not None else lambda: datetime.now(UTC),
+    )
+
+
+async def _persist_outbox_fixture(engine: AsyncEngine, key: str, *, max_attempts: int = 10):
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    durable = await _store(engine).persist(
+        request=_evaluation_request(key),
+        response=_evaluation_response(),
+        principal=principal,
+        intent=OutboxIntent(max_attempts=max_attempts),
+    )
+    return tenant_id, durable
+
+
+async def _isolate_worker_queue(engine: AsyncEngine) -> None:
+    """Complete records created by earlier module tests before a worker scenario."""
+    async with AsyncSession(engine) as session, session.begin():
+        rows = list(
+            (
+                await session.scalars(
+                    select(OutboxDelivery).where(OutboxDelivery.state.in_(("PENDING", "IN_FLIGHT")))
+                )
+            ).all()
+        )
+        for row in rows:
+            row.state = "DELIVERED"
+            row.delivered_at = datetime.now(UTC)
+            row.lease_owner = None
+            row.locked_until = None
+
+
+@pytest.mark.anyio
+async def test_webhook_delivery_is_bounded_and_never_claims_execution(engine: AsyncEngine) -> None:
+    await _isolate_worker_queue(engine)
+    tenant_id, durable = await _persist_outbox_fixture(engine, "webhook-delivery")
+    transport = _RecordingTransport()
+    stats = await _worker(engine, transport, concurrency=1).run_once()
+    assert stats.claimed == stats.delivered == 1
+    assert transport.max_active == 1
+    async with AsyncSession(engine) as session:
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+    assert delivery is not None and decision is not None
+    assert delivery.tenant_id == tenant_id
+    assert delivery.state == "DELIVERED"
+    assert delivery.attempt_count == 1
+    assert delivery.delivered_at is not None
+    assert decision.response_status == "DELIVERED"
+    assert decision.response_status != "EXECUTED"
+
+
+@pytest.mark.anyio
+async def test_crash_style_retry_reuses_stable_delivery_id(engine: AsyncEngine) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "at-least-once")
+    transport = _RecordingTransport(
+        [DeliveryError("TRANSPORT_UNAVAILABLE"), TransportResponse(204, {})]
+    )
+    first = await _worker(engine, transport).run_once()
+    assert first.retried == 1
+    async with AsyncSession(engine) as session, session.begin():
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        assert delivery is not None
+        delivery.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+    second = await _worker(engine, transport).run_once()
+    assert second.delivered == 1
+    assert len(transport.claims) == 2
+    assert transport.claims[0].delivery_id == transport.claims[1].delivery_id
+
+
+@pytest.mark.anyio
+async def test_retry_limit_moves_delivery_to_dead_letter_with_safe_code(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "dead-letter", max_attempts=2)
+    transport = _RecordingTransport([TimeoutError("token=must-not-leak")])
+    assert (await _worker(engine, transport).run_once()).retried == 1
+    async with AsyncSession(engine) as session, session.begin():
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        assert delivery is not None
+        delivery.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+    assert (await _worker(engine, transport).run_once()).dead_lettered == 1
+    async with AsyncSession(engine) as session:
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+    assert delivery is not None and decision is not None
+    assert delivery.state == "DEAD_LETTER"
+    assert delivery.safe_diagnostic_code == "DELIVERY_UNAVAILABLE"
+    assert "must-not-leak" not in repr(delivery.__dict__)
+    assert decision.response_status == "FAILED"
+
+
+@pytest.mark.anyio
+async def test_batch_saturation_and_concurrency_are_strictly_bounded(engine: AsyncEngine) -> None:
+    await _isolate_worker_queue(engine)
+    for index in range(5):
+        await _persist_outbox_fixture(engine, f"saturation-{index}")
+    transport = _RecordingTransport()
+    stats = await _worker(engine, transport, batch_size=2, concurrency=1).run_once()
+    assert stats.claimed == 2
+    assert transport.max_active == 1
+    async with AsyncSession(engine) as session:
+        pending = list(
+            (
+                await session.scalars(
+                    select(OutboxDelivery).where(OutboxDelivery.state == "PENDING")
+                )
+            ).all()
+        )
+    assert len(pending) >= 3
+
+
+def _ack_response(claim, *, tenant_id=None, outcome="EXECUTED") -> TransportResponse:
+    issued_at = datetime.now(UTC)
+    return TransportResponse(
+        200,
+        {
+            "dusk-ack-version": "dusk.broker-ack.v1",
+            "dusk-ack-tenant-id": str(tenant_id or claim.tenant_id),
+            "dusk-ack-decision-id": str(claim.decision_id),
+            "dusk-ack-delivery-id": str(claim.delivery_id),
+            "dusk-ack-outcome": outcome,
+            "dusk-ack-issued-at": issued_at.isoformat(),
+            "dusk-ack-nonce": "nonce-1",
+            "dusk-ack-key-id": "broker-key-1",
+            "dusk-ack-signature": base64.urlsafe_b64encode(b"test-signature").decode(),
+        },
+    )
+
+
+async def _make_broker_delivery(engine: AsyncEngine, key: str):
+    tenant_id, durable = await _persist_outbox_fixture(engine, key)
+    async with AsyncSession(engine) as session, session.begin():
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        assert delivery is not None
+        delivery.destination_kind = "ENFORCEMENT_BROKER"
+        delivery.delivery_kind = "ACTION_EXECUTION"
+    return tenant_id, durable
+
+
+@pytest.mark.anyio
+async def test_only_bound_verified_broker_acknowledgement_sets_executed(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _make_broker_delivery(engine, "trusted-ack")
+    verifier = _AckVerifier()
+    transport = _RecordingTransport([_ack_response])
+    result = await _worker(
+        engine, transport, kind=DestinationKind.ENFORCEMENT_BROKER, verifier=verifier
+    ).run_once()
+    assert result.delivered == 1
+    assert verifier.calls == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert decision is not None and delivery is not None
+    assert decision.response_status == "EXECUTED"
+    assert delivery.acknowledgement_outcome == "EXECUTED"
+    assert delivery.acknowledgement_digest is not None
+    assert delivery.acknowledgement_signature == b"test-signature"
+    assert delivery.acknowledgement_evidence["delivery_id"] == str(delivery.delivery_id)
+
+
+@pytest.mark.anyio
+async def test_trusted_broker_rejection_records_failed_not_executed(engine: AsyncEngine) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _make_broker_delivery(engine, "trusted-rejection")
+    result = await _worker(
+        engine,
+        _RecordingTransport([lambda claim: _ack_response(claim, outcome="REJECTED")]),
+        kind=DestinationKind.ENFORCEMENT_BROKER,
+    ).run_once()
+    assert result.delivered == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert decision is not None and delivery is not None
+    assert decision.response_status == "FAILED"
+    assert delivery.acknowledgement_outcome == "REJECTED"
+
+
+@pytest.mark.anyio
+async def test_forged_or_mismatched_acknowledgement_never_sets_executed(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    tenant_id, durable = await _make_broker_delivery(engine, "forged-ack")
+    forged = _RecordingTransport([lambda claim: _ack_response(claim, tenant_id=uuid4())])
+    result = await _worker(engine, forged, kind=DestinationKind.ENFORCEMENT_BROKER).run_once()
+    assert result.retried == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert decision is not None and delivery is not None
+    assert decision.tenant_id == tenant_id
+    assert decision.response_status == "DELIVERY_PENDING"
+    assert delivery.acknowledgement_digest is None
+    assert delivery.safe_diagnostic_code == "ACKNOWLEDGEMENT_INVALID"
+
+
+@pytest.mark.anyio
+async def test_cryptographically_unverified_acknowledgement_never_sets_executed(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _make_broker_delivery(engine, "unverified-ack")
+    verifier = _AckVerifier(valid=False)
+    result = await _worker(
+        engine,
+        _RecordingTransport([_ack_response]),
+        kind=DestinationKind.ENFORCEMENT_BROKER,
+        verifier=verifier,
+    ).run_once()
+    assert result.retried == 1
+    assert verifier.calls == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+    assert decision is not None
+    assert decision.response_status == "DELIVERY_PENDING"
+
+
+@pytest.mark.anyio
+async def test_prohibited_destination_is_never_reached_and_dead_letters(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "ssrf-block")
+    transport = _RecordingTransport()
+    result = await _worker(engine, transport, resolver=_PrivateResolver()).run_once()
+    assert result.dead_lettered == 1
+    assert transport.claims == []
+    async with AsyncSession(engine) as session:
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert delivery is not None
+    assert delivery.safe_diagnostic_code == "DESTINATION_PROHIBITED"
+
+
+@pytest.mark.anyio
+async def test_expired_lease_is_reclaimed_after_worker_restart(engine: AsyncEngine) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "lease-recovery")
+    original_delivery_id = durable.delivery_id
+    async with AsyncSession(engine) as session, session.begin():
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        assert delivery is not None
+        delivery.state = "IN_FLIGHT"
+        delivery.lease_owner = uuid4()
+        delivery.locked_until = datetime.now(UTC) - timedelta(seconds=1)
+        delivery.state_version += 1
+    transport = _RecordingTransport()
+    result = await _worker(engine, transport).run_once()
+    assert result.delivered == 1
+    assert transport.claims[0].delivery_id == original_delivery_id
+
+
+@pytest.mark.anyio
+async def test_expired_lease_at_attempt_limit_dead_letters_without_network(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "exhausted-lease", max_attempts=2)
+    async with AsyncSession(engine) as session, session.begin():
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+        assert delivery is not None
+        delivery.state = "IN_FLIGHT"
+        delivery.attempt_count = 2
+        delivery.lease_owner = uuid4()
+        delivery.locked_until = datetime.now(UTC) - timedelta(seconds=1)
+        delivery.state_version += 1
+    transport = _RecordingTransport()
+    result = await _worker(engine, transport).run_once()
+    assert result.dead_lettered == 1
+    assert transport.claims == []
+    async with AsyncSession(engine) as session:
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert delivery is not None
+    assert delivery.safe_diagnostic_code == "ATTEMPTS_EXHAUSTED"
+
+
+@pytest.mark.anyio
+async def test_http_failure_persists_only_numeric_status_and_safe_code(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _persist_outbox_fixture(engine, "http-status")
+    result = await _worker(
+        engine,
+        _RecordingTransport([TransportResponse(503, {"x-provider-secret": "must-not-store"})]),
+    ).run_once()
+    assert result.retried == 1
+    async with AsyncSession(engine) as session:
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert delivery is not None
+    assert delivery.last_http_status == 503
+    assert delivery.safe_diagnostic_code == "HTTP_REJECTED"
+    assert "must-not-store" not in repr(delivery.__dict__)

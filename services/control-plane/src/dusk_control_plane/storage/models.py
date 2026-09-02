@@ -360,7 +360,26 @@ class OutboxDelivery(Base):
         CheckConstraint(
             "state IN ('PENDING', 'IN_FLIGHT', 'DELIVERED', 'DEAD_LETTER')", name="state"
         ),
+        CheckConstraint(
+            "destination_kind IN ('WEBHOOK', 'ENFORCEMENT_BROKER')",
+            name="destination_kind",
+        ),
         CheckConstraint("attempt_count >= 0 AND max_attempts > 0", name="attempts"),
+        CheckConstraint("state_version > 0", name="state_version"),
+        CheckConstraint(
+            "acknowledgement_outcome IS NULL OR "
+            "acknowledgement_outcome IN ('EXECUTED', 'REJECTED')",
+            name="acknowledgement_outcome",
+        ),
+        CheckConstraint(
+            "(acknowledgement_digest IS NULL AND acknowledgement_evidence IS NULL AND "
+            "acknowledgement_signature IS NULL AND acknowledgement_outcome IS NULL AND "
+            "acknowledged_at IS NULL) OR "
+            "(acknowledgement_digest IS NOT NULL AND acknowledgement_evidence IS NOT NULL AND "
+            "acknowledgement_signature IS NOT NULL AND acknowledgement_outcome IS NOT NULL AND "
+            "acknowledged_at IS NOT NULL)",
+            name="acknowledgement_shape",
+        ),
         Index("ix_outbox_tenant_state_next", "tenant_id", "state", "next_attempt_at", "id"),
     )
 
@@ -375,6 +394,9 @@ class OutboxDelivery(Base):
     delivery_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, default=uuid4)
     deduplication_key: Mapped[str] = mapped_column(String(200), nullable=False)
     destination_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    destination_kind: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="WEBHOOK", server_default=text("'WEBHOOK'")
+    )
     delivery_kind: Mapped[str] = mapped_column(String(64), nullable=False)
     redacted_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     state: Mapped[str] = mapped_column(
@@ -386,11 +408,21 @@ class OutboxDelivery(Base):
     max_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=10, server_default=text("10")
     )
+    state_version: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=1, server_default=text("1")
+    )
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_owner: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_http_status: Mapped[int | None] = mapped_column(Integer)
     safe_diagnostic_code: Mapped[str | None] = mapped_column(String(100))
+    acknowledgement_digest: Mapped[bytes | None] = mapped_column(LargeBinary)
+    acknowledgement_evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    acknowledgement_signature: Mapped[bytes | None] = mapped_column(LargeBinary)
+    acknowledgement_outcome: Mapped[str | None] = mapped_column(String(16))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

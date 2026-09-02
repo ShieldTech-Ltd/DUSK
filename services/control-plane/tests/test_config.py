@@ -169,3 +169,33 @@ def test_database_url_is_secret_and_storage_defaults_are_bounded() -> None:
     assert settings.database_url.get_secret_value().startswith("postgresql+asyncpg://")
     assert settings.database_pool_size == 10
     assert settings.database_statement_timeout_ms == 5000
+
+
+def test_outbox_worker_is_disabled_by_default_and_requires_storage() -> None:
+    assert Settings().outbox_worker_enabled is False
+    with pytest.raises(ValidationError, match="outbox_worker_enabled requires storage_enabled"):
+        Settings(outbox_worker_enabled=True)
+
+
+def test_outbox_resource_and_retry_bounds_are_consistent() -> None:
+    database_url = "postgresql+asyncpg://user:secret@database/control_plane"
+    with pytest.raises(ValidationError, match="max_concurrency must not exceed"):
+        Settings(
+            storage_enabled=True,
+            database_url=database_url,
+            outbox_batch_size=2,
+            outbox_max_concurrency=3,
+        )
+    with pytest.raises(ValidationError, match="retry_max_seconds must be at least"):
+        Settings(
+            storage_enabled=True,
+            database_url=database_url,
+            outbox_retry_base_seconds=10,
+            outbox_retry_max_seconds=5,
+        )
+    with pytest.raises(ValidationError, match="lease_seconds must cover"):
+        Settings(
+            storage_enabled=True,
+            database_url=database_url,
+            outbox_lease_seconds=5,
+        )

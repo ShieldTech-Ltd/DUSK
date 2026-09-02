@@ -8,6 +8,7 @@ subsequent ordered API, audit, outbox, and aggregate issues.
 """
 
 from dusk_control_plane.evaluations import PipelineTimings
+from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
 from dusk_control_plane.policy import EvidenceTrust
 from dusk_control_plane.storage.models import (
     AgentRiskRollup,
@@ -68,15 +69,24 @@ IntegrationHealth.safe_diagnostic_code
 OutboxDelivery.delivery_id
 OutboxDelivery.deduplication_key
 OutboxDelivery.destination_key
+OutboxDelivery.destination_kind
 OutboxDelivery.delivery_kind
 OutboxDelivery.redacted_payload
 OutboxDelivery.attempt_count
 OutboxDelivery.max_attempts
+OutboxDelivery.state_version
 OutboxDelivery.next_attempt_at
+OutboxDelivery.last_attempt_at
+OutboxDelivery.lease_owner
 OutboxDelivery.locked_until
 OutboxDelivery.delivered_at
 OutboxDelivery.last_http_status
 OutboxDelivery.safe_diagnostic_code
+OutboxDelivery.acknowledgement_digest
+OutboxDelivery.acknowledgement_evidence
+OutboxDelivery.acknowledgement_signature
+OutboxDelivery.acknowledgement_outcome
+OutboxDelivery.acknowledged_at
 OutboxDelivery.updated_at
 
 AgentRiskRollup.risk_score
@@ -116,3 +126,5 @@ evidence_rejected
 policy_unavailable
 PipelineTimings.behavioral_ms
 EvidenceTrust.CONFLICTED
+OutboxWorkerConfig.from_settings
+SystemDnsResolver

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from enum import StrEnum
 from typing import Literal
 from urllib.parse import urlsplit
@@ -68,6 +69,16 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
     database_statement_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
+    outbox_worker_enabled: bool = False
+    outbox_batch_size: int = Field(default=20, ge=1, le=200)
+    outbox_max_concurrency: int = Field(default=4, ge=1, le=32)
+    outbox_poll_interval_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
+    outbox_lease_seconds: int = Field(default=30, ge=5, le=600)
+    outbox_connect_timeout_seconds: float = Field(default=3.0, ge=0.1, le=10.0)
+    outbox_response_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
+    outbox_retry_base_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
+    outbox_retry_max_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
+    outbox_acknowledgement_max_age_seconds: int = Field(default=300, ge=30, le=3600)
 
     @model_validator(mode="after")
     def protect_non_local_deployments(self) -> Settings:
@@ -104,7 +115,24 @@ class Settings(BaseSettings):
         if len(claim_names) != 4:
             raise ValueError("OIDC custom claim names must be distinct")
         self._validate_storage()
+        self._validate_outbox()
         return self
+
+    def _validate_outbox(self) -> None:
+        if self.outbox_worker_enabled and not self.storage_enabled:
+            raise ValueError("outbox_worker_enabled requires storage_enabled")
+        if self.outbox_max_concurrency > self.outbox_batch_size:
+            raise ValueError("outbox_max_concurrency must not exceed outbox_batch_size")
+        if self.outbox_retry_max_seconds < self.outbox_retry_base_seconds:
+            raise ValueError("outbox_retry_max_seconds must be at least outbox_retry_base_seconds")
+        minimum_lease = (
+            math.ceil(
+                3 * self.outbox_connect_timeout_seconds + 2 * self.outbox_response_timeout_seconds
+            )
+            + 1
+        )
+        if self.outbox_lease_seconds < minimum_lease:
+            raise ValueError("outbox_lease_seconds must cover the bounded delivery attempt")
 
     def _validate_storage(self) -> None:
         if not self.storage_enabled:

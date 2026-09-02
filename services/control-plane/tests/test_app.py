@@ -222,3 +222,37 @@ def test_v2_evaluation_route_fails_closed_without_activated_service() -> None:
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "EVALUATION_UNAVAILABLE"
     assert response.json()["error"]["retryable"] is True
+
+
+class _LifecycleWorker:
+    def __init__(self) -> None:
+        import asyncio
+
+        self.started = asyncio.Event()
+        self.stopped = asyncio.Event()
+
+    async def run_forever(self) -> None:
+        self.started.set()
+        await self.stopped.wait()
+
+    def stop(self) -> None:
+        self.stopped.set()
+
+
+def test_enabled_outbox_worker_starts_and_stops_with_application() -> None:
+    worker = _LifecycleWorker()
+    settings = _settings(
+        storage_enabled=True,
+        database_url="postgresql+asyncpg://user:secret@database/control_plane",
+        outbox_worker_enabled=True,
+    )
+    app = create_app(
+        container=AppContainer(
+            settings=settings,
+            outbox_worker=worker,  # type: ignore[arg-type] - lifecycle test double
+        )
+    )
+    with TestClient(app) as client:
+        assert client.get("/livez").status_code == 200
+        assert worker.started.is_set()
+    assert worker.stopped.is_set()

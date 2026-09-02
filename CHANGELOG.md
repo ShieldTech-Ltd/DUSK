@@ -14,6 +14,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Bounded transactional-outbox workers with leased PostgreSQL claims,
+  at-least-once delivery IDs, exponential backoff with jitter, dead letters,
+  DNS-rebinding-resistant pinned HTTPS delivery, safe diagnostics, and
+  cryptographically bound enforcement acknowledgements. Only a verified broker
+  outcome can establish `EXECUTED`; webhook delivery and Gate `ALLOW` cannot.
 - Atomic v2 decision evidence persistence: redacted canonical action, decision,
   safe policy matches, tenant-scoped signed digest-chain event, and outbox intent
   now commit in one PostgreSQL transaction. Managed signer or database failure
