@@ -71,3 +71,33 @@ def test_decision_read_contract_is_authenticated_bounded_and_tenant_free() -> No
         "similar_decisions",
         "detail_available",
     } <= set(detail_fields)
+
+
+def test_dashboard_and_agent_contract_is_authenticated_bounded_and_tenant_free() -> None:
+    schema = json.loads(render_openapi())
+    paths = schema["paths"]
+    for path in (
+        "/v2/dashboard/summary",
+        "/v2/dashboard/decision-volume",
+        "/v2/dashboard/action-breakdown",
+        "/v2/agents/risk",
+        "/v2/agents/{agent_id}",
+    ):
+        operation = paths[path]["get"]
+        assert operation["security"] == [{"HTTPBearer": []}]
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        assert "tenant_id" not in parameters
+        assert "principal_id" not in parameters
+    risk_parameters = {
+        parameter["name"]: parameter for parameter in paths["/v2/agents/risk"]["get"]["parameters"]
+    }
+    assert set(risk_parameters) == {"window", "limit", "cursor", "minimum_risk_score"}
+    assert risk_parameters["limit"]["schema"]["maximum"] == 100
+    assert risk_parameters["cursor"]["schema"]["anyOf"][0]["maxLength"] == 2048
+
+    response = paths["/v2/dashboard/summary"]["get"]["responses"]["200"]
+    model_name = response["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+    fields = schema["components"]["schemas"][model_name]["properties"]
+    assert {"window_start", "window_end", "comparison_start", "timezone", "freshness"} <= set(
+        fields
+    )

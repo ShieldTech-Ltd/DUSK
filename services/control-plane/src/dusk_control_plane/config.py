@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     database_pool_timeout_seconds: float = Field(default=5.0, ge=0.1, le=30.0)
     database_statement_timeout_ms: int = Field(default=5000, ge=100, le=60_000)
     decision_read_api_enabled: bool = False
+    dashboard_read_api_enabled: bool = False
     decision_cursor_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
     )
@@ -120,6 +121,7 @@ class Settings(BaseSettings):
             raise ValueError("OIDC custom claim names must be distinct")
         self._validate_storage()
         self._validate_decision_reads()
+        self._validate_dashboard_reads()
         self._validate_outbox()
         return self
 
@@ -130,6 +132,14 @@ class Settings(BaseSettings):
             raise ValueError("decision_read_api_enabled requires v2_enabled and storage_enabled")
         if self.decision_cursor_signing_key is None:
             raise ValueError("decision_read_api_enabled requires decision_cursor_signing_key")
+
+    def _validate_dashboard_reads(self) -> None:
+        if not self.dashboard_read_api_enabled:
+            return
+        if not self.v2_enabled or not self.storage_enabled:
+            raise ValueError("dashboard_read_api_enabled requires v2_enabled and storage_enabled")
+        if self.decision_cursor_signing_key is None:
+            raise ValueError("dashboard_read_api_enabled requires decision_cursor_signing_key")
 
     def _validate_outbox(self) -> None:
         if self.outbox_worker_enabled and not self.storage_enabled:

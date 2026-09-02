@@ -7,6 +7,19 @@ surfaces listed here are the intentionally public data-access contract for the
 subsequent ordered API, audit, outbox, and aggregate issues.
 """
 
+from dusk_control_plane.dashboard import (
+    ActionBreakdown,
+    AgentDetail,
+    AgentRiskItem,
+    AgentRiskPage,
+    AgentRiskQuery,
+    DashboardSummary,
+    DashboardWindowQuery,
+    DecisionVolume,
+    DecisionVolumePoint,
+    LatencyMetric,
+    MetricValue,
+)
 from dusk_control_plane.decisions import DecisionListQuery
 from dusk_control_plane.evaluations import PipelineTimings
 from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
@@ -130,6 +143,14 @@ decision_not_found
 decision_query_unavailable
 list_decisions
 get_decision
+dashboard_summary
+dashboard_decision_volume
+dashboard_action_breakdown
+agent_risk
+agent_detail
+invalid_agent_risk_cursor
+agent_not_found
+dashboard_query_unavailable
 DecisionListQuery.require_utc
 DecisionListQuery.reject_control_characters
 DecisionListQuery.validate_range
@@ -137,3 +158,21 @@ PipelineTimings.behavioral_ms
 EvidenceTrust.CONFLICTED
 OutboxWorkerConfig.from_settings
 SystemDnsResolver
+AgentRiskQuery
+DashboardWindowQuery
+MetricValue.change_percent
+LatencyMetric.sample_count
+DashboardSummary.window_start
+DashboardSummary.window_end
+DashboardSummary.comparison_start
+DashboardSummary.comparison_end
+DecisionVolumePoint.allow
+DecisionVolume.window_start
+DecisionVolume.window_end
+ActionBreakdown.window_start
+ActionBreakdown.window_end
+AgentRiskItem.would_block_count
+AgentRiskPage.window_start
+AgentRiskPage.window_end
+AgentDetail.window_start
+AgentDetail.window_end

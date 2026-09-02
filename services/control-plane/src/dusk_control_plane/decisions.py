@@ -589,7 +589,10 @@ def _unbase64url(value: str) -> bytes:
     ):
         raise ValueError
     padding = "=" * (-len(value) % 4)
-    return base64.b64decode(value + padding, altchars=b"-_", validate=True)
+    decoded = base64.b64decode(value + padding, altchars=b"-_", validate=True)
+    if _base64url(decoded) != value:
+        raise ValueError
+    return decoded
 
 
 def _canonical_bytes(value: object) -> bytes:

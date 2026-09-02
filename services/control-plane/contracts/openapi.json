@@ -1,6 +1,333 @@
 {
   "components": {
     "schemas": {
+      "ActionBreakdown": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness": {
+            "$ref": "#/components/schemas/MetricFreshness"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionBreakdownItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DashboardWindow"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window",
+          "window_start",
+          "window_end",
+          "items",
+          "freshness"
+        ],
+        "title": "ActionBreakdown",
+        "type": "object"
+      },
+      "ActionBreakdownItem": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "decision_count": {
+            "minimum": 0.0,
+            "title": "Decision Count",
+            "type": "integer"
+          },
+          "share_percent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Share Percent",
+            "type": "number"
+          }
+        },
+        "required": [
+          "action_type",
+          "decision_count",
+          "share_percent"
+        ],
+        "title": "ActionBreakdownItem",
+        "type": "object"
+      },
+      "AgentDecisionReference": {
+        "additionalProperties": false,
+        "properties": {
+          "action_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Type"
+          },
+          "behavioral_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Behavioral Score",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "trace_id": {
+            "format": "uuid",
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "ALLOW",
+              "WOULD-BLOCK",
+              "BLOCK"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "created_at",
+          "verdict",
+          "behavioral_score",
+          "action_type"
+        ],
+        "title": "AgentDecisionReference",
+        "type": "object"
+      },
+      "AgentDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "allow_count": {
+            "minimum": 0.0,
+            "title": "Allow Count",
+            "type": "integer"
+          },
+          "block_count": {
+            "minimum": 0.0,
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "decision_count": {
+            "minimum": 0.0,
+            "title": "Decision Count",
+            "type": "integer"
+          },
+          "evaluation_latency": {
+            "$ref": "#/components/schemas/LatencyMetric"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MetricFreshness"
+          },
+          "high_risk_count": {
+            "minimum": 0.0,
+            "title": "High Risk Count",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "recent_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentDecisionReference"
+            },
+            "title": "Recent Decisions",
+            "type": "array"
+          },
+          "risk_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Risk Score",
+            "type": "number"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DashboardWindow"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          },
+          "would_block_count": {
+            "minimum": 0.0,
+            "title": "Would Block Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "risk_score",
+          "decision_count",
+          "high_risk_count",
+          "block_count",
+          "would_block_count",
+          "last_seen_at",
+          "window",
+          "window_start",
+          "window_end",
+          "first_seen_at",
+          "allow_count",
+          "evaluation_latency",
+          "recent_decisions",
+          "freshness"
+        ],
+        "title": "AgentDetail",
+        "type": "object"
+      },
+      "AgentRiskItem": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "block_count": {
+            "minimum": 0.0,
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "decision_count": {
+            "minimum": 0.0,
+            "title": "Decision Count",
+            "type": "integer"
+          },
+          "high_risk_count": {
+            "minimum": 0.0,
+            "title": "High Risk Count",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "risk_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Risk Score",
+            "type": "number"
+          },
+          "would_block_count": {
+            "minimum": 0.0,
+            "title": "Would Block Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id",
+          "risk_score",
+          "decision_count",
+          "high_risk_count",
+          "block_count",
+          "would_block_count",
+          "last_seen_at"
+        ],
+        "title": "AgentRiskItem",
+        "type": "object"
+      },
+      "AgentRiskPage": {
+        "additionalProperties": false,
+        "properties": {
+          "freshness": {
+            "$ref": "#/components/schemas/MetricFreshness"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRiskItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DashboardWindow"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window",
+          "window_start",
+          "window_end",
+          "items",
+          "next_cursor",
+          "freshness"
+        ],
+        "title": "AgentRiskPage",
+        "type": "object"
+      },
       "AuditContinuity": {
         "additionalProperties": false,
         "properties": {
@@ -112,6 +439,90 @@
         ],
         "title": "ComponentHealth",
         "type": "object"
+      },
+      "DashboardSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "active_agents": {
+            "$ref": "#/components/schemas/MetricValue"
+          },
+          "allowed": {
+            "$ref": "#/components/schemas/MetricValue"
+          },
+          "blocked": {
+            "$ref": "#/components/schemas/MetricValue"
+          },
+          "comparison_end": {
+            "format": "date-time",
+            "title": "Comparison End",
+            "type": "string"
+          },
+          "comparison_start": {
+            "format": "date-time",
+            "title": "Comparison Start",
+            "type": "string"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/MetricValue"
+          },
+          "evaluation_latency": {
+            "$ref": "#/components/schemas/LatencyMetric"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MetricFreshness"
+          },
+          "high_risk_decisions": {
+            "$ref": "#/components/schemas/MetricValue"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DashboardWindow"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          },
+          "would_block": {
+            "$ref": "#/components/schemas/MetricValue"
+          }
+        },
+        "required": [
+          "window",
+          "window_start",
+          "window_end",
+          "comparison_start",
+          "comparison_end",
+          "decisions",
+          "blocked",
+          "would_block",
+          "allowed",
+          "active_agents",
+          "high_risk_decisions",
+          "evaluation_latency",
+          "freshness"
+        ],
+        "title": "DashboardSummary",
+        "type": "object"
+      },
+      "DashboardWindow": {
+        "enum": [
+          "24h",
+          "7d",
+          "30d"
+        ],
+        "title": "DashboardWindow",
+        "type": "string"
       },
       "DecisionDetail": {
         "additionalProperties": false,
@@ -474,6 +885,97 @@
         "title": "DecisionSummary",
         "type": "object"
       },
+      "DecisionVolume": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket_granularity": {
+            "enum": [
+              "hour",
+              "day"
+            ],
+            "title": "Bucket Granularity",
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MetricFreshness"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionVolumePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "timezone": {
+            "const": "UTC",
+            "default": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DashboardWindow"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window",
+          "window_start",
+          "window_end",
+          "bucket_granularity",
+          "points",
+          "freshness"
+        ],
+        "title": "DecisionVolume",
+        "type": "object"
+      },
+      "DecisionVolumePoint": {
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "minimum": 0.0,
+            "title": "Allow",
+            "type": "integer"
+          },
+          "block": {
+            "minimum": 0.0,
+            "title": "Block",
+            "type": "integer"
+          },
+          "bucket_start": {
+            "format": "date-time",
+            "title": "Bucket Start",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "would_block": {
+            "minimum": 0.0,
+            "title": "Would Block",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket_start",
+          "allow",
+          "would_block",
+          "block",
+          "total"
+        ],
+        "title": "DecisionVolumePoint",
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -728,6 +1230,33 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "LatencyMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "p95_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "sample_count": {
+            "minimum": 0.0,
+            "title": "Sample Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sample_count"
+        ],
+        "title": "LatencyMetric",
+        "type": "object"
+      },
       "LivenessResponse": {
         "additionalProperties": false,
         "properties": {
@@ -751,6 +1280,80 @@
           "version"
         ],
         "title": "LivenessResponse",
+        "type": "object"
+      },
+      "MetricFreshness": {
+        "additionalProperties": false,
+        "properties": {
+          "poll_after_seconds": {
+            "default": 30,
+            "minimum": 1.0,
+            "title": "Poll After Seconds",
+            "type": "integer"
+          },
+          "snapshot_at": {
+            "format": "date-time",
+            "title": "Snapshot At",
+            "type": "string"
+          },
+          "source_last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Last Updated At"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "empty"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "snapshot_at",
+          "source_last_updated_at"
+        ],
+        "title": "MetricFreshness",
+        "type": "object"
+      },
+      "MetricValue": {
+        "additionalProperties": false,
+        "properties": {
+          "change_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Percent"
+          },
+          "previous_value": {
+            "title": "Previous Value",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "previous_value",
+          "change_percent"
+        ],
+        "title": "MetricValue",
         "type": "object"
       },
       "PipelineTimings": {
@@ -1106,6 +1709,504 @@
         "summary": "Readiness",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/v2/agents/risk": {
+      "get": {
+        "operationId": "agent_risk_v2_agents_risk_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DashboardWindow",
+              "default": "30d"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minimum_risk_score",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Minimum Risk Score",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRiskPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent Risk",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v2/agents/{agent_id}": {
+      "get": {
+        "operationId": "agent_detail_v2_agents__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DashboardWindow",
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agent Detail",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v2/dashboard/action-breakdown": {
+      "get": {
+        "operationId": "dashboard_action_breakdown_v2_dashboard_action_breakdown_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DashboardWindow",
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionBreakdown"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dashboard Action Breakdown",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/v2/dashboard/decision-volume": {
+      "get": {
+        "operationId": "dashboard_decision_volume_v2_dashboard_decision_volume_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DashboardWindow",
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionVolume"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dashboard Decision Volume",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/v2/dashboard/summary": {
+      "get": {
+        "operationId": "dashboard_summary_v2_dashboard_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DashboardWindow",
+              "default": "24h"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dashboard Summary",
+        "tags": [
+          "dashboard"
         ]
       }
     },

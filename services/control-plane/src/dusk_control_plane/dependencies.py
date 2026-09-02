@@ -11,6 +11,11 @@ from dusk_control_plane.audit import (
     PostgresDecisionEvidenceStore,
 )
 from dusk_control_plane.config import Settings
+from dusk_control_plane.dashboard import (
+    AgentRiskCursorCodec,
+    DashboardReader,
+    PostgresDashboardReader,
+)
 from dusk_control_plane.decisions import DecisionCursorCodec, DecisionReader, PostgresDecisionReader
 from dusk_control_plane.evaluations import EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
@@ -45,6 +50,7 @@ class AppContainer:
     audit_signer: AuditSigner | None = None
     outbox_worker: OutboxWorker | None = None
     decision_reader: DecisionReader | None = None
+    dashboard_reader: DashboardReader | None = None
 
     @classmethod
     def build(
@@ -57,6 +63,7 @@ class AppContainer:
         audit_signer: AuditSigner | None = None,
         outbox_worker: OutboxWorker | None = None,
         decision_reader: DecisionReader | None = None,
+        dashboard_reader: DashboardReader | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -97,6 +104,16 @@ class AppContainer:
                     resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
                 ),
             )
+        resolved_dashboard_reader = dashboard_reader
+        if resolved_settings.dashboard_read_api_enabled and resolved_dashboard_reader is None:
+            if resolved_database is None or resolved_settings.decision_cursor_signing_key is None:
+                raise ValueError("dashboard_read_api_enabled requires dashboard query dependencies")
+            resolved_dashboard_reader = PostgresDashboardReader(
+                resolved_database,
+                AgentRiskCursorCodec(
+                    resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
+                ),
+            )
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -112,4 +129,5 @@ class AppContainer:
             audit_signer=audit_signer,
             outbox_worker=outbox_worker,
             decision_reader=resolved_decision_reader,
+            dashboard_reader=resolved_dashboard_reader,
         )
