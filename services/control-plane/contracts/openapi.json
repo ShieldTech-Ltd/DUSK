@@ -1353,7 +1353,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation failed"
           },
           "500": {
             "content": {
@@ -1451,7 +1451,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation failed"
           },
           "500": {
             "content": {

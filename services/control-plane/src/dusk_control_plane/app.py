@@ -77,7 +77,10 @@ def _install_v2_routes(
         responses={
             401: {"model": ErrorEnvelope},
             403: {"model": ErrorEnvelope},
-            422: {"model": ErrorEnvelope},
+            422: {
+                "model": ErrorEnvelope,
+                "description": "Request validation failed",
+            },
             503: {"model": ErrorEnvelope},
             **common_errors,
         },
@@ -99,7 +102,10 @@ def _install_v2_routes(
             401: {"model": ErrorEnvelope},
             403: {"model": ErrorEnvelope},
             404: {"model": ErrorEnvelope},
-            422: {"model": ErrorEnvelope},
+            422: {
+                "model": ErrorEnvelope,
+                "description": "Request validation failed",
+            },
             503: {"model": ErrorEnvelope},
             **common_errors,
         },
