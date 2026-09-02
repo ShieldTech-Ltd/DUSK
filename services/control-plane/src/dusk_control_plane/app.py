@@ -7,11 +7,18 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from dusk_control_plane.audit import DurableEvaluationService
+from dusk_control_plane.decisions import (
+    DecisionDetail,
+    DecisionListQuery,
+    DecisionPage,
+    DecisionQueryUnavailableError,
+)
 from dusk_control_plane.dependencies import AppContainer, DependencyProbe
 from dusk_control_plane.errors import error_response, install_error_handlers
 from dusk_control_plane.evaluations import (
@@ -31,6 +38,8 @@ from dusk_control_plane.request_context import new_request_id, reset_request_id,
 REQUEST_ID_HEADER = "X-Request-ID"
 logger = logging.getLogger(__name__)
 _evaluation_authorization = require_route_policy("POST", "/v2/evaluations")
+_decision_list_authorization = require_route_policy("GET", "/v2/decisions")
+_decision_detail_authorization = require_route_policy("GET", "/v2/decisions/{trace_id}")
 
 
 def _install_v2_routes(
@@ -57,6 +66,52 @@ def _install_v2_routes(
         if service is None or not isinstance(service, DurableEvaluationService):
             raise EvaluationUnavailableError
         return await service.evaluate(body, principal)
+
+    if not container.settings.decision_read_api_enabled:
+        return
+
+    @app.get(
+        "/v2/decisions",
+        response_model=DecisionPage,
+        tags=["decisions"],
+        responses={
+            401: {"model": ErrorEnvelope},
+            403: {"model": ErrorEnvelope},
+            422: {"model": ErrorEnvelope},
+            503: {"model": ErrorEnvelope},
+            **common_errors,
+        },
+    )
+    async def list_decisions(
+        query: Annotated[DecisionListQuery, Query()],
+        principal: Annotated[Principal, Depends(_decision_list_authorization)],
+    ) -> DecisionPage:
+        reader = container.decision_reader
+        if reader is None:
+            raise DecisionQueryUnavailableError
+        return await reader.list_decisions(query, principal)
+
+    @app.get(
+        "/v2/decisions/{trace_id}",
+        response_model=DecisionDetail,
+        tags=["decisions"],
+        responses={
+            401: {"model": ErrorEnvelope},
+            403: {"model": ErrorEnvelope},
+            404: {"model": ErrorEnvelope},
+            422: {"model": ErrorEnvelope},
+            503: {"model": ErrorEnvelope},
+            **common_errors,
+        },
+    )
+    async def get_decision(
+        trace_id: UUID,
+        principal: Annotated[Principal, Depends(_decision_detail_authorization)],
+    ) -> DecisionDetail:
+        reader = container.decision_reader
+        if reader is None:
+            raise DecisionQueryUnavailableError
+        return await reader.get_decision(trace_id, principal)
 
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:

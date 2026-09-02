@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import os
+import time
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -32,6 +33,13 @@ from dusk_control_plane.audit import (
     verify_signed_audit_chain,
 )
 from dusk_control_plane.config import Environment, Settings
+from dusk_control_plane.decisions import (
+    DecisionCursorCodec,
+    DecisionListQuery,
+    DecisionNotFoundError,
+    InvalidDecisionCursorError,
+    PostgresDecisionReader,
+)
 from dusk_control_plane.dependencies import AppContainer
 from dusk_control_plane.evaluations import (
     CanonicalAction as EvaluationAction,
@@ -58,6 +66,7 @@ from dusk_control_plane.storage.models import (
     CanonicalAction,
     Decision,
     OutboxDelivery,
+    PolicyMatch,
     Tenant,
 )
 from dusk_control_plane.storage.repositories import (
@@ -979,3 +988,354 @@ async def test_http_failure_persists_only_numeric_status_and_safe_code(
     assert delivery.last_http_status == 503
     assert delivery.safe_diagnostic_code == "HTTP_REJECTED"
     assert "must-not-store" not in repr(delivery.__dict__)
+
+
+async def _insert_investigation_decision(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    sequence: int,
+    created_at: datetime,
+    agent_id: str,
+    action_type: str,
+    verdict: str = "ALLOW",
+    policy_decision: str = "ALLOW",
+    response_status: str = "DELIVERED",
+    degraded: bool = False,
+) -> UUID:
+    action = CanonicalAction(
+        tenant_id=tenant_id,
+        input_digest=hashlib.sha256(f"{tenant_id}:{sequence}".encode()).digest(),
+        redacted_action={
+            "agent_id": agent_id,
+            "action_type": action_type,
+            "target": f"resource-{sequence}",
+            "consequential": verdict != "ALLOW",
+            "attributes": {"credential": "[REDACTED]", "region": "eu-west-2"},
+        },
+        created_at=created_at,
+    )
+    session.add(action)
+    await session.flush()
+    trace_id = uuid4()
+    decision = Decision(
+        tenant_id=tenant_id,
+        action_id=action.id,
+        trace_id=trace_id,
+        idempotency_key=f"query-{tenant_id}-{sequence}",
+        agent_id=agent_id,
+        verdict=verdict,
+        behavioral_score=Decimal("0.75000"),
+        blast_radius="HIGH" if verdict != "ALLOW" else "LOW",
+        reasons=[{"code": "POLICY_MATCH"}],
+        mitre_mappings=[{"framework": "MITRE ATT&CK", "id": "T1098"}],
+        predicted_next={"action": "observe"},
+        policy_decision=policy_decision,
+        policy_pack_version="2026.09",
+        evidence_state={"degraded": degraded},
+        pipeline_timings={"total_ms": 4.2},
+        response_status=response_status,
+        created_at=created_at,
+    )
+    session.add(decision)
+    await session.flush()
+    session.add_all(
+        (
+            PolicyMatch(
+                tenant_id=tenant_id,
+                decision_id=decision.id,
+                rule_id=f"rule-{sequence}",
+                rule_version="1",
+                effect="DENY" if verdict == "BLOCK" else "ALLOW",
+                safe_metadata={"title": "Safe rule metadata"},
+            ),
+            AuditEvent(
+                tenant_id=tenant_id,
+                sequence=sequence,
+                event_type="evaluation.decided",
+                decision_id=decision.id,
+                occurred_at=created_at,
+                previous_digest=None,
+                digest=hashlib.sha256(f"audit:{tenant_id}:{sequence}".encode()).digest(),
+                signing_key_id="kms/key/decision-read-test",
+                signature=b"signed",
+                integrity_metadata={"trace_id": str(trace_id)},
+                sensitive_detail=None,
+            ),
+        )
+    )
+    return trace_id
+
+
+def _investigation_reader(engine: AsyncEngine) -> PostgresDecisionReader:
+    database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    return PostgresDecisionReader(
+        database, DecisionCursorCodec(b"integration-cursor-key-value-32!!")
+    )
+
+
+def _human(tenant_id: UUID) -> Principal:
+    return Principal(
+        issuer="https://identity.example.test/",
+        subject="analyst",
+        tenant_id=str(tenant_id),
+        kind=IdentityKind.HUMAN,
+    )
+
+
+@pytest.mark.anyio
+async def test_decision_keyset_pages_are_stable_without_duplicates_or_gaps(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    base_time = datetime.now(UTC) - timedelta(minutes=10)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"query-{tenant_id}", display_name="Query tenant"))
+        await session.flush()
+        original = [
+            await _insert_investigation_decision(
+                session,
+                tenant_id=tenant_id,
+                sequence=index,
+                created_at=base_time + timedelta(seconds=index // 2),
+                agent_id=f"agent-{index}",
+                action_type="network.firewall.update",
+            )
+            for index in range(1, 8)
+        ]
+    reader = _investigation_reader(engine)
+    query = DecisionListQuery(limit=3)
+    first = await reader.list_decisions(query, _human(tenant_id))
+    assert first.next_cursor is not None
+    repeated_first = await reader.list_decisions(query, _human(tenant_id))
+    assert [item.trace_id for item in repeated_first.items] == [
+        item.trace_id for item in first.items
+    ]
+
+    async with AsyncSession(engine) as session, session.begin():
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=8,
+            created_at=datetime.now(UTC),
+            agent_id="new-after-snapshot",
+            action_type="network.firewall.update",
+        )
+
+    seen = [item.trace_id for item in first.items]
+    cursor = first.next_cursor
+    while cursor is not None:
+        page = await reader.list_decisions(
+            DecisionListQuery(limit=2, cursor=cursor), _human(tenant_id)
+        )
+        assert page.snapshot_at == first.snapshot_at
+        seen.extend(item.trace_id for item in page.items)
+        cursor = page.next_cursor
+    assert len(seen) == len(set(seen)) == len(original)
+    assert set(seen) == set(original)
+
+
+@pytest.mark.anyio
+async def test_decision_filters_full_text_search_and_cursor_binding_use_postgresql(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    other_tenant = uuid4()
+    created = datetime.now(UTC) - timedelta(minutes=1)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"filter-{tenant_id}", display_name="Filter tenant"),
+                Tenant(id=other_tenant, slug=f"other-{other_tenant}", display_name="Other"),
+            )
+        )
+        await session.flush()
+        blocked_trace = await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=1,
+            created_at=created,
+            agent_id="payments-deployer",
+            action_type="iam.role.assignment",
+            verdict="BLOCK",
+            policy_decision="DENY",
+            response_status="FAILED",
+            degraded=True,
+        )
+        await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=2,
+            created_at=created + timedelta(seconds=1),
+            agent_id="benign-agent",
+            action_type="storage.read",
+        )
+        await _insert_investigation_decision(
+            session,
+            tenant_id=other_tenant,
+            sequence=1,
+            created_at=created,
+            agent_id="payments-deployer",
+            action_type="iam.role.assignment",
+            verdict="BLOCK",
+        )
+    reader = _investigation_reader(engine)
+    query = DecisionListQuery(
+        limit=1,
+        verdict="BLOCK",
+        policy_decision="DENY",
+        response_status="FAILED",
+        evidence_degraded=True,
+        agent_id="payments-deployer",
+        action_type="iam.role.assignment",
+        search="resource",
+        created_from=created - timedelta(seconds=1),
+        created_to=created + timedelta(seconds=1),
+    )
+    page = await reader.list_decisions(query, _human(tenant_id))
+    assert [item.trace_id for item in page.items] == [blocked_trace]
+    trace_search = await reader.list_decisions(
+        DecisionListQuery(search=str(blocked_trace)), _human(tenant_id)
+    )
+    assert [item.trace_id for item in trace_search.items] == [blocked_trace]
+    empty = await reader.list_decisions(
+        DecisionListQuery(search="definitely-absent-decision"), _human(tenant_id)
+    )
+    assert empty.items == ()
+    assert empty.next_cursor is None
+
+    unfiltered = await reader.list_decisions(DecisionListQuery(limit=1), _human(tenant_id))
+    assert unfiltered.next_cursor is not None
+    with pytest.raises(InvalidDecisionCursorError):
+        await reader.list_decisions(
+            DecisionListQuery(cursor=unfiltered.next_cursor, verdict="BLOCK"),
+            _human(tenant_id),
+        )
+    with pytest.raises(InvalidDecisionCursorError):
+        await reader.list_decisions(
+            DecisionListQuery(cursor=unfiltered.next_cursor), _human(other_tenant)
+        )
+
+
+@pytest.mark.anyio
+async def test_decision_detail_is_redacted_tenant_bound_and_has_persisted_continuity(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id, other_tenant = uuid4(), uuid4()
+    created = datetime.now(UTC) - timedelta(minutes=1)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"detail-{tenant_id}", display_name="Detail tenant"),
+                Tenant(id=other_tenant, slug=f"hidden-{other_tenant}", display_name="Hidden"),
+            )
+        )
+        await session.flush()
+        trace_id = await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=1,
+            created_at=created,
+            agent_id="detail-agent",
+            action_type="kubernetes.cluster_role.bind",
+            verdict="BLOCK",
+            policy_decision="DENY",
+        )
+        similar_trace = await _insert_investigation_decision(
+            session,
+            tenant_id=tenant_id,
+            sequence=2,
+            created_at=created - timedelta(seconds=1),
+            agent_id="detail-agent",
+            action_type="storage.read",
+        )
+    reader = _investigation_reader(engine)
+    detail = await reader.get_decision(trace_id, _human(tenant_id))
+    assert detail.action is not None
+    assert detail.action.attributes["credential"] == "[REDACTED]"
+    assert "idempotency" not in detail.model_dump_json()
+    assert detail.audit.sequence == 1
+    assert detail.audit.digest
+    assert detail.policy_matches[0].rule_id == "rule-1"
+    assert [item.trace_id for item in detail.similar_decisions] == [similar_trace]
+    with pytest.raises(DecisionNotFoundError):
+        await reader.get_decision(trace_id, _human(other_tenant))
+
+    deleted_at = datetime.now(UTC)
+    async with AsyncSession(engine) as session, session.begin():
+        stored = await session.scalar(
+            select(Decision).where(Decision.tenant_id == tenant_id, Decision.trace_id == trace_id)
+        )
+        assert stored is not None
+        stored_action = await session.scalar(
+            select(CanonicalAction).where(
+                CanonicalAction.tenant_id == tenant_id,
+                CanonicalAction.id == stored.action_id,
+            )
+        )
+        assert stored_action is not None
+        stored.reasons = None
+        stored.mitre_mappings = None
+        stored.predicted_next = None
+        stored.evidence_state = None
+        stored.pipeline_timings = None
+        stored.detail_deleted_at = deleted_at
+        stored_action.redacted_action = None
+        stored_action.detail_deleted_at = deleted_at
+    retained = await reader.get_decision(trace_id, _human(tenant_id))
+    assert retained.detail_available is False
+    assert retained.action is None
+    assert retained.reasons is None
+    assert retained.audit.digest == detail.audit.digest
+
+
+@pytest.mark.anyio
+async def test_large_decision_dataset_remains_bounded_and_uses_query_indexes(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    created = datetime.now(UTC) - timedelta(hours=1)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"large-{tenant_id}", display_name="Large tenant"))
+        await session.flush()
+        for index in range(1, 251):
+            await _insert_investigation_decision(
+                session,
+                tenant_id=tenant_id,
+                sequence=index,
+                created_at=created + timedelta(milliseconds=index),
+                agent_id="high-volume-agent" if index % 2 else "other-agent",
+                action_type="network.firewall.update" if index % 3 else "storage.read",
+            )
+    reader = _investigation_reader(engine)
+    durations: list[float] = []
+    for _ in range(20):
+        started = time.perf_counter()
+        page = await reader.list_decisions(
+            DecisionListQuery(limit=100, agent_id="high-volume-agent"), _human(tenant_id)
+        )
+        durations.append((time.perf_counter() - started) * 1000)
+        assert len(page.items) == 100
+    observed_p95 = sorted(durations)[18]
+    assert observed_p95 <= 500
+
+    async with engine.connect() as connection:
+        indexes = {
+            row[0]
+            for row in (
+                await connection.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = current_schema() AND tablename IN "
+                        "('decisions', 'canonical_actions')"
+                    )
+                )
+            ).all()
+        }
+    assert {
+        "ix_decisions_tenant_created",
+        "ix_decisions_tenant_policy_created",
+        "ix_decisions_tenant_response_created",
+        "ix_decisions_search_agent",
+        "ix_canonical_actions_search_document",
+    } <= indexes

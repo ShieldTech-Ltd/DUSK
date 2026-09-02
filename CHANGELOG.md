@@ -14,6 +14,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Tenant-scoped decision list and investigation endpoints with signed keyset
+  cursors, PostgreSQL full-text search, redacted projections, policy and audit
+  continuity, and default-disabled activation.
 - Bounded transactional-outbox workers with leased PostgreSQL claims,
   at-least-once delivery IDs, exponential backoff with jitter, dead letters,
   DNS-rebinding-resistant pinned HTTPS delivery, safe diagnostics, and

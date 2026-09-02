@@ -9,6 +9,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from dusk_control_plane.decisions import (
+    DecisionNotFoundError,
+    DecisionQueryUnavailableError,
+    InvalidDecisionCursorError,
+)
 from dusk_control_plane.evaluations import EvaluationUnavailableError
 from dusk_control_plane.identity import (
     AuthenticationRejectedError,
@@ -136,6 +141,40 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     _install_evaluation_error_handlers(app)
+    _install_decision_error_handlers(app)
+
+
+def _install_decision_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(InvalidDecisionCursorError)
+    async def invalid_decision_cursor(
+        _request: Request, _exc: InvalidDecisionCursorError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=422,
+            code="INVALID_CURSOR",
+            message="Pagination cursor is invalid for this query",
+            retryable=False,
+        )
+
+    @app.exception_handler(DecisionNotFoundError)
+    async def decision_not_found(_request: Request, _exc: DecisionNotFoundError) -> JSONResponse:
+        return error_response(
+            status_code=404,
+            code="DECISION_NOT_FOUND",
+            message="Decision was not found",
+            retryable=False,
+        )
+
+    @app.exception_handler(DecisionQueryUnavailableError)
+    async def decision_query_unavailable(
+        _request: Request, _exc: DecisionQueryUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="DECISION_QUERY_UNAVAILABLE",
+            message="Decision data is temporarily unavailable",
+            retryable=True,
+        )
 
 
 def _install_evaluation_error_handlers(app: FastAPI) -> None:

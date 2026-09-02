@@ -32,3 +32,42 @@ def test_v2_evaluation_contract_is_authenticated_and_has_no_tenant_input() -> No
         "evidence_degraded",
         "reason_codes",
     } <= set(response_fields)
+
+
+def test_decision_read_contract_is_authenticated_bounded_and_tenant_free() -> None:
+    schema = json.loads(render_openapi())
+    list_operation = schema["paths"]["/v2/decisions"]["get"]
+    detail_operation = schema["paths"]["/v2/decisions/{trace_id}"]["get"]
+    assert list_operation["security"] == [{"HTTPBearer": []}]
+    assert detail_operation["security"] == [{"HTTPBearer": []}]
+    parameters = {value["name"]: value for value in list_operation["parameters"]}
+    assert set(parameters) == {
+        "limit",
+        "cursor",
+        "created_from",
+        "created_to",
+        "verdict",
+        "policy_decision",
+        "response_status",
+        "evidence_degraded",
+        "agent_id",
+        "action_type",
+        "search",
+    }
+    assert parameters["limit"]["schema"]["maximum"] == 100
+    assert parameters["cursor"]["schema"]["anyOf"][0]["maxLength"] == 2048
+    assert "tenant_id" not in parameters
+    assert "principal_id" not in parameters
+    detail_response = detail_operation["responses"]["200"]["content"]["application/json"]
+    detail_name = detail_response["schema"]["$ref"].rsplit("/", 1)[1]
+    detail_fields = schema["components"]["schemas"][detail_name]["properties"]
+    assert {
+        "action",
+        "input_digest",
+        "policy_matches",
+        "evidence_state",
+        "pipeline_timings",
+        "audit",
+        "similar_decisions",
+        "detail_available",
+    } <= set(detail_fields)

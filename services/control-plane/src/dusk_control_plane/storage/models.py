@@ -157,6 +157,11 @@ class CanonicalAction(Base):
         ),
         Index("ix_canonical_actions_tenant_created", "tenant_id", "created_at", "id"),
         Index("ix_canonical_actions_tenant_digest", "tenant_id", "input_digest"),
+        Index(
+            "ix_canonical_actions_search_document",
+            text("to_tsvector('simple'::regconfig, redacted_action::text)"),
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -206,6 +211,25 @@ class Decision(Base):
         Index("ix_decisions_tenant_created", "tenant_id", "created_at", "id"),
         Index("ix_decisions_tenant_verdict_created", "tenant_id", "verdict", "created_at"),
         Index("ix_decisions_tenant_agent_created", "tenant_id", "agent_id", "created_at"),
+        Index(
+            "ix_decisions_tenant_policy_created",
+            "tenant_id",
+            "policy_decision",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_decisions_tenant_response_created",
+            "tenant_id",
+            "response_status",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_decisions_search_agent",
+            text("to_tsvector('simple'::regconfig, agent_id)"),
+            postgresql_using="gin",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
