@@ -17,6 +17,10 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from dusk.policies import load_enterprise_pack
+from opentelemetry import metrics
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
@@ -59,6 +63,7 @@ from dusk_control_plane.evaluations import (
     PipelineTimings,
 )
 from dusk_control_plane.identity import IdentityKind, Principal
+from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.operations import (
     IntegrationHealthQuery,
     OperationsCursorCodec,
@@ -408,9 +413,13 @@ class _TestSigner:
         return key_id == self.key_id and hmac.compare_digest(await self.sign(digest), signature)
 
 
-def _store(engine: AsyncEngine, signer: _TestSigner | None = None) -> PostgresDecisionEvidenceStore:
+def _store(
+    engine: AsyncEngine,
+    signer: _TestSigner | None = None,
+    telemetry: Telemetry | None = None,
+) -> PostgresDecisionEvidenceStore:
     database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
-    return PostgresDecisionEvidenceStore(database, signer or _TestSigner())
+    return PostgresDecisionEvidenceStore(database, signer or _TestSigner(), telemetry=telemetry)
 
 
 @pytest.mark.anyio
@@ -427,7 +436,13 @@ async def test_atomic_decision_audit_and_outbox_commit_is_redacted_and_verifiabl
         IdentityKind.WORKLOAD,
         workload_id="integration-agent",
     )
-    result = await _store(engine).persist(
+    span_exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    telemetry = Telemetry(
+        tracer=tracer_provider.get_tracer("integration"), meter=metrics.get_meter("integration")
+    )
+    result = await _store(engine, telemetry=telemetry).persist(
         request=_evaluation_request("atomic-success"),
         response=_evaluation_response(),
         principal=principal,
@@ -459,6 +474,16 @@ async def test_atomic_decision_audit_and_outbox_commit_is_redacted_and_verifiabl
     assert "must-not-persist" not in persisted
     assert "unrestricted-provider-token" not in persisted
     assert action.redacted_action["attributes"]["credential"] == "[REDACTED]"
+    assert decision.pipeline_timings["persistence_ms"] >= 0
+    assert decision.pipeline_timings["audit_ms"] >= 0
+    assert result.response.pipeline_timings.persistence_ms is not None
+    assert result.response.pipeline_timings.audit_ms == result.audit_ms
+    audit_span = next(
+        span for span in span_exporter.get_finished_spans() if span.name.endswith("audit")
+    )
+    assert audit_span.attributes["dusk.decision.id"] == str(result.decision_id)
+    assert audit_span.attributes["dusk.audit.event_id"] == str(result.audit_event_id)
+    assert audit_span.attributes["dusk.outbox.delivery_id"] == str(result.delivery_id)
 
 
 @pytest.mark.anyio
@@ -655,6 +680,7 @@ def _worker(
     concurrency: int = 4,
     now: datetime | None = None,
     resolver=None,
+    telemetry: Telemetry | None = None,
 ) -> OutboxWorker:
     database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
     return OutboxWorker(
@@ -673,6 +699,7 @@ def _worker(
         config=_worker_config(batch_size=batch_size, concurrency=concurrency),
         random=lambda: 0,
         clock=(lambda: now) if now is not None else lambda: datetime.now(UTC),
+        telemetry=telemetry,
     )
 
 
@@ -714,7 +741,13 @@ async def test_webhook_delivery_is_bounded_and_never_claims_execution(engine: As
     await _isolate_worker_queue(engine)
     tenant_id, durable = await _persist_outbox_fixture(engine, "webhook-delivery")
     transport = _RecordingTransport()
-    stats = await _worker(engine, transport, concurrency=1).run_once()
+    span_exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    telemetry = Telemetry(
+        tracer=tracer_provider.get_tracer("outbox"), meter=metrics.get_meter("outbox")
+    )
+    stats = await _worker(engine, transport, concurrency=1, telemetry=telemetry).run_once()
     assert stats.claimed == stats.delivered == 1
     assert transport.max_active == 1
     async with AsyncSession(engine) as session:
@@ -729,6 +762,11 @@ async def test_webhook_delivery_is_bounded_and_never_claims_execution(engine: As
     assert delivery.delivered_at is not None
     assert decision.response_status == "DELIVERED"
     assert decision.response_status != "EXECUTED"
+    delivery_span = next(
+        span for span in span_exporter.get_finished_spans() if span.name.endswith("outbox")
+    )
+    assert delivery_span.attributes["dusk.decision.id"] == str(durable.decision_id)
+    assert delivery_span.attributes["dusk.outbox.delivery_id"] == str(durable.delivery_id)
 
 
 @pytest.mark.anyio
@@ -837,8 +875,18 @@ async def test_only_bound_verified_broker_acknowledgement_sets_executed(
     _, durable = await _make_broker_delivery(engine, "trusted-ack")
     verifier = _AckVerifier()
     transport = _RecordingTransport([_ack_response])
+    span_exporter = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    telemetry = Telemetry(
+        tracer=tracer_provider.get_tracer("broker"), meter=metrics.get_meter("broker")
+    )
     result = await _worker(
-        engine, transport, kind=DestinationKind.ENFORCEMENT_BROKER, verifier=verifier
+        engine,
+        transport,
+        kind=DestinationKind.ENFORCEMENT_BROKER,
+        verifier=verifier,
+        telemetry=telemetry,
     ).run_once()
     assert result.delivered == 1
     assert verifier.calls == 1
@@ -853,6 +901,12 @@ async def test_only_bound_verified_broker_acknowledgement_sets_executed(
     assert delivery.acknowledgement_digest is not None
     assert delivery.acknowledgement_signature == b"test-signature"
     assert delivery.acknowledgement_evidence["delivery_id"] == str(delivery.delivery_id)
+    spans = {span.name: span for span in span_exporter.get_finished_spans()}
+    acknowledgement_span = spans["dusk.pipeline.broker_acknowledgement"]
+    outbox_span = spans["dusk.pipeline.outbox"]
+    assert acknowledgement_span.parent is not None
+    assert acknowledgement_span.parent.span_id == outbox_span.context.span_id
+    assert acknowledgement_span.attributes["dusk.outbox.delivery_id"] == str(durable.delivery_id)
 
 
 @pytest.mark.anyio
@@ -1603,7 +1657,14 @@ async def test_operational_health_is_tenant_scoped_stale_aware_and_measured(
         load_enterprise_pack(),
         OperationsCursorCodec(b"x" * 32),
         stale_after=timedelta(minutes=2),
-        instrumented_pipeline_stages=("behavioral", "policy", "total"),
+        instrumented_pipeline_stages=(
+            "normalization",
+            "behavioral",
+            "policy",
+            "persistence",
+            "audit",
+            "response",
+        ),
     )
     principal = _human(tenant_id)
     page = await reader.integration_health(IntegrationHealthQuery(limit=1), principal)
@@ -1624,4 +1685,11 @@ async def test_operational_health_is_tenant_scoped_stale_aware_and_measured(
     assert components["outbox"].status == "unmeasured"
     assert components["audit"].status == "unmeasured"
     assert components["adapters"].status == "unmeasured"
-    assert status.instrumented_pipeline_stages == ("behavioral", "policy", "total")
+    assert status.instrumented_pipeline_stages == (
+        "normalization",
+        "behavioral",
+        "policy",
+        "persistence",
+        "audit",
+        "response",
+    )

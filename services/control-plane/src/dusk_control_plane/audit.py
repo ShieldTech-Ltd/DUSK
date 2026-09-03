@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,7 +15,7 @@ from typing import Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,7 @@ from dusk_control_plane.evaluations import (
     PolicyMatchResponse,
 )
 from dusk_control_plane.identity import Principal
+from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import (
     AuditEvent,
@@ -78,6 +80,7 @@ class DurableDecision:
     checkpoint: AuditCheckpoint
     inserted: bool
     response: EvaluationResponse
+    audit_ms: float = 0
 
 
 @dataclass(frozen=True)
@@ -115,25 +118,45 @@ class AuditSigner(Protocol):
 class DurableEvaluationService:
     """Require durable decision evidence before returning a consequential verdict."""
 
-    def __init__(self, evaluator: EvaluationService, evidence_store: DecisionEvidenceStore) -> None:
+    def __init__(
+        self,
+        evaluator: EvaluationService,
+        evidence_store: DecisionEvidenceStore,
+        telemetry: Telemetry | None = None,
+    ) -> None:
         self._evaluator = evaluator
         self._evidence_store = evidence_store
+        self._telemetry = telemetry
 
     async def evaluate(
         self, request: EvaluationRequest, principal: Principal
     ) -> EvaluationResponse:
+        started = time.perf_counter()
         response = await self._evaluator.evaluate(request, principal)
+        persistence_started = time.perf_counter()
         try:
-            durable = await self._evidence_store.persist(
-                request=request,
-                response=response,
-                principal=principal,
-            )
+            if self._telemetry is None:
+                durable = await self._evidence_store.persist(
+                    request=request, response=response, principal=principal
+                )
+            else:
+                with self._telemetry.stage("persistence", decision_trace_id=response.trace_id):
+                    durable = await self._evidence_store.persist(
+                        request=request, response=response, principal=principal
+                    )
         except DurableCommitUnavailableError:
             raise
         except Exception as exc:  # noqa: BLE001 - fail closed at the durability boundary
             raise DurableCommitUnavailableError from exc
-        return durable.response
+        persistence_ms = (time.perf_counter() - persistence_started) * 1000
+        timings = durable.response.pipeline_timings.model_copy(
+            update={
+                "persistence_ms": persistence_ms,
+                "audit_ms": durable.audit_ms,
+                "total_ms": (time.perf_counter() - started) * 1000,
+            }
+        )
+        return durable.response.model_copy(update={"pipeline_timings": timings})
 
 
 class PostgresDecisionEvidenceStore:
@@ -145,10 +168,12 @@ class PostgresDecisionEvidenceStore:
         signer: AuditSigner,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._database = database
         self._signer = signer
         self._clock = clock
+        self._telemetry = telemetry
 
     async def persist(
         self,
@@ -158,13 +183,14 @@ class PostgresDecisionEvidenceStore:
         principal: Principal,
         intent: OutboxIntent = DEFAULT_OUTBOX_INTENT,
     ) -> DurableDecision:
+        started = time.perf_counter()
         try:
             tenant_id = UUID(principal.tenant_id)
         except ValueError as exc:
             raise DurableCommitUnavailableError("identity tenant is not a storage UUID") from exc
         try:
             async with self._database.transaction() as session:
-                return await self._persist_transaction(
+                durable = await self._persist_transaction(
                     session=session,
                     tenant_id=tenant_id,
                     request=request,
@@ -172,6 +198,31 @@ class PostgresDecisionEvidenceStore:
                     principal=principal,
                     intent=intent,
                 )
+                if durable.inserted:
+                    persistence_ms = (time.perf_counter() - started) * 1000
+                    timings = durable.response.pipeline_timings.model_copy(
+                        update={
+                            "persistence_ms": persistence_ms,
+                            "audit_ms": durable.audit_ms,
+                            "total_ms": durable.response.pipeline_timings.total_ms + persistence_ms,
+                        }
+                    )
+                    await session.execute(
+                        update(Decision)
+                        .where(Decision.id == durable.decision_id, Decision.tenant_id == tenant_id)
+                        .values(pipeline_timings=timings.model_dump(mode="json"))
+                    )
+                    durable = DurableDecision(
+                        decision_id=durable.decision_id,
+                        trace_id=durable.trace_id,
+                        audit_event_id=durable.audit_event_id,
+                        delivery_id=durable.delivery_id,
+                        checkpoint=durable.checkpoint,
+                        inserted=True,
+                        response=durable.response.model_copy(update={"pipeline_timings": timings}),
+                        audit_ms=durable.audit_ms,
+                    )
+                return durable
         except DurableCommitUnavailableError:
             raise
         except (DBAPIError, SQLAlchemyError, TimeoutError) as exc:
@@ -233,6 +284,7 @@ class PostgresDecisionEvidenceStore:
                 AuditCheckpoint(tenant_id, audit.sequence, audit.digest),
                 False,
                 stored_response,
+                float((decision.pipeline_timings or {}).get("audit_ms", 0)),
             )
 
         principal_id = await _upsert_principal(session, tenant_id, principal, self._clock())
@@ -311,13 +363,27 @@ class PostgresDecisionEvidenceStore:
             previous_digest=None if previous is None else previous.digest,
             integrity_metadata=metadata,
         )
+        audit_event_id = uuid4()
+        delivery_id = uuid4()
+        audit_started = time.perf_counter()
         try:
-            signature = await self._signer.sign(digest)
+            if self._telemetry is None:
+                signature = await self._signer.sign(digest)
+            else:
+                with self._telemetry.stage(
+                    "audit",
+                    decision_trace_id=response.trace_id,
+                    decision_id=str(decision.id),
+                    audit_event_id=str(audit_event_id),
+                    delivery_id=str(delivery_id),
+                ):
+                    signature = await self._signer.sign(digest)
         except Exception as exc:  # noqa: BLE001 - signer detail cannot cross the boundary
             raise DurableCommitUnavailableError("audit signing unavailable") from exc
         if not signature or len(signature) > 8192 or not self._signer.key_id:
             raise DurableCommitUnavailableError("audit signer returned invalid evidence")
         audit = AuditEvent(
+            id=audit_event_id,
             tenant_id=tenant_id,
             sequence=sequence,
             event_type=AUDIT_EVENT_TYPE,
@@ -331,7 +397,6 @@ class PostgresDecisionEvidenceStore:
             integrity_metadata=metadata,
             sensitive_detail=None,
         )
-        delivery_id = uuid4()
         delivery = OutboxDelivery(
             tenant_id=tenant_id,
             decision_id=decision.id,
@@ -351,6 +416,7 @@ class PostgresDecisionEvidenceStore:
         )
         session.add_all((audit, delivery))
         await session.flush()
+        audit_ms = (time.perf_counter() - audit_started) * 1000
         return DurableDecision(
             decision.id,
             decision.trace_id,
@@ -364,6 +430,7 @@ class PostgresDecisionEvidenceStore:
                     "response_status": "DELIVERY_PENDING",
                 }
             ),
+            audit_ms,
         )
 
 
