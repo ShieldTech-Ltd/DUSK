@@ -22,6 +22,7 @@ from dusk_control_plane.dashboard import (
 )
 from dusk_control_plane.decisions import DecisionListQuery
 from dusk_control_plane.evaluations import PipelineTimings
+from dusk_control_plane.operations import PolicyPage, PolicySummary
 from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
 from dusk_control_plane.policy import EvidenceTrust
 from dusk_control_plane.storage.models import (
@@ -151,6 +152,12 @@ agent_detail
 invalid_agent_risk_cursor
 agent_not_found
 dashboard_query_unavailable
+invalid_operations_cursor
+operations_unavailable
+policies
+policy_summary
+integration_health
+service_status
 DecisionListQuery.require_utc
 DecisionListQuery.reject_control_characters
 DecisionListQuery.validate_range
@@ -176,3 +183,6 @@ AgentRiskPage.window_start
 AgentRiskPage.window_end
 AgentDetail.window_start
 AgentDetail.window_end
+PolicyPage.pack_name
+PolicySummary.pack_name
+PolicySummary.counts_by_status

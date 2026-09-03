@@ -224,7 +224,8 @@ def test_agent_cursor_is_versioned_tenant_and_filter_bound() -> None:
     with pytest.raises(InvalidAgentRiskCursorError):
         codec.decode(cursor, tenant_id=TENANT, query=AgentRiskQuery(window="30d"))
     with pytest.raises(InvalidAgentRiskCursorError):
-        codec.decode(cursor[:-1] + "A", tenant_id=TENANT, query=query)
+        replacement = "A" if cursor[-1] != "A" else "B"
+        codec.decode(cursor[:-1] + replacement, tenant_id=TENANT, query=query)
 
 
 def test_dashboard_feature_flag_is_default_off_and_validated() -> None:

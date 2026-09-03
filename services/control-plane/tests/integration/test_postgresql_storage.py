@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from dusk.policies import load_enterprise_pack
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
@@ -58,6 +59,11 @@ from dusk_control_plane.evaluations import (
     PipelineTimings,
 )
 from dusk_control_plane.identity import IdentityKind, Principal
+from dusk_control_plane.operations import (
+    IntegrationHealthQuery,
+    OperationsCursorCodec,
+    PostgresOperationsReader,
+)
 from dusk_control_plane.outbox import (
     DeliveryDestination,
     DeliveryError,
@@ -72,6 +78,7 @@ from dusk_control_plane.storage.models import (
     AuditEvent,
     CanonicalAction,
     Decision,
+    IntegrationHealth,
     OutboxDelivery,
     PolicyMatch,
     Tenant,
@@ -1540,3 +1547,81 @@ async def test_empty_dashboard_is_explicit_and_launch_load_is_bounded(
         durations.append((time.perf_counter() - started) * 1000)
         assert len(page.items) == 50
     assert sorted(durations)[18] <= 1000
+
+
+@pytest.mark.anyio
+async def test_operational_health_is_tenant_scoped_stale_aware_and_measured(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    other_tenant = uuid4()
+    now = datetime.now(UTC)
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"ops-{tenant_id}", display_name="Operations"),
+                Tenant(id=other_tenant, slug=f"ops-{other_tenant}", display_name="Other"),
+            )
+        )
+        await session.flush()
+        session.add_all(
+            (
+                IntegrationHealth(
+                    tenant_id=tenant_id,
+                    integration_key="gate-primary",
+                    integration_kind="gate",
+                    status="HEALTHY",
+                    checked_at=now,
+                    latency_ms=8,
+                ),
+                IntegrationHealth(
+                    tenant_id=tenant_id,
+                    integration_key="sie-primary",
+                    integration_kind="sie",
+                    status="HEALTHY",
+                    checked_at=now - timedelta(minutes=10),
+                    latency_ms=21,
+                    safe_diagnostic_code="postgresql://secret@internal",
+                ),
+                IntegrationHealth(
+                    tenant_id=other_tenant,
+                    integration_key="foreign-adapter",
+                    integration_kind="adapter",
+                    status="UNAVAILABLE",
+                    checked_at=now,
+                    safe_diagnostic_code="CONNECTION_FAILED",
+                ),
+            )
+        )
+
+    database = Database(
+        engine,
+        async_sessionmaker(engine, expire_on_commit=False),
+    )
+    reader = PostgresOperationsReader(
+        database,
+        load_enterprise_pack(),
+        OperationsCursorCodec(b"x" * 32),
+        stale_after=timedelta(minutes=2),
+        instrumented_pipeline_stages=("behavioral", "policy", "total"),
+    )
+    principal = _human(tenant_id)
+    page = await reader.integration_health(IntegrationHealthQuery(limit=1), principal)
+    assert [item.integration_key for item in page.items] == ["gate-primary"]
+    assert page.next_cursor is not None
+    second = await reader.integration_health(
+        IntegrationHealthQuery(limit=1, cursor=page.next_cursor), principal
+    )
+    assert second.items[0].status == "STALE"
+    assert second.items[0].diagnostic_code == "STALE_MEASUREMENT"
+    assert "foreign-adapter" not in page.model_dump_json() + second.model_dump_json()
+
+    status = await reader.service_status(principal)
+    components = {component.name: component for component in status.components}
+    assert components["postgresql"].status == "healthy"
+    assert components["gate"].status == "healthy"
+    assert components["sie"].status == "unavailable"
+    assert components["outbox"].status == "unmeasured"
+    assert components["audit"].status == "unmeasured"
+    assert components["adapters"].status == "unmeasured"
+    assert status.instrumented_pipeline_stages == ("behavioral", "policy", "total")

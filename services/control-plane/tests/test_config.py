@@ -200,6 +200,21 @@ def test_decision_read_api_requires_v2_storage_and_secret_key() -> None:
     assert "cursor-secret-value" not in repr(configured)
 
 
+def test_operations_read_api_requires_v2_storage_and_secret_key() -> None:
+    with pytest.raises(ValidationError, match="requires v2_enabled and storage_enabled"):
+        Settings(operations_read_api_enabled=True, decision_cursor_signing_key="x" * 32)
+    with pytest.raises(ValidationError, match="requires decision_cursor_signing_key"):
+        Settings(
+            v2_enabled=True,
+            oidc_issuer="https://identity.example.test/",
+            oidc_audience="dusk-control-plane",
+            oidc_jwks_uri="https://identity.example.test/jwks.json",
+            storage_enabled=True,
+            database_url="postgresql+asyncpg://user:secret@database/control_plane",
+            operations_read_api_enabled=True,
+        )
+
+
 def test_outbox_worker_is_disabled_by_default_and_requires_storage() -> None:
     assert Settings().outbox_worker_enabled is False
     with pytest.raises(ValidationError, match="outbox_worker_enabled requires storage_enabled"):

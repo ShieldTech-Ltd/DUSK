@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from datetime import timedelta
+
+from dusk.policies import PolicyPack
 
 from dusk_control_plane.audit import (
     AuditSigner,
@@ -17,8 +20,13 @@ from dusk_control_plane.dashboard import (
     PostgresDashboardReader,
 )
 from dusk_control_plane.decisions import DecisionCursorCodec, DecisionReader, PostgresDecisionReader
-from dusk_control_plane.evaluations import EvaluationService
+from dusk_control_plane.evaluations import INSTRUMENTED_PIPELINE_STAGES, EvaluationService
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
+from dusk_control_plane.operations import (
+    OperationsCursorCodec,
+    OperationsReader,
+    PostgresOperationsReader,
+)
 from dusk_control_plane.outbox import OutboxWorker
 from dusk_control_plane.storage.database import Database
 
@@ -51,9 +59,10 @@ class AppContainer:
     outbox_worker: OutboxWorker | None = None
     decision_reader: DecisionReader | None = None
     dashboard_reader: DashboardReader | None = None
+    operations_reader: OperationsReader | None = None
 
     @classmethod
-    def build(
+    def build(  # noqa: C901
         cls,
         settings: Settings | None = None,
         readiness_probes: Sequence[DependencyProbe] = (),
@@ -64,6 +73,8 @@ class AppContainer:
         outbox_worker: OutboxWorker | None = None,
         decision_reader: DecisionReader | None = None,
         dashboard_reader: DashboardReader | None = None,
+        operations_reader: OperationsReader | None = None,
+        policy_pack: PolicyPack | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_database = (
@@ -114,6 +125,28 @@ class AppContainer:
                     resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
                 ),
             )
+        resolved_operations_reader = operations_reader
+        if resolved_settings.operations_read_api_enabled and resolved_operations_reader is None:
+            if (
+                resolved_database is None
+                or resolved_settings.decision_cursor_signing_key is None
+                or policy_pack is None
+            ):
+                raise ValueError(
+                    "operations_read_api_enabled requires operational query dependencies"
+                )
+            resolved_operations_reader = PostgresOperationsReader(
+                resolved_database,
+                policy_pack,
+                OperationsCursorCodec(
+                    resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
+                ),
+                stale_after=timedelta(
+                    seconds=resolved_settings.integration_health_stale_after_seconds
+                ),
+                outbox_instrumented=resolved_settings.outbox_worker_enabled,
+                instrumented_pipeline_stages=INSTRUMENTED_PIPELINE_STAGES,
+            )
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -130,4 +163,5 @@ class AppContainer:
             outbox_worker=outbox_worker,
             decision_reader=resolved_decision_reader,
             dashboard_reader=resolved_dashboard_reader,
+            operations_reader=resolved_operations_reader,
         )

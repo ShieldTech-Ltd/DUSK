@@ -101,12 +101,25 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
 | `DUSK_CP_DECISION_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_DASHBOARD_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
+| `DUSK_CP_OPERATIONS_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, an active policy pack, and a cursor-signing key |
+| `DUSK_CP_INTEGRATION_HEALTH_STALE_AFTER_SECONDS` | `120` | `30..3600`; older measurements are reported as stale |
 | `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
 
 The decision investigation API is separately activated with
 `DUSK_CP_DECISION_READ_API_ENABLED=true`. Its opaque cursors are authenticated
 with `DUSK_CP_DECISION_CURSOR_SIGNING_KEY`; supply that value from the deployment
 secret manager and keep it consistent across replicas.
+
+The policy catalogue and operational-state API is separately activated with
+`DUSK_CP_OPERATIONS_READ_API_ENABLED=true`. It exposes the active policy-pack
+version and lifecycle counts to auditors, and tenant-scoped integration and
+service status to operators. Component health is based on live database checks
+or persisted collector measurements. Missing collectors are reported as
+`unmeasured`, stale records as `stale`, and stored diagnostics are suppressed
+unless their code is explicitly allow-listed. Disabling the flag removes these
+routes without changing the schema or the `/v1/gate` compatibility boundary.
+The complete response, authorization, freshness, and rollback contract is in
+[`docs/control-plane-policy-operations-api.md`](../../docs/control-plane-policy-operations-api.md).
 
 Transactional outbox workers are separately disabled by default. Enabling them
 requires storage plus injected destination, credential, DNS, pinned transport,

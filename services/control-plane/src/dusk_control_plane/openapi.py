@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from dusk.policies import load_enterprise_pack
 from pydantic import SecretStr
 
 from dusk_control_plane.app import create_app
@@ -24,7 +25,10 @@ def render_openapi() -> str:
         database_url=SecretStr("postgresql+asyncpg://contract@database/control_plane"),
         decision_read_api_enabled=True,
         dashboard_read_api_enabled=True,
+        operations_read_api_enabled=True,
         decision_cursor_signing_key=SecretStr("contract-only-cursor-signing-key-32"),
     )
-    app = create_app(container=AppContainer.build(settings=settings))
+    app = create_app(
+        container=AppContainer.build(settings=settings, policy_pack=load_enterprise_pack())
+    )
     return json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"

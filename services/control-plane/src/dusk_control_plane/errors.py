@@ -26,6 +26,10 @@ from dusk_control_plane.identity import (
     IdentityProviderUnavailableError,
 )
 from dusk_control_plane.models import ErrorDetail, ErrorEnvelope
+from dusk_control_plane.operations import (
+    InvalidOperationsCursorError,
+    OperationsQueryUnavailableError,
+)
 from dusk_control_plane.policy import EvidenceRejectedError, PolicyUnavailableError
 from dusk_control_plane.request_context import get_request_id
 
@@ -148,6 +152,31 @@ def install_error_handlers(app: FastAPI) -> None:
     _install_evaluation_error_handlers(app)
     _install_decision_error_handlers(app)
     _install_dashboard_error_handlers(app)
+    _install_operations_error_handlers(app)
+
+
+def _install_operations_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(InvalidOperationsCursorError)
+    async def invalid_operations_cursor(
+        _request: Request, _exc: InvalidOperationsCursorError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=422,
+            code="INVALID_CURSOR",
+            message="Pagination cursor is invalid for this query",
+            retryable=False,
+        )
+
+    @app.exception_handler(OperationsQueryUnavailableError)
+    async def operations_unavailable(
+        _request: Request, _exc: OperationsQueryUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="OPERATIONAL_DATA_UNAVAILABLE",
+            message="Operational data is temporarily unavailable",
+            retryable=True,
+        )
 
 
 def _install_dashboard_error_handlers(app: FastAPI) -> None:

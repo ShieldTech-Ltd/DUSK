@@ -44,6 +44,16 @@ from dusk_control_plane.models import (
     LivenessResponse,
     ReadinessResponse,
 )
+from dusk_control_plane.operations import (
+    IntegrationHealthPage,
+    IntegrationHealthQuery,
+    OperationsQueryUnavailableError,
+    OperationsReader,
+    PolicyListQuery,
+    PolicyPage,
+    PolicySummary,
+    ServiceStatus,
+)
 from dusk_control_plane.request_context import new_request_id, reset_request_id, set_request_id
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -56,6 +66,10 @@ _dashboard_volume_authorization = require_route_policy("GET", "/v2/dashboard/dec
 _dashboard_breakdown_authorization = require_route_policy("GET", "/v2/dashboard/action-breakdown")
 _agent_risk_authorization = require_route_policy("GET", "/v2/agents/risk")
 _agent_detail_authorization = require_route_policy("GET", "/v2/agents/{agent_id}")
+_policies_authorization = require_route_policy("GET", "/v2/policies")
+_policy_summary_authorization = require_route_policy("GET", "/v2/policies/summary")
+_integration_health_authorization = require_route_policy("GET", "/v2/integrations/health")
+_service_status_authorization = require_route_policy("GET", "/v2/service/status")
 
 
 def _install_v2_routes(
@@ -85,6 +99,9 @@ def _install_v2_routes(
 
     if container.settings.dashboard_read_api_enabled:
         _install_dashboard_routes(app, container, common_errors)
+
+    if container.settings.operations_read_api_enabled:
+        _install_operations_routes(app, container, common_errors)
 
     if not container.settings.decision_read_api_enabled:
         return
@@ -218,6 +235,72 @@ def _install_dashboard_routes(
         principal: Annotated[Principal, Depends(_agent_detail_authorization)],
     ) -> AgentDetail:
         return await reader().agent_detail(agent_id, query, principal)
+
+
+def _install_operations_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
+    standard_responses: dict[int | str, dict[str, Any]] = {
+        401: {"model": ErrorEnvelope},
+        403: {"model": ErrorEnvelope},
+        422: {"model": ErrorEnvelope, "description": "Request validation failed"},
+        503: {"model": ErrorEnvelope},
+        **common_errors,
+    }
+
+    def reader() -> OperationsReader:
+        value = container.operations_reader
+        if value is None:
+            raise OperationsQueryUnavailableError
+        return value
+
+    @app.get(
+        "/v2/policies",
+        response_model=PolicyPage,
+        tags=["policies"],
+        responses=standard_responses,
+    )
+    async def policies(
+        query: Annotated[PolicyListQuery, Query()],
+        principal: Annotated[Principal, Depends(_policies_authorization)],
+    ) -> PolicyPage:
+        return await reader().policies(query, principal)
+
+    @app.get(
+        "/v2/policies/summary",
+        response_model=PolicySummary,
+        tags=["policies"],
+        responses=standard_responses,
+    )
+    async def policy_summary(
+        principal: Annotated[Principal, Depends(_policy_summary_authorization)],
+    ) -> PolicySummary:
+        return await reader().policy_summary(principal)
+
+    @app.get(
+        "/v2/integrations/health",
+        response_model=IntegrationHealthPage,
+        tags=["operations"],
+        responses=standard_responses,
+    )
+    async def integration_health(
+        query: Annotated[IntegrationHealthQuery, Query()],
+        principal: Annotated[Principal, Depends(_integration_health_authorization)],
+    ) -> IntegrationHealthPage:
+        return await reader().integration_health(query, principal)
+
+    @app.get(
+        "/v2/service/status",
+        response_model=ServiceStatus,
+        tags=["operations"],
+        responses=standard_responses,
+    )
+    async def service_status(
+        principal: Annotated[Principal, Depends(_service_status_authorization)],
+    ) -> ServiceStatus:
+        return await reader().service_status(principal)
 
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:
