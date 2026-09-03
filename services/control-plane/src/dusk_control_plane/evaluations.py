@@ -18,6 +18,8 @@ from dusk_control_plane.policy import (
     SafePolicyMatch,
 )
 
+INSTRUMENTED_PIPELINE_STAGES = ("behavioral", "policy", "total")
+
 
 class EvaluationUnavailableError(Exception):
     """A mandatory evaluation dependency is unavailable."""

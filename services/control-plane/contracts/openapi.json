@@ -1230,6 +1230,110 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IntegrationHealthPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationHealthView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "snapshot_at": {
+            "format": "date-time",
+            "title": "Snapshot At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "empty"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "snapshot_at",
+          "items",
+          "next_cursor"
+        ],
+        "title": "IntegrationHealthPage",
+        "type": "object"
+      },
+      "IntegrationHealthView": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "diagnostic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostic Code"
+          },
+          "integration_key": {
+            "title": "Integration Key",
+            "type": "string"
+          },
+          "integration_kind": {
+            "title": "Integration Kind",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "status": {
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNAVAILABLE",
+              "UNKNOWN",
+              "STALE"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "integration_key",
+          "integration_kind",
+          "status",
+          "checked_at"
+        ],
+        "title": "IntegrationHealthView",
+        "type": "object"
+      },
       "LatencyMetric": {
         "additionalProperties": false,
         "properties": {
@@ -1465,6 +1569,170 @@
         "title": "PolicyMatchResponse",
         "type": "object"
       },
+      "PolicyPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyRuleView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "pack_name": {
+            "title": "Pack Name",
+            "type": "string"
+          },
+          "pack_version": {
+            "title": "Pack Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack_name",
+          "pack_version",
+          "items",
+          "next_cursor"
+        ],
+        "title": "PolicyPage",
+        "type": "object"
+      },
+      "PolicyRuleView": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "frameworks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "prerequisites": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Prerequisites",
+            "type": "array"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "category",
+          "severity",
+          "decision",
+          "status",
+          "owner",
+          "frameworks",
+          "prerequisites"
+        ],
+        "title": "PolicyRuleView",
+        "type": "object"
+      },
+      "PolicySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "counts_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "default_decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "REQUIRE_APPROVAL"
+            ],
+            "title": "Default Decision",
+            "type": "string"
+          },
+          "enforced_rules": {
+            "minimum": 0.0,
+            "title": "Enforced Rules",
+            "type": "integer"
+          },
+          "pack_name": {
+            "title": "Pack Name",
+            "type": "string"
+          },
+          "pack_version": {
+            "title": "Pack Version",
+            "type": "string"
+          },
+          "planned_rules": {
+            "minimum": 0.0,
+            "title": "Planned Rules",
+            "type": "integer"
+          },
+          "total_rules": {
+            "minimum": 0.0,
+            "title": "Total Rules",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pack_name",
+          "pack_version",
+          "default_decision",
+          "total_rules",
+          "enforced_rules",
+          "planned_rules",
+          "counts_by_status"
+        ],
+        "title": "PolicySummary",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1534,6 +1802,115 @@
           "attributes"
         ],
         "title": "SafeCanonicalAction",
+        "type": "object"
+      },
+      "ServiceComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostic Code"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "measured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At"
+          },
+          "name": {
+            "enum": [
+              "gate",
+              "postgresql",
+              "sie",
+              "outbox",
+              "audit",
+              "adapters"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "unavailable",
+              "unmeasured"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "ServiceComponent",
+        "type": "object"
+      },
+      "ServiceStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceComponent"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "instrumented_pipeline_stages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Instrumented Pipeline Stages",
+            "type": "array"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "measured_at",
+          "components",
+          "instrumented_pipeline_stages"
+        ],
+        "title": "ServiceStatus",
         "type": "object"
       },
       "SimilarDecisionReference": {
@@ -2669,6 +3046,464 @@
         "summary": "Evaluate Action",
         "tags": [
           "evaluations"
+        ]
+      }
+    },
+    "/v2/integrations/health": {
+      "get": {
+        "operationId": "integration_health_v2_integrations_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "HEALTHY",
+                    "DEGRADED",
+                    "UNAVAILABLE",
+                    "UNKNOWN"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "integration_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_.-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Integration Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationHealthPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Integration Health",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/v2/policies": {
+      "get": {
+        "operationId": "policies_v2_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z_]{1,32}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9_.-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(low|medium|high|critical)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policies",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v2/policies/summary": {
+      "get": {
+        "operationId": "policy_summary_v2_policies_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Policy Summary",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v2/service/status": {
+      "get": {
+        "operationId": "service_status_v2_service_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Service Status",
+        "tags": [
+          "operations"
         ]
       }
     }
