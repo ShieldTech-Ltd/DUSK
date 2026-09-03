@@ -6,7 +6,10 @@ import uvicorn
 
 from dusk_control_plane.app import create_app
 from dusk_control_plane.config import Settings
+from dusk_control_plane.observability import configure_structured_logging
 
+_settings = Settings()
+configure_structured_logging(_settings.log_level)
 app = create_app()
 
 

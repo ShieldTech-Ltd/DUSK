@@ -103,6 +103,13 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DASHBOARD_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_OPERATIONS_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, an active policy pack, and a cursor-signing key |
 | `DUSK_CP_INTEGRATION_HEALTH_STALE_AFTER_SECONDS` | `120` | `30..3600`; older measurements are reported as stale |
+| `DUSK_CP_OBSERVABILITY_ENABLED` | `false` | Requires an authenticated HTTPS OTLP endpoint when enabled |
+| `DUSK_CP_OTLP_ENDPOINT` | unset | HTTPS collector base URL without credentials, query, or fragment |
+| `DUSK_CP_OTLP_HEADERS` | unset | Secret bounded JSON object containing collector authentication headers |
+| `DUSK_CP_TELEMETRY_QUEUE_SIZE` | `2048` | `128..16384` queued records |
+| `DUSK_CP_TELEMETRY_BATCH_SIZE` | `256` | `1..2048` and no greater than queue size |
+| `DUSK_CP_TELEMETRY_EXPORT_INTERVAL_MS` | `5000` | `1000..60000` |
+| `DUSK_CP_TELEMETRY_EXPORT_TIMEOUT_MS` | `1000` | `100..10000` |
 | `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
 
 The decision investigation API is separately activated with
@@ -120,6 +127,11 @@ unless their code is explicitly allow-listed. Disabling the flag removes these
 routes without changing the schema or the `/v1/gate` compatibility boundary.
 The complete response, authorization, freshness, and rollback contract is in
 [`docs/control-plane-policy-operations-api.md`](../../docs/control-plane-policy-operations-api.md).
+
+OpenTelemetry export and structured JSON logging are documented in
+[`docs/control-plane-observability.md`](../../docs/control-plane-observability.md),
+including the telemetry threat boundary, fixed metric dimensions, measured
+pipeline stages, exporter backpressure behavior, and staging SLO gates.
 
 Transactional outbox workers are separately disabled by default. Enabling them
 requires storage plus injected destination, credential, DNS, pinned transport,

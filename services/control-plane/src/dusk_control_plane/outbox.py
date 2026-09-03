@@ -25,6 +25,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dusk_control_plane.config import Settings
+from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import Decision, OutboxDelivery
 
@@ -396,6 +397,7 @@ class OutboxWorker:
         worker_id: UUID | None = None,
         random: Callable[[], float] = random_module.random,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._database = database
         self._destinations = destinations
@@ -407,7 +409,23 @@ class OutboxWorker:
         self._worker_id = worker_id or uuid4()
         self._random = random
         self._clock = clock
+        self._telemetry = telemetry
         self._stopping = asyncio.Event()
+
+    def with_telemetry(self, telemetry: Telemetry) -> OutboxWorker:
+        return OutboxWorker(
+            database=self._database,
+            destinations=self._destinations,
+            resolver=self._resolver,
+            credentials=self._credentials,
+            transport=self._transport,
+            acknowledgement_verifier=self._acknowledgement_verifier,
+            config=self._config,
+            worker_id=self._worker_id,
+            random=self._random,
+            clock=self._clock,
+            telemetry=telemetry,
+        )
 
     async def run_once(self) -> WorkerRunStats:
         claims, exhausted = await self._claim_batch()
@@ -441,9 +459,10 @@ class OutboxWorker:
                         stats.retried,
                         stats.dead_lettered,
                         stats.stale_results,
+                        extra={"event_code": "outbox.batch_completed"},
                     )
             except Exception:  # noqa: BLE001 - diagnostics must not expose provider details
-                logger.error("outbox batch failed code=OUTBOX_BATCH_FAILURE")
+                logger.error("outbox batch failed", extra={"event_code": "outbox.batch_failed"})
             try:
                 await asyncio.wait_for(
                     self._stopping.wait(), timeout=self._config.poll_interval_seconds
@@ -500,6 +519,19 @@ class OutboxWorker:
             return claims, exhausted
 
     async def _deliver(self, claim: DeliveryClaim) -> WorkerRunStats:
+        trace_id = claim.redacted_payload.get("trace_id")
+        safe_trace_id = trace_id if isinstance(trace_id, str) and len(trace_id) <= 64 else None
+        if self._telemetry is None:
+            return await self._deliver_attempt(claim)
+        with self._telemetry.stage(
+            "outbox",
+            decision_trace_id=safe_trace_id,
+            decision_id=str(claim.decision_id),
+            delivery_id=str(claim.delivery_id),
+        ):
+            return await self._deliver_attempt(claim)
+
+    async def _deliver_attempt(self, claim: DeliveryClaim) -> WorkerRunStats:
         destination = self._destinations.get(claim.destination_key)
         if destination is None or destination.kind.value != claim.destination_kind:
             return await self._finalize_failure(
@@ -527,10 +559,26 @@ class OutboxWorker:
                 acknowledgement = _parse_acknowledgement(response.headers)
                 self._validate_acknowledgement_binding(claim, acknowledgement)
                 payload = acknowledgement_signing_payload(acknowledgement)
-                verified = await asyncio.wait_for(
-                    self._acknowledgement_verifier.verify(acknowledgement, payload),
-                    timeout=self._config.response_timeout_seconds,
-                )
+                if self._telemetry is None:
+                    verified = await asyncio.wait_for(
+                        self._acknowledgement_verifier.verify(acknowledgement, payload),
+                        timeout=self._config.response_timeout_seconds,
+                    )
+                else:
+                    trace_id = claim.redacted_payload.get("trace_id")
+                    safe_trace_id = (
+                        trace_id if isinstance(trace_id, str) and len(trace_id) <= 64 else None
+                    )
+                    with self._telemetry.stage(
+                        "broker_acknowledgement",
+                        decision_trace_id=safe_trace_id,
+                        decision_id=str(claim.decision_id),
+                        delivery_id=str(claim.delivery_id),
+                    ):
+                        verified = await asyncio.wait_for(
+                            self._acknowledgement_verifier.verify(acknowledgement, payload),
+                            timeout=self._config.response_timeout_seconds,
+                        )
                 if not verified:
                     raise DeliveryError("ACKNOWLEDGEMENT_INVALID")
             return await self._finalize_success(

@@ -20,8 +20,13 @@ from dusk_control_plane.dashboard import (
     PostgresDashboardReader,
 )
 from dusk_control_plane.decisions import DecisionCursorCodec, DecisionReader, PostgresDecisionReader
-from dusk_control_plane.evaluations import INSTRUMENTED_PIPELINE_STAGES, EvaluationService
+from dusk_control_plane.evaluations import (
+    INSTRUMENTED_EVALUATION_STAGES,
+    EvaluationService,
+    PolicyEvaluationService,
+)
 from dusk_control_plane.identity import Authenticator, OidcAuthenticator
+from dusk_control_plane.observability import TelemetryRuntime, build_telemetry
 from dusk_control_plane.operations import (
     OperationsCursorCodec,
     OperationsReader,
@@ -60,6 +65,7 @@ class AppContainer:
     decision_reader: DecisionReader | None = None
     dashboard_reader: DashboardReader | None = None
     operations_reader: OperationsReader | None = None
+    telemetry_runtime: TelemetryRuntime | None = None
 
     @classmethod
     def build(  # noqa: C901
@@ -75,8 +81,14 @@ class AppContainer:
         dashboard_reader: DashboardReader | None = None,
         operations_reader: OperationsReader | None = None,
         policy_pack: PolicyPack | None = None,
+        telemetry_runtime: TelemetryRuntime | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
+        resolved_telemetry = (
+            telemetry_runtime
+            if telemetry_runtime is not None
+            else build_telemetry(resolved_settings)
+        )
         resolved_database = (
             database
             if database is not None
@@ -91,20 +103,33 @@ class AppContainer:
             resolved_probes.append(
                 DependencyProbe(name="postgresql", critical=True, check=resolved_database.probe)
             )
+        instrumented_evaluation_service = (
+            evaluation_service.with_telemetry(resolved_telemetry.telemetry)
+            if isinstance(evaluation_service, PolicyEvaluationService)
+            else evaluation_service
+        )
         durable_evaluation_service: EvaluationService | None = None
-        if isinstance(evaluation_service, DurableEvaluationService):
-            durable_evaluation_service = evaluation_service
+        if isinstance(instrumented_evaluation_service, DurableEvaluationService):
+            durable_evaluation_service = instrumented_evaluation_service
         elif (
-            evaluation_service is not None
+            instrumented_evaluation_service is not None
             and resolved_database is not None
             and audit_signer is not None
         ):
             durable_evaluation_service = DurableEvaluationService(
-                evaluation_service,
-                PostgresDecisionEvidenceStore(resolved_database, audit_signer),
+                instrumented_evaluation_service,
+                PostgresDecisionEvidenceStore(
+                    resolved_database, audit_signer, telemetry=resolved_telemetry.telemetry
+                ),
+                telemetry=resolved_telemetry.telemetry,
             )
         if resolved_settings.outbox_worker_enabled and outbox_worker is None:
             raise ValueError("outbox_worker_enabled requires an injected outbox worker")
+        resolved_outbox_worker = (
+            outbox_worker.with_telemetry(resolved_telemetry.telemetry)
+            if outbox_worker is not None
+            else None
+        )
         resolved_decision_reader = decision_reader
         if resolved_settings.decision_read_api_enabled and resolved_decision_reader is None:
             if resolved_database is None or resolved_settings.decision_cursor_signing_key is None:
@@ -145,7 +170,11 @@ class AppContainer:
                     seconds=resolved_settings.integration_health_stale_after_seconds
                 ),
                 outbox_instrumented=resolved_settings.outbox_worker_enabled,
-                instrumented_pipeline_stages=INSTRUMENTED_PIPELINE_STAGES,
+                instrumented_pipeline_stages=_instrumented_stages(
+                    evaluation_service=evaluation_service,
+                    durable_service=durable_evaluation_service,
+                    outbox_worker=resolved_outbox_worker,
+                ),
             )
         return cls(
             settings=resolved_settings,
@@ -160,8 +189,28 @@ class AppContainer:
             database=resolved_database,
             evaluation_service=durable_evaluation_service,
             audit_signer=audit_signer,
-            outbox_worker=outbox_worker,
+            outbox_worker=resolved_outbox_worker,
             decision_reader=resolved_decision_reader,
             dashboard_reader=resolved_dashboard_reader,
             operations_reader=resolved_operations_reader,
+            telemetry_runtime=resolved_telemetry,
         )
+
+
+def _instrumented_stages(
+    *,
+    evaluation_service: EvaluationService | None,
+    durable_service: EvaluationService | None,
+    outbox_worker: OutboxWorker | None,
+) -> tuple[str, ...]:
+    stages: list[str] = ["response"]
+    if isinstance(evaluation_service, PolicyEvaluationService):
+        stages[0:0] = INSTRUMENTED_EVALUATION_STAGES
+    if isinstance(durable_service, DurableEvaluationService) and not isinstance(
+        evaluation_service, DurableEvaluationService
+    ):
+        insertion = len(stages) - 1
+        stages[insertion:insertion] = ["persistence", "audit"]
+    if outbox_worker is not None:
+        stages.extend(("outbox", "broker_acknowledgement"))
+    return tuple(stages)

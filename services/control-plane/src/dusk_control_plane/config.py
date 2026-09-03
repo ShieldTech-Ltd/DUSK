@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     dashboard_read_api_enabled: bool = False
     operations_read_api_enabled: bool = False
     integration_health_stale_after_seconds: int = Field(default=120, ge=30, le=3600)
+    observability_enabled: bool = False
+    otlp_endpoint: str | None = Field(default=None, min_length=1, max_length=1024)
+    otlp_headers: SecretStr | None = Field(default=None, max_length=4096)
+    telemetry_queue_size: int = Field(default=2048, ge=128, le=16_384)
+    telemetry_batch_size: int = Field(default=256, ge=1, le=2048)
+    telemetry_export_interval_ms: int = Field(default=5000, ge=1000, le=60_000)
+    telemetry_export_timeout_ms: int = Field(default=1000, ge=100, le=10_000)
     decision_cursor_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
     )
@@ -125,6 +132,7 @@ class Settings(BaseSettings):
         self._validate_decision_reads()
         self._validate_dashboard_reads()
         self._validate_operations_reads()
+        self._validate_observability()
         self._validate_outbox()
         return self
 
@@ -151,6 +159,28 @@ class Settings(BaseSettings):
             raise ValueError("operations_read_api_enabled requires v2_enabled and storage_enabled")
         if self.decision_cursor_signing_key is None:
             raise ValueError("operations_read_api_enabled requires decision_cursor_signing_key")
+
+    def _validate_observability(self) -> None:
+        if not self.observability_enabled:
+            return
+        if self.otlp_endpoint is None:
+            raise ValueError("observability_enabled requires otlp_endpoint")
+        try:
+            parsed = urlsplit(self.otlp_endpoint)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("otlp_endpoint must be a valid HTTPS URL") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("otlp_endpoint must be an HTTPS URL without credentials or query")
+        if self.telemetry_batch_size > self.telemetry_queue_size:
+            raise ValueError("telemetry_batch_size must not exceed telemetry_queue_size")
 
     def _validate_outbox(self) -> None:
         if self.outbox_worker_enabled and not self.storage_enabled:

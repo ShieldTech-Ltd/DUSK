@@ -14,6 +14,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Default-off OpenTelemetry tracing and RED metrics with bounded OTLP export,
+  allow-listed structured JSON logs, request/decision/audit/outbox correlation,
+  and measured normalization, behavioral, policy, persistence, audit, response,
+  delivery, and broker-acknowledgement stages.
 - Tenant-scoped dashboard summary, decision-volume, action-breakdown, and
   agent-risk investigation APIs backed only by persisted PostgreSQL decisions,
   with UTC comparison windows, measured p95 latency, explicit freshness and

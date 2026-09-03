@@ -1463,15 +1463,69 @@
       "PipelineTimings": {
         "additionalProperties": false,
         "properties": {
+          "audit_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Ms"
+          },
+          "baseline_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Ms"
+          },
           "behavioral_ms": {
             "minimum": 0.0,
             "title": "Behavioral Ms",
             "type": "number"
           },
+          "normalization_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Normalization Ms",
+            "type": "number"
+          },
+          "persistence_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persistence Ms"
+          },
           "policy_ms": {
             "minimum": 0.0,
             "title": "Policy Ms",
             "type": "number"
+          },
+          "sie_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sie Ms"
           },
           "total_ms": {
             "minimum": 0.0,
