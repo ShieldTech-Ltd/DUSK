@@ -3,4 +3,4 @@ requests>=2.31
 
 # Only used when USE_REAL_BEDROCK=true (see bedrock_client.build_real_client);
 # installed unconditionally so that flag just works, no separate build path.
-boto3>=1.34
+boto3>=1.43.83
