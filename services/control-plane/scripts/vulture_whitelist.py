@@ -22,6 +22,7 @@ from dusk_control_plane.dashboard import (
 )
 from dusk_control_plane.decisions import DecisionListQuery
 from dusk_control_plane.evaluations import PipelineTimings
+from dusk_control_plane.observability import SafeJsonFormatter
 from dusk_control_plane.operations import PolicyPage, PolicySummary
 from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
 from dusk_control_plane.policy import EvidenceTrust
@@ -164,6 +165,7 @@ DecisionListQuery.validate_range
 PipelineTimings.behavioral_ms
 PipelineTimings.baseline_ms
 PipelineTimings.sie_ms
+SafeJsonFormatter.format
 EvidenceTrust.CONFLICTED
 OutboxWorkerConfig.from_settings
 SystemDnsResolver
