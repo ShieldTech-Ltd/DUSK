@@ -26,10 +26,6 @@ class EmergencyKillSwitch:
         with self._lock:
             self._reason = reason.strip() or "operator emergency stop"
 
-    def deactivate(self) -> None:
-        with self._lock:
-            self._reason = ""
-
     @property
     def active(self) -> bool:
         with self._lock:
