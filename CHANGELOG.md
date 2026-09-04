@@ -14,6 +14,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Production-ready AWS, Azure, and Kubernetes policy-evidence boundaries:
+  `DUSK-CLOUD-001` through `DUSK-CLOUD-010`, strict native event
+  normalization, tenant-bound Ed25519 evidence, durable PostgreSQL replay
+  claims, allow-only enforcement-broker routing, and fail-closed release
+  certification. Live provider qualification is deliberately deferred to
+  issue #251 after backend/frontend localhost validation.
 - Bounded, dry-run-first tenant retention enforcement with legal-hold locking,
   signed deletion evidence, preserved audit continuity, controlled compliance
   export, and defence-in-depth secret-value redaction.

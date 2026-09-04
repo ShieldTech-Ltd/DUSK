@@ -32,6 +32,7 @@ from dusk_control_plane.storage.models import (
     AuditEvent,
     CanonicalAction,
     DashboardAggregate,
+    EvidenceReplayClaim,
     IntegrationHealth,
     OutboxDelivery,
     PolicyMatch,
@@ -119,6 +120,11 @@ DashboardAggregate.dimension_key
 DashboardAggregate.dimensions
 DashboardAggregate.metric_value
 DashboardAggregate.computed_at
+
+EvidenceReplayClaim.source_identity
+EvidenceReplayClaim.nonce
+EvidenceReplayClaim.observed_at
+EvidenceReplayClaim.claimed_at
 
 TenantScopedRepository.list_by_id
 DecisionRepository.get_by_trace_id

@@ -46,6 +46,10 @@ class EvidenceEnvelope(EvaluationModel):
     observed_at: datetime
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     payload: dict[str, object]
+    tenant_id: str = Field(min_length=1, max_length=200)
+    key_id: str = Field(min_length=1, max_length=200)
+    nonce: str = Field(min_length=16, max_length=200)
+    signature: str = Field(min_length=80, max_length=128)
 
 
 class EvaluationRequest(EvaluationModel):
@@ -203,6 +207,10 @@ class PolicyEvaluationService:
                     observed_at=value.observed_at,
                     digest=value.digest,
                     payload=value.payload,
+                    tenant_id=value.tenant_id,
+                    key_id=value.key_id,
+                    nonce=value.nonce,
+                    signature=value.signature,
                 )
                 for value in request.evidence
             ),
