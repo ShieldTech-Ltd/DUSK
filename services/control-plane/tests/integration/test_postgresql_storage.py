@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -31,9 +32,11 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from dusk_control_plane.audit import (
+    AuditCheckpoint,
     DurableCommitUnavailableError,
     OutboxIntent,
     PostgresDecisionEvidenceStore,
+    audit_digest,
     verify_audit_chain,
     verify_signed_audit_chain,
 )
@@ -62,7 +65,7 @@ from dusk_control_plane.evaluations import (
     EvidenceEnvelope,
     PipelineTimings,
 )
-from dusk_control_plane.identity import IdentityKind, Principal
+from dusk_control_plane.identity import IdentityKind, Principal, Role
 from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.operations import (
     IntegrationHealthQuery,
@@ -77,6 +80,13 @@ from dusk_control_plane.outbox import (
     OutboxWorkerConfig,
     StaticDestinationRegistry,
     TransportResponse,
+)
+from dusk_control_plane.privacy import (
+    PrivacyExportService,
+    PrivacyUnavailableError,
+    RetentionPolicy,
+    RetentionPolicyService,
+    RetentionService,
 )
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import (
@@ -1693,3 +1703,388 @@ async def test_operational_health_is_tenant_scoped_stale_aware_and_measured(
         "audit",
         "response",
     )
+
+
+@pytest.mark.anyio
+async def test_retention_is_bounded_legal_hold_safe_and_preserves_signed_chain(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id, held_tenant_id = uuid4(), uuid4()
+    signer = _TestSigner()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(
+                    id=tenant_id,
+                    slug=f"privacy-{tenant_id}",
+                    display_name="Privacy tenant",
+                    decision_retention_days=90,
+                    audit_retention_days=365,
+                ),
+                Tenant(
+                    id=held_tenant_id,
+                    slug=f"held-{held_tenant_id}",
+                    display_name="Held tenant",
+                    decision_retention_days=1,
+                    audit_retention_days=1,
+                    legal_hold=True,
+                ),
+            )
+        )
+    durable = await _store(engine, signer).persist(
+        request=_evaluation_request("privacy-expired"),
+        response=_evaluation_response(),
+        principal=Principal(
+            "https://issuer.example",
+            "privacy-workload",
+            str(tenant_id),
+            IdentityKind.WORKLOAD,
+            workload_id="privacy-agent",
+        ),
+    )
+    held = await _store(engine, signer).persist(
+        request=_evaluation_request("held-expired"),
+        response=_evaluation_response(),
+        principal=Principal(
+            "https://issuer.example",
+            "held-workload",
+            str(held_tenant_id),
+            IdentityKind.WORKLOAD,
+            workload_id="held-agent",
+        ),
+    )
+    expired_at = datetime.now(UTC) - timedelta(days=400)
+    async with AsyncSession(engine) as session, session.begin():
+        decision = await session.get(Decision, durable.decision_id)
+        held_decision = await session.get(Decision, held.decision_id)
+        event = await session.get(AuditEvent, durable.audit_event_id)
+        assert decision and held_decision and event
+        action = await session.get(CanonicalAction, decision.action_id)
+        held_action = await session.get(CanonicalAction, held_decision.action_id)
+        assert action and held_action
+        decision.created_at = expired_at
+        action.created_at = expired_at
+        held_decision.created_at = expired_at
+        held_action.created_at = expired_at
+        event.occurred_at = expired_at
+        event.sensitive_detail = {"credential": "must-be-removed"}
+        event.digest = audit_digest(
+            tenant_id=tenant_id,
+            sequence=event.sequence,
+            event_type=event.event_type,
+            decision_id=event.decision_id,
+            principal_id=event.principal_id,
+            occurred_at=expired_at,
+            previous_digest=event.previous_digest,
+            integrity_metadata=event.integrity_metadata,
+        )
+        event.signature = await signer.sign(event.digest)
+
+    database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    service = RetentionService(database, signer)
+    administrator = Principal(
+        "https://issuer.example",
+        "privacy-administrator",
+        str(tenant_id),
+        IdentityKind.HUMAN,
+        roles=frozenset({Role.ADMINISTRATOR}),
+    )
+    held_administrator = Principal(
+        "https://issuer.example",
+        "held-administrator",
+        str(held_tenant_id),
+        IdentityKind.HUMAN,
+        roles=frozenset({Role.ADMINISTRATOR}),
+    )
+    preview = await service.run_once(administrator, dry_run=True, batch_size=1)
+    assert preview.mode == "DRY_RUN"
+    assert preview.status == "MORE_AVAILABLE"
+    assert (preview.decision_details, preview.audit_sensitive_details) == (1, 0)
+    async with AsyncSession(engine) as session:
+        preview_decision = await session.get(Decision, durable.decision_id)
+        assert preview_decision and preview_decision.reasons is not None
+
+    applied = await service.run_once(administrator, dry_run=False, batch_size=1)
+    assert applied.status == "MORE_AVAILABLE"
+    assert (applied.decision_details, applied.canonical_actions) == (1, 1)
+    assert applied.audit_sensitive_details == 0
+    assert applied.evidence_event_id is not None
+    resumed = await service.run_once(administrator, dry_run=False, batch_size=1)
+    assert resumed.status == "COMPLETE"
+    assert resumed.decision_details == 0
+    assert resumed.audit_sensitive_details == 1
+    assert resumed.evidence_event_id is not None
+    held_result = await service.run_once(held_administrator, dry_run=False, batch_size=2)
+    assert held_result.status == "LEGAL_HOLD"
+    assert held_result.evidence_event_id is None
+
+    async with AsyncSession(engine) as session:
+        decision = await session.get(Decision, durable.decision_id)
+        held_decision = await session.get(Decision, held.decision_id)
+        old_event = await session.get(AuditEvent, durable.audit_event_id)
+        assert decision and held_decision and old_event
+        action = await session.get(CanonicalAction, decision.action_id)
+        events = list(
+            (
+                await session.scalars(
+                    select(AuditEvent)
+                    .where(AuditEvent.tenant_id == tenant_id)
+                    .order_by(AuditEvent.sequence)
+                )
+            ).all()
+        )
+    assert decision.reasons is None and decision.detail_deleted_at is not None
+    assert action and action.redacted_action is None and action.detail_deleted_at is not None
+    assert old_event.sensitive_detail is None and old_event.detail_deleted_at is not None
+    assert held_decision.reasons is not None and held_decision.detail_deleted_at is None
+    assert events[-1].event_type == "privacy.retention_applied"
+    assert events[-2].integrity_metadata["deleted"] == {
+        "decision_details": 1,
+        "canonical_actions": 1,
+        "audit_sensitive_details": 0,
+    }
+    assert events[-1].integrity_metadata["deleted"] == {
+        "decision_details": 0,
+        "canonical_actions": 0,
+        "audit_sensitive_details": 1,
+    }
+    checkpoint = type(durable.checkpoint)(tenant_id, events[-1].sequence, events[-1].digest)
+    await verify_signed_audit_chain(tenant_id, events, checkpoint, signer)
+
+
+@pytest.mark.anyio
+async def test_privacy_export_is_administrator_authorized_tenant_scoped_and_redacted(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id, other_tenant = uuid4(), uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"export-{tenant_id}", display_name="Export"),
+                Tenant(id=other_tenant, slug=f"foreign-{other_tenant}", display_name="Foreign"),
+            )
+        )
+    for current, key in ((tenant_id, "export-local"), (other_tenant, "export-foreign")):
+        await _store(engine).persist(
+            request=_evaluation_request(key),
+            response=_evaluation_response(),
+            principal=Principal(
+                "https://issuer.example",
+                f"subject-{current}",
+                str(current),
+                IdentityKind.WORKLOAD,
+                workload_id=f"agent-{current}",
+            ),
+        )
+    service = PrivacyExportService(
+        Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    )
+    administrator = Principal(
+        "https://issuer.example",
+        "privacy-administrator",
+        str(tenant_id),
+        IdentityKind.HUMAN,
+        roles=frozenset({Role.ADMINISTRATOR}),
+    )
+    page = await service.export_page(administrator, limit=1)
+    assert len(page.items) == 1
+    assert page.items[0].action is not None
+    serialized = page.model_dump_json()
+    assert "export-foreign" not in serialized
+    assert "must-not-persist" not in serialized
+    assert "unrestricted-provider-token" not in serialized
+    assert page.manifest_digest.startswith("sha256:")
+
+
+@pytest.mark.anyio
+async def test_retention_signing_failure_rolls_back_the_complete_batch(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(
+            Tenant(
+                id=tenant_id,
+                slug=f"rollback-{tenant_id}",
+                display_name="Rollback tenant",
+                decision_retention_days=1,
+            )
+        )
+    durable = await _store(engine).persist(
+        request=_evaluation_request("retention-rollback"),
+        response=_evaluation_response(),
+        principal=Principal(
+            "https://issuer.example",
+            "rollback-workload",
+            str(tenant_id),
+            IdentityKind.WORKLOAD,
+            workload_id="rollback-agent",
+        ),
+    )
+    async with AsyncSession(engine) as session, session.begin():
+        decision = await session.get(Decision, durable.decision_id)
+        assert decision
+        action = await session.get(CanonicalAction, decision.action_id)
+        assert action
+        decision.created_at = datetime.now(UTC) - timedelta(days=2)
+        action.created_at = decision.created_at
+
+    class FailingSigner:
+        key_id = "unavailable-key"
+
+        async def sign(self, digest: bytes) -> bytes:
+            raise TimeoutError("private signer endpoint")
+
+        async def verify(self, digest: bytes, signature: bytes, key_id: str) -> bool:
+            return False
+
+    service = RetentionService(
+        Database(engine, async_sessionmaker(engine, expire_on_commit=False)),
+        FailingSigner(),
+    )
+    with pytest.raises(PrivacyUnavailableError, match="signing unavailable"):
+        await service.run_once(
+            Principal(
+                "https://issuer.example",
+                "rollback-administrator",
+                str(tenant_id),
+                IdentityKind.HUMAN,
+                roles=frozenset({Role.ADMINISTRATOR}),
+            ),
+            dry_run=False,
+            batch_size=1,
+        )
+    async with AsyncSession(engine) as session:
+        decision = await session.get(Decision, durable.decision_id)
+        assert decision and decision.reasons is not None
+        assert decision.detail_deleted_at is None
+
+
+@pytest.mark.anyio
+async def test_retention_policy_update_is_tenant_scoped_and_signed(engine: AsyncEngine) -> None:
+    tenant_id, other_tenant = uuid4(), uuid4()
+    signer = _TestSigner()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_id, slug=f"policy-{tenant_id}", display_name="Policy"),
+                Tenant(id=other_tenant, slug=f"policy-{other_tenant}", display_name="Other"),
+            )
+        )
+    service = RetentionPolicyService(
+        Database(engine, async_sessionmaker(engine, expire_on_commit=False)), signer
+    )
+    administrator = Principal(
+        "https://issuer.example",
+        "retention-administrator",
+        str(tenant_id),
+        IdentityKind.HUMAN,
+        roles=frozenset({Role.ADMINISTRATOR}),
+    )
+    policy = RetentionPolicy(
+        decision_retention_days=120,
+        audit_retention_days=400,
+        legal_hold=True,
+    )
+    result = await service.configure(administrator, policy)
+    assert result.evidence_event_id is not None
+    unchanged = await service.configure(administrator, policy)
+    assert unchanged.evidence_event_id is None
+
+    async with AsyncSession(engine) as session:
+        tenant = await session.get(Tenant, tenant_id)
+        other = await session.get(Tenant, other_tenant)
+        events = list(
+            (
+                await session.scalars(
+                    select(AuditEvent)
+                    .where(AuditEvent.tenant_id == tenant_id)
+                    .order_by(AuditEvent.sequence)
+                )
+            ).all()
+        )
+    assert tenant and other
+    assert (tenant.decision_retention_days, tenant.audit_retention_days, tenant.legal_hold) == (
+        120,
+        400,
+        True,
+    )
+    assert (other.decision_retention_days, other.audit_retention_days, other.legal_hold) == (
+        90,
+        365,
+        False,
+    )
+    assert len(events) == 1 and events[0].event_type == "privacy.retention_policy_updated"
+    assert events[0].principal_id is not None
+    await verify_signed_audit_chain(
+        tenant_id,
+        events,
+        AuditCheckpoint(tenant_id, events[-1].sequence, events[-1].digest),
+        signer,
+    )
+
+
+@pytest.mark.anyio
+async def test_concurrent_reader_sees_only_precommit_or_complete_retention_state(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(
+            Tenant(
+                id=tenant_id,
+                slug=f"concurrent-{tenant_id}",
+                display_name="Concurrent retention",
+                decision_retention_days=1,
+            )
+        )
+    durable = await _store(engine).persist(
+        request=_evaluation_request("retention-concurrent-read"),
+        response=_evaluation_response(),
+        principal=Principal(
+            "https://issuer.example",
+            "concurrent-workload",
+            str(tenant_id),
+            IdentityKind.WORKLOAD,
+            workload_id="concurrent-agent",
+        ),
+    )
+    async with AsyncSession(engine) as session, session.begin():
+        decision = await session.get(Decision, durable.decision_id)
+        assert decision
+        action = await session.get(CanonicalAction, decision.action_id)
+        assert action
+        decision.created_at = datetime.now(UTC) - timedelta(days=2)
+        action.created_at = decision.created_at
+
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class BlockingSigner(_TestSigner):
+        async def sign(self, digest: bytes) -> bytes:
+            entered.set()
+            await release.wait()
+            return await super().sign(digest)
+
+    service = RetentionService(
+        Database(engine, async_sessionmaker(engine, expire_on_commit=False)), BlockingSigner()
+    )
+    administrator = Principal(
+        "https://issuer.example",
+        "concurrent-administrator",
+        str(tenant_id),
+        IdentityKind.HUMAN,
+        roles=frozenset({Role.ADMINISTRATOR}),
+    )
+    cleanup = asyncio.create_task(service.run_once(administrator, dry_run=False, batch_size=1))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    async with AsyncSession(engine) as session:
+        before_commit = await session.get(Decision, durable.decision_id)
+        assert before_commit and before_commit.reasons is not None
+        assert before_commit.detail_deleted_at is None
+    release.set()
+    result = await asyncio.wait_for(cleanup, timeout=2)
+    assert result.decision_details == 1
+    async with AsyncSession(engine) as session:
+        after_commit = await session.get(Decision, durable.decision_id)
+        assert after_commit and after_commit.reasons is None
+        assert after_commit.detail_deleted_at is not None

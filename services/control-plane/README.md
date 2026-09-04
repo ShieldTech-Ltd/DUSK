@@ -110,6 +110,8 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_TELEMETRY_BATCH_SIZE` | `256` | `1..2048` and no greater than queue size |
 | `DUSK_CP_TELEMETRY_EXPORT_INTERVAL_MS` | `5000` | `1000..60000` |
 | `DUSK_CP_TELEMETRY_EXPORT_TIMEOUT_MS` | `1000` | `100..10000` |
+| `DUSK_CP_PRIVACY_LIFECYCLE_ENABLED` | `false` | Enables injected retention and controlled-export services; requires v2, PostgreSQL, and an audit signer |
+| `DUSK_CP_RETENTION_BATCH_SIZE` | `100` | Maximum records per cleanup transaction; `1..500` |
 | `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
 
 The decision investigation API is separately activated with
@@ -132,6 +134,10 @@ OpenTelemetry export and structured JSON logging are documented in
 [`docs/control-plane-observability.md`](../../docs/control-plane-observability.md),
 including the telemetry threat boundary, fixed metric dimensions, measured
 pipeline stages, exporter backpressure behavior, and staging SLO gates.
+
+Retention enforcement, legal holds, signed deletion evidence, controlled
+administrative export, and restore constraints are documented in
+[`docs/control-plane-data-lifecycle.md`](../../docs/control-plane-data-lifecycle.md).
 
 Transactional outbox workers are separately disabled by default. Enabling them
 requires storage plus injected destination, credential, DNS, pinned transport,

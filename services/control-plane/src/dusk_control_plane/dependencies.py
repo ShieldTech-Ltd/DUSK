@@ -33,6 +33,11 @@ from dusk_control_plane.operations import (
     PostgresOperationsReader,
 )
 from dusk_control_plane.outbox import OutboxWorker
+from dusk_control_plane.privacy import (
+    PrivacyExportService,
+    RetentionPolicyService,
+    RetentionService,
+)
 from dusk_control_plane.storage.database import Database
 
 ProbeCheck = Callable[[], Awaitable[None]]
@@ -66,6 +71,9 @@ class AppContainer:
     dashboard_reader: DashboardReader | None = None
     operations_reader: OperationsReader | None = None
     telemetry_runtime: TelemetryRuntime | None = None
+    retention_service: RetentionService | None = None
+    retention_policy_service: RetentionPolicyService | None = None
+    privacy_export_service: PrivacyExportService | None = None
 
     @classmethod
     def build(  # noqa: C901
@@ -82,6 +90,9 @@ class AppContainer:
         operations_reader: OperationsReader | None = None,
         policy_pack: PolicyPack | None = None,
         telemetry_runtime: TelemetryRuntime | None = None,
+        retention_service: RetentionService | None = None,
+        retention_policy_service: RetentionPolicyService | None = None,
+        privacy_export_service: PrivacyExportService | None = None,
     ) -> AppContainer:
         resolved_settings = settings if settings is not None else Settings()
         resolved_telemetry = (
@@ -130,6 +141,26 @@ class AppContainer:
             if outbox_worker is not None
             else None
         )
+        resolved_retention_service = retention_service
+        resolved_retention_policy_service = retention_policy_service
+        resolved_privacy_export_service = privacy_export_service
+        if resolved_settings.privacy_lifecycle_enabled:
+            if resolved_database is None or audit_signer is None:
+                raise ValueError(
+                    "privacy_lifecycle_enabled requires database and audit signer dependencies"
+                )
+            if resolved_retention_service is None:
+                resolved_retention_service = RetentionService(
+                    resolved_database,
+                    audit_signer,
+                    default_batch_size=resolved_settings.retention_batch_size,
+                )
+            if resolved_retention_policy_service is None:
+                resolved_retention_policy_service = RetentionPolicyService(
+                    resolved_database, audit_signer
+                )
+            if resolved_privacy_export_service is None:
+                resolved_privacy_export_service = PrivacyExportService(resolved_database)
         resolved_decision_reader = decision_reader
         if resolved_settings.decision_read_api_enabled and resolved_decision_reader is None:
             if resolved_database is None or resolved_settings.decision_cursor_signing_key is None:
@@ -194,6 +225,9 @@ class AppContainer:
             dashboard_reader=resolved_dashboard_reader,
             operations_reader=resolved_operations_reader,
             telemetry_runtime=resolved_telemetry,
+            retention_service=resolved_retention_service,
+            retention_policy_service=resolved_retention_policy_service,
+            privacy_export_service=resolved_privacy_export_service,
         )
 
 
