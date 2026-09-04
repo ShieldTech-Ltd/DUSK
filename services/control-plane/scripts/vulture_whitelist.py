@@ -26,6 +26,7 @@ from dusk_control_plane.observability import SafeJsonFormatter
 from dusk_control_plane.operations import PolicyPage, PolicySummary
 from dusk_control_plane.outbox import OutboxWorkerConfig, SystemDnsResolver
 from dusk_control_plane.policy import EvidenceTrust
+from dusk_control_plane.privacy import RetentionRunResult
 from dusk_control_plane.storage.models import (
     AgentRiskRollup,
     AuditEvent,
@@ -166,6 +167,7 @@ PipelineTimings.behavioral_ms
 PipelineTimings.baseline_ms
 PipelineTimings.sie_ms
 SafeJsonFormatter.format
+RetentionRunResult.audit_sequence
 EvidenceTrust.CONFLICTED
 OutboxWorkerConfig.from_settings
 SystemDnsResolver

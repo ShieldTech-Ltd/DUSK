@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     telemetry_batch_size: int = Field(default=256, ge=1, le=2048)
     telemetry_export_interval_ms: int = Field(default=5000, ge=1000, le=60_000)
     telemetry_export_timeout_ms: int = Field(default=1000, ge=100, le=10_000)
+    privacy_lifecycle_enabled: bool = False
+    retention_batch_size: int = Field(default=100, ge=1, le=500)
     decision_cursor_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
     )
@@ -133,6 +135,7 @@ class Settings(BaseSettings):
         self._validate_dashboard_reads()
         self._validate_operations_reads()
         self._validate_observability()
+        self._validate_privacy_lifecycle()
         self._validate_outbox()
         return self
 
@@ -197,6 +200,10 @@ class Settings(BaseSettings):
         )
         if self.outbox_lease_seconds < minimum_lease:
             raise ValueError("outbox_lease_seconds must cover the bounded delivery attempt")
+
+    def _validate_privacy_lifecycle(self) -> None:
+        if self.privacy_lifecycle_enabled and (not self.v2_enabled or not self.storage_enabled):
+            raise ValueError("privacy_lifecycle_enabled requires v2_enabled and storage_enabled")
 
     def _validate_storage(self) -> None:
         if not self.storage_enabled:

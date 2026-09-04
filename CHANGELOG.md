@@ -14,6 +14,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Bounded, dry-run-first tenant retention enforcement with legal-hold locking,
+  signed deletion evidence, preserved audit continuity, controlled compliance
+  export, and defence-in-depth secret-value redaction.
 - Default-off OpenTelemetry tracing and RED metrics with bounded OTLP export,
   allow-listed structured JSON logs, request/decision/audit/outbox correlation,
   and measured normalization, behavioral, policy, persistence, audit, response,

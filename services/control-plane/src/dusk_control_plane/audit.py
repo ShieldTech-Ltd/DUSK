@@ -46,7 +46,19 @@ from dusk_control_plane.storage.models import (
 AUDIT_FORMAT = "dusk.audit.v1"
 AUDIT_EVENT_TYPE = "evaluation.decided"
 _SENSITIVE_KEY = re.compile(
-    r"(?:authorization|cookie|credential|password|prompt|secret|session|token)", re.IGNORECASE
+    r"(?:authorization|cookie|credential|password|prompt|provider.?payload|raw.?request|"
+    r"response.?body|secret|session|token)",
+    re.IGNORECASE,
+)
+_SENSITIVE_VALUE = re.compile(
+    r"(?:"
+    r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
+    r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+    r"|-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----"
+    r"|[a-z][a-z0-9+.-]*://[^\s/:]+:[^\s/@]+@"
+    r")",
+    re.IGNORECASE,
 )
 _MAX_CONTAINER_ITEMS = 256
 _MAX_STRING_LENGTH = 4096
@@ -443,7 +455,7 @@ def redact_for_storage(value: object, *, _depth: int = 0) -> JsonValue:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        return value[:_MAX_STRING_LENGTH]
+        return _redact_string(value)
     if isinstance(value, Mapping):
         if len(value) > _MAX_CONTAINER_ITEMS:
             raise ValueError("stored object exceeds maximum field count")
@@ -461,6 +473,10 @@ def redact_for_storage(value: object, *, _depth: int = 0) -> JsonValue:
             raise ValueError("stored array exceeds maximum item count")
         return [redact_for_storage(item, _depth=_depth + 1) for item in value]
     raise ValueError("stored content must be JSON compatible")
+
+
+def _redact_string(value: str) -> str:
+    return "[REDACTED]" if _SENSITIVE_VALUE.search(value) else value[:_MAX_STRING_LENGTH]
 
 
 def audit_digest(
