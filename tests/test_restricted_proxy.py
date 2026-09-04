@@ -5,6 +5,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from dusk.permits import PermitError, issue_permit
 from dusk.proxy import EmergencyKillSwitch, ExecutionBlockedError, RestrictedExecutionProxy
+from dusk.proxy_evidence import format_decision
 
 
 def test_proxy_verifies_permit_before_executor() -> None:
@@ -69,3 +70,25 @@ def test_proxy_never_calls_executor_for_invalid_permit() -> None:
             executor=executor,
         )
     assert calls == 0
+
+
+def test_kill_switch_can_be_deactivated_and_decision_is_redacted() -> None:
+    switch = EmergencyKillSwitch()
+    switch.activate("incident")
+    assert switch.active is True
+    switch.deactivate()
+    assert switch.active is False
+    assert format_decision(
+        model="test-model",
+        action={"action_type": "read", "target": "safe", "secret": "hidden"},
+        decision="ALLOW",
+        executed=True,
+        trace_id="trace-1",
+    ) == {
+        "model": "test-model",
+        "action_type": "read",
+        "target": "safe",
+        "decision": "ALLOW",
+        "executed": True,
+        "trace_id": "trace-1",
+    }
