@@ -173,6 +173,7 @@ def test_database_url_is_secret_and_storage_defaults_are_bounded() -> None:
     assert settings.database_url.get_secret_value().startswith("postgresql+asyncpg://")
     assert settings.database_pool_size == 10
     assert settings.database_statement_timeout_ms == 5000
+    assert settings.evaluation_timeout_seconds == 10
 
 
 def test_decision_read_api_requires_v2_storage_and_secret_key() -> None:

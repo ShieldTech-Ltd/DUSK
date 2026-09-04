@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     api_docs_enabled: bool = False
     v2_enabled: bool = False
     readiness_timeout_ms: int = Field(default=1000, ge=50, le=5000)
+    evaluation_timeout_seconds: float = Field(default=10.0, ge=0.1, le=30.0)
     max_request_body_bytes: int = Field(default=1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     oidc_issuer: str | None = Field(default=None, min_length=1, max_length=512)
     oidc_audience: str | None = Field(default=None, min_length=1, max_length=256)

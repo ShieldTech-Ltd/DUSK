@@ -59,6 +59,24 @@ async def test_expired_cache_never_falls_back_to_stale_key_during_outage() -> No
 
 
 @pytest.mark.anyio
+async def test_identity_provider_recovery_revalidates_without_stale_bypass() -> None:
+    first = signing_key("first")
+    rotated = signing_key("rotated")
+    fetcher = SequenceFetcher([{"keys": [first.jwk]}, unavailable(), {"keys": [rotated.jwk]}])
+    clock = Clock()
+    jwks = cache(fetcher, clock)
+
+    assert (await jwks.get("first")).key_id == "first"
+    clock.value = 31
+    with pytest.raises(IdentityProviderUnavailableError):
+        await jwks.get("first")
+    with pytest.raises(AuthenticationRejectedError, match="unknown_key"):
+        await jwks.get("first")
+    assert (await jwks.get("rotated")).key_id == "rotated"
+    assert fetcher.calls == 3
+
+
+@pytest.mark.anyio
 async def test_concurrent_unknown_key_requests_collapse_refresh() -> None:
     key = signing_key("current")
     fetcher = SequenceFetcher([{"keys": [key.jwk]}, {"keys": [key.jwk]}])
