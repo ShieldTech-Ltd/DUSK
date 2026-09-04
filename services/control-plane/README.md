@@ -155,6 +155,16 @@ and acknowledgement-verification dependencies.
 | `DUSK_CP_OUTBOX_RETRY_BASE_SECONDS` | `1.0` | `0.1..60.0` |
 | `DUSK_CP_OUTBOX_RETRY_MAX_SECONDS` | `300.0` | `1.0..3600.0` and at least retry base |
 | `DUSK_CP_OUTBOX_ACKNOWLEDGEMENT_MAX_AGE_SECONDS` | `300` | `30..3600` |
+| `DUSK_CP_ENFORCEMENT_BROKER_ENABLED` | `false` | Requires v2, PostgreSQL, and the outbox worker |
+| `DUSK_CP_ENFORCEMENT_BROKER_DESTINATION_KEY` | `provider-enforcement-broker` | Trusted registry key; never a request-controlled URL |
+
+When broker routing is enabled, only an `ALLOW` decision creates an
+`ACTION_EXECUTION` intent for the credential-holding broker. `BLOCK` and
+`WOULD-BLOCK` decisions create only `DECISION_RECORDED` webhook intents. The
+broker receives the action digest, decision identity, audit sequence, and trace
+identity; it does not receive provider credentials through the control plane.
+An action is reported as `EXECUTED` only after a fresh, cryptographically
+verified broker acknowledgement bound to the tenant, decision, and delivery.
 
 Start the pinned local PostgreSQL profile and apply the schema with:
 
@@ -175,7 +185,8 @@ alembic -c services/control-plane/alembic.ini downgrade -1
 The baseline schema stores tenant-qualified principals and roles, redacted
 canonical actions, decisions, policy matches, tamper-evident audit metadata,
 integration health, transactional outbox deliveries, agent-risk rollups, and
-dashboard aggregates. It does not store raw requests, tokens, credentials,
+dashboard aggregates. Durable provider-evidence nonce claims prevent replay
+across replicas without retaining provider payloads. It does not store raw requests, tokens, credentials,
 prompts, or unrestricted provider payloads. Decision details can be tombstoned
 without deleting decision identity or audit-integrity metadata.
 
@@ -197,3 +208,13 @@ documented in
 Reliable delivery, SSRF enforcement, retry, lease, deduplication, and broker
 acknowledgement semantics are documented in
 [`docs/control-plane-outbox-delivery.md`](../../docs/control-plane-outbox-delivery.md).
+
+CloudTrail, Azure Activity Log, and Kubernetes AdmissionReview normalization is
+strict and extracts only canonical policy fields. Production collectors sign
+each domain envelope with a provisioned Ed25519 key. The control plane verifies
+the signature, active key ID, source/domain allow-list, authenticated tenant,
+payload digest, freshness, and durable nonce before policy evaluation. Every v2
+evidence envelope therefore requires `tenant_id`, `key_id`, `nonce`, and
+`signature`; caller-asserted trust markers remain prohibited. Provider field
+mappings and launch certification requirements are documented in
+[`docs/provider-certification.md`](../../docs/provider-certification.md).

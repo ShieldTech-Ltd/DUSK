@@ -12,6 +12,7 @@ from dusk_control_plane.audit import (
     AuditSigner,
     DurableEvaluationService,
     PostgresDecisionEvidenceStore,
+    ProviderBrokerIntentResolver,
 )
 from dusk_control_plane.config import Settings
 from dusk_control_plane.dashboard import (
@@ -133,6 +134,13 @@ class AppContainer:
                     resolved_database, audit_signer, telemetry=resolved_telemetry.telemetry
                 ),
                 telemetry=resolved_telemetry.telemetry,
+                intent_resolver=(
+                    ProviderBrokerIntentResolver(
+                        resolved_settings.enforcement_broker_destination_key
+                    )
+                    if resolved_settings.enforcement_broker_enabled
+                    else None
+                ),
             )
         if resolved_settings.outbox_worker_enabled and outbox_worker is None:
             raise ValueError("outbox_worker_enabled requires an injected outbox worker")

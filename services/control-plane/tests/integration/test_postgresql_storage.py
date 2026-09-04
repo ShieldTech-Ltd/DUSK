@@ -88,6 +88,7 @@ from dusk_control_plane.privacy import (
     RetentionPolicyService,
     RetentionService,
 )
+from dusk_control_plane.provider_evidence import PostgresReplayStore
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import (
     AuditEvent,
@@ -180,6 +181,47 @@ async def test_postgresql_ddl_rolls_back_after_interruption(engine: AsyncEngine)
             lambda sync_connection: inspect(sync_connection).get_table_names()
         )
     assert "migration_interruption_probe" not in tables
+
+
+@pytest.mark.anyio
+async def test_provider_evidence_nonce_claim_is_atomic_and_tenant_scoped(
+    engine: AsyncEngine,
+) -> None:
+    tenant_a, tenant_b = uuid4(), uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_a, slug=f"tenant-{tenant_a.hex}", display_name="Tenant A"),
+                Tenant(id=tenant_b, slug=f"tenant-{tenant_b.hex}", display_name="Tenant B"),
+            )
+        )
+    store = PostgresReplayStore(
+        Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    )
+
+    first, duplicate = await asyncio.gather(
+        store.claim(
+            tenant_id=str(tenant_a),
+            source_identity="aws-collector",
+            nonce="cloudtrail-event-1",
+            observed_at=datetime.now(UTC),
+        ),
+        store.claim(
+            tenant_id=str(tenant_a),
+            source_identity="aws-collector",
+            nonce="cloudtrail-event-1",
+            observed_at=datetime.now(UTC),
+        ),
+    )
+    other_tenant = await store.claim(
+        tenant_id=str(tenant_b),
+        source_identity="aws-collector",
+        nonce="cloudtrail-event-1",
+        observed_at=datetime.now(UTC),
+    )
+
+    assert sorted((first, duplicate)) == [False, True]
+    assert other_tenant is True
 
 
 @pytest.mark.anyio
@@ -386,6 +428,10 @@ def _evaluation_request(key: str) -> EvaluationRequest:
                 observed_at=datetime.now(UTC),
                 digest="sha256:" + "0" * 64,
                 payload={"token": "unrestricted-provider-token"},
+                tenant_id="tenant-a",
+                key_id="test-key",
+                nonce="test-nonce-00000001",
+                signature="a" * 86,
             ),
         ),
         idempotency_key=key,

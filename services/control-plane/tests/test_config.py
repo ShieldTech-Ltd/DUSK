@@ -56,6 +56,7 @@ def test_defaults_are_local_and_feature_flags_are_disabled() -> None:
     assert settings.v2_enabled is False
     assert settings.storage_enabled is False
     assert settings.decision_read_api_enabled is False
+    assert settings.enforcement_broker_enabled is False
 
 
 @pytest.mark.parametrize("environment", ("staging", "production"))
@@ -219,6 +220,11 @@ def test_outbox_worker_is_disabled_by_default_and_requires_storage() -> None:
     assert Settings().outbox_worker_enabled is False
     with pytest.raises(ValidationError, match="outbox_worker_enabled requires storage_enabled"):
         Settings(outbox_worker_enabled=True)
+
+
+def test_enforcement_broker_requires_complete_durable_delivery_boundary() -> None:
+    with pytest.raises(ValidationError, match="requires v2, storage, and the outbox worker"):
+        Settings(enforcement_broker_enabled=True)
 
 
 def test_outbox_resource_and_retry_bounds_are_consistent() -> None:

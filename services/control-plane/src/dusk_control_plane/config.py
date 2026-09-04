@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     outbox_retry_base_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
     outbox_retry_max_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
     outbox_acknowledgement_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+    enforcement_broker_enabled: bool = False
+    enforcement_broker_destination_key: str = Field(
+        default="provider-enforcement-broker", min_length=1, max_length=128
+    )
 
     @model_validator(mode="after")
     def protect_non_local_deployments(self) -> Settings:
@@ -200,6 +204,12 @@ class Settings(BaseSettings):
         )
         if self.outbox_lease_seconds < minimum_lease:
             raise ValueError("outbox_lease_seconds must cover the bounded delivery attempt")
+        if self.enforcement_broker_enabled and (
+            not self.v2_enabled or not self.storage_enabled or not self.outbox_worker_enabled
+        ):
+            raise ValueError(
+                "enforcement_broker_enabled requires v2, storage, and the outbox worker"
+            )
 
     def _validate_privacy_lifecycle(self) -> None:
         if self.privacy_lifecycle_enabled and (not self.v2_enabled or not self.storage_enabled):

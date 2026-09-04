@@ -16,6 +16,7 @@ from dusk.policies.engine import Rule
 from dusk_control_plane.identity import Principal
 
 SERVER_DERIVED_DOMAINS = frozenset({"identity", "tenant"})
+CERTIFICATION_GATED_RULE_PREFIXES = ("DUSK-CLOUD-",)
 
 
 class EnforcementMode(StrEnum):
@@ -40,6 +41,10 @@ class EvidenceSubmission:
     observed_at: datetime
     digest: str
     payload: Mapping[str, object]
+    tenant_id: str
+    key_id: str
+    nonce: str
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,7 @@ class PolicyIntegration:
     verifier: EvidenceVerifier
     freshness: timedelta = timedelta(minutes=5)
     future_skew: timedelta = timedelta(seconds=30)
+    certified_rule_ids: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         required = required_evidence_domains(self.pack)
@@ -108,6 +114,17 @@ class PolicyIntegration:
         if missing:
             raise PolicyActivationError(
                 f"policy pack requires unavailable live evidence domains: {sorted(missing)}"
+            )
+        gated = certification_gated_rule_ids(self.pack)
+        uncertified = gated - self.certified_rule_ids
+        unknown = self.certified_rule_ids - gated
+        if unknown:
+            raise PolicyActivationError(
+                f"certification references unknown or ungated rules: {sorted(unknown)}"
+            )
+        if uncertified:
+            raise PolicyActivationError(
+                f"policy rules require approved live certification: {sorted(uncertified)}"
             )
 
     async def evaluate(
@@ -202,6 +219,16 @@ def required_evidence_domains(pack: PolicyPack) -> frozenset[str]:
         for rule in pack.rules
         if rule.status == "enforced"
         for condition in rule.conditions
+    )
+
+
+def certification_gated_rule_ids(pack: PolicyPack) -> frozenset[str]:
+    """Return active provider rules that require reviewed live certification evidence."""
+    return frozenset(
+        rule.id
+        for rule in pack.rules
+        if rule.status == "enforced"
+        and any(rule.id.startswith(prefix) for prefix in CERTIFICATION_GATED_RULE_PREFIXES)
     )
 
 

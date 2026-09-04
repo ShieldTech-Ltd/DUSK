@@ -80,6 +80,8 @@ jobs:
       - env: {UPSTREAM: "${{ needs.release-controls.result }}"}
         run: |
           test "$UPSTREAM" = success
+          python scripts/validate_provider_certification.py \
+            docs/evidence/provider-certification.json
           python scripts/ci/control.py aggregate --lane release --results results
 
   publish:

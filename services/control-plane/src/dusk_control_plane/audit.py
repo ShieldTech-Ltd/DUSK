@@ -99,10 +99,49 @@ class DurableDecision:
 class OutboxIntent:
     destination_key: str = "decision-events"
     delivery_kind: str = "DECISION_RECORDED"
+    destination_kind: Literal["WEBHOOK", "ENFORCEMENT_BROKER"] = "WEBHOOK"
     max_attempts: int = 10
 
 
 DEFAULT_OUTBOX_INTENT = OutboxIntent()
+
+
+class OutboxIntentResolver(Protocol):
+    """Select a trusted destination from the durable decision result."""
+
+    def resolve(self, request: EvaluationRequest, response: EvaluationResponse) -> OutboxIntent: ...
+
+
+@dataclass(frozen=True)
+class ProviderBrokerIntentResolver:
+    """Route only allowed actions to a credential-holding enforcement broker."""
+
+    broker_destination_key: str
+    event_destination_key: str = "decision-events"
+    max_attempts: int = 10
+
+    def __post_init__(self) -> None:
+        keys = (self.broker_destination_key, self.event_destination_key)
+        if any(not key or len(key) > 128 for key in keys):
+            raise ValueError("broker destination keys are invalid")
+        if not 1 <= self.max_attempts <= 100:
+            raise ValueError("broker maximum attempts is invalid")
+
+    def resolve(self, request: EvaluationRequest, response: EvaluationResponse) -> OutboxIntent:
+        del request
+        if response.verdict == "ALLOW":
+            return OutboxIntent(
+                destination_key=self.broker_destination_key,
+                destination_kind="ENFORCEMENT_BROKER",
+                delivery_kind="ACTION_EXECUTION",
+                max_attempts=self.max_attempts,
+            )
+        return OutboxIntent(
+            destination_key=self.event_destination_key,
+            destination_kind="WEBHOOK",
+            delivery_kind="DECISION_RECORDED",
+            max_attempts=self.max_attempts,
+        )
 
 
 class DecisionEvidenceStore(Protocol):
@@ -135,26 +174,33 @@ class DurableEvaluationService:
         evaluator: EvaluationService,
         evidence_store: DecisionEvidenceStore,
         telemetry: Telemetry | None = None,
+        intent_resolver: OutboxIntentResolver | None = None,
     ) -> None:
         self._evaluator = evaluator
         self._evidence_store = evidence_store
         self._telemetry = telemetry
+        self._intent_resolver = intent_resolver
 
     async def evaluate(
         self, request: EvaluationRequest, principal: Principal
     ) -> EvaluationResponse:
         started = time.perf_counter()
         response = await self._evaluator.evaluate(request, principal)
+        intent = (
+            self._intent_resolver.resolve(request, response)
+            if self._intent_resolver is not None
+            else DEFAULT_OUTBOX_INTENT
+        )
         persistence_started = time.perf_counter()
         try:
             if self._telemetry is None:
                 durable = await self._evidence_store.persist(
-                    request=request, response=response, principal=principal
+                    request=request, response=response, principal=principal, intent=intent
                 )
             else:
                 with self._telemetry.stage("persistence", decision_trace_id=response.trace_id):
                     durable = await self._evidence_store.persist(
-                        request=request, response=response, principal=principal
+                        request=request, response=response, principal=principal, intent=intent
                     )
         except DurableCommitUnavailableError:
             raise
@@ -415,6 +461,7 @@ class PostgresDecisionEvidenceStore:
             delivery_id=delivery_id,
             deduplication_key=f"decision:{decision.id}",
             destination_key=intent.destination_key,
+            destination_kind=intent.destination_kind,
             delivery_kind=intent.delivery_kind,
             redacted_payload={
                 "audit_digest": digest.hex(),
@@ -422,6 +469,7 @@ class PostgresDecisionEvidenceStore:
                 "decision_id": str(decision.id),
                 "trace_id": str(decision.trace_id),
                 "verdict": decision.verdict,
+                "action_digest": input_digest.hex(),
             },
             max_attempts=intent.max_attempts,
             next_attempt_at=occurred_at,
