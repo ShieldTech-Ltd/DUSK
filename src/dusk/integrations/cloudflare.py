@@ -41,7 +41,8 @@ class CloudflareGatewayClient:
             },
             method="POST",
         )
-        with urlopen(request, timeout=self._timeout) as response:  # noqa: S310
+        # The endpoint is validated as HTTPS in the constructor before use.
+        with urlopen(request, timeout=self._timeout) as response:  # noqa: S310  # nosec B310
             body = response.read()
         decoded = json.loads(body)
         if not isinstance(decoded, dict):
