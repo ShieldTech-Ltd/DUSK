@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import inspect, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import (
 from dusk_control_plane.audit import (
     AuditCheckpoint,
     DurableCommitUnavailableError,
+    DurableDecision,
     OutboxIntent,
     PostgresDecisionEvidenceStore,
     audit_digest,
@@ -97,6 +98,7 @@ from dusk_control_plane.storage.models import (
     IntegrationHealth,
     OutboxDelivery,
     PolicyMatch,
+    PrincipalRecord,
     Tenant,
 )
 from dusk_control_plane.storage.repositories import (
@@ -169,6 +171,37 @@ def test_migration_upgrade_is_retryable_and_matches_current_metadata() -> None:
     config = _alembic_config()
     command.upgrade(config, "head")
     command.check(config)
+
+
+def test_latest_migration_supports_mixed_version_rollback_and_retry() -> None:
+    config = _alembic_config()
+    assert DATABASE_URL is not None
+
+    async def table_names() -> set[str]:
+        inspection_engine = create_async_engine(DATABASE_URL)
+        try:
+            async with inspection_engine.connect() as connection:
+                return set(
+                    await connection.run_sync(
+                        lambda sync_connection: inspect(sync_connection).get_table_names()
+                    )
+                )
+        finally:
+            await inspection_engine.dispose()
+
+    try:
+        command.downgrade(config, "20260902_0004")
+        tables = asyncio.run(table_names())
+        assert "evidence_replay_claims" not in tables
+        assert {"tenants", "decisions", "audit_events", "outbox_deliveries"} <= tables
+
+        command.upgrade(config, "head")
+        command.downgrade(config, "20260902_0004")
+        command.upgrade(config, "head")
+        command.check(config)
+        assert "evidence_replay_claims" in asyncio.run(table_names())
+    finally:
+        command.upgrade(config, "head")
 
 
 @pytest.mark.anyio
@@ -574,6 +607,55 @@ async def test_failure_at_outbox_boundary_rolls_back_decision_and_audit(
 
 
 @pytest.mark.anyio
+async def test_database_connection_loss_rolls_back_and_normal_retry_recovers(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    victim = await engine.connect()
+    transaction = await victim.begin()
+    backend_pid = await victim.scalar(text("SELECT pg_backend_pid()"))
+    await victim.execute(
+        text(
+            "INSERT INTO tenants (id, slug, display_name) VALUES (:id, :slug, 'Interrupted tenant')"
+        ),
+        {"id": tenant_id, "slug": f"interrupted-{tenant_id.hex}"},
+    )
+    async with engine.connect() as terminator:
+        assert (
+            await terminator.scalar(
+                text("SELECT pg_terminate_backend(:backend_pid)"),
+                {"backend_pid": backend_pid},
+            )
+            is True
+        )
+        await terminator.commit()
+    with pytest.raises(DBAPIError):
+        await victim.execute(text("SELECT 1"))
+    try:
+        await transaction.rollback()
+    except DBAPIError:
+        pass
+    await victim.invalidate()
+    await victim.close()
+
+    async with AsyncSession(engine) as session:
+        assert await session.get(Tenant, tenant_id) is None
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(
+            Tenant(id=tenant_id, slug=f"recovered-{tenant_id.hex}", display_name="Recovered")
+        )
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    recovered = await _store(engine).persist(
+        request=_evaluation_request("database-recovery"),
+        response=_evaluation_response(),
+        principal=principal,
+    )
+    assert recovered.inserted is True
+
+
+@pytest.mark.anyio
 async def test_concurrent_sequence_allocation_and_restart_recovery(engine: AsyncEngine) -> None:
     import asyncio
 
@@ -638,9 +720,91 @@ async def test_idempotent_retry_returns_original_durable_decision(engine: AsyncE
             assert count == 1
 
 
+@pytest.mark.anyio
+async def test_high_concurrency_duplicate_submission_commits_one_complete_bundle(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    request = _evaluation_request("concurrent-idempotency")
+
+    async def retry() -> DurableDecision:
+        return await _store(engine).persist(
+            request=request,
+            response=_evaluation_response(),
+            principal=principal,
+        )
+
+    results = await asyncio.gather(*(retry() for _ in range(20)))
+    decision_ids = {result.decision_id for result in results}
+    trace_ids = {result.response.trace_id for result in results}
+    assert len(decision_ids) == len(trace_ids) == 1
+    assert sum(result.inserted for result in results) == 1
+    async with AsyncSession(engine) as session:
+        for model in (CanonicalAction, Decision, AuditEvent, OutboxDelivery):
+            rows = list(
+                (await session.scalars(select(model).where(model.tenant_id == tenant_id))).all()
+            )
+            assert len(rows) == 1
+        principal_rows = list(
+            (
+                await session.scalars(
+                    select(PrincipalRecord).where(PrincipalRecord.tenant_id == tenant_id)
+                )
+            ).all()
+        )
+        assert len(principal_rows) == 1
+
+
+@pytest.mark.anyio
+async def test_idempotency_lock_does_not_block_another_tenant(engine: AsyncEngine) -> None:
+    tenant_a, tenant_b = uuid4(), uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add_all(
+            (
+                Tenant(id=tenant_a, slug=f"tenant-{tenant_a.hex}", display_name="Tenant A"),
+                Tenant(id=tenant_b, slug=f"tenant-{tenant_b.hex}", display_name="Tenant B"),
+            )
+        )
+    lock_connection = await engine.connect()
+    lock_transaction = await lock_connection.begin()
+    shared_key = "tenant-qualified-lock"
+    await lock_connection.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 211))"),
+        {"lock_key": f"{tenant_a}:{shared_key}"},
+    )
+    try:
+        principal_b = Principal(
+            "issuer", "subject-b", str(tenant_b), IdentityKind.WORKLOAD, workload_id="agent-b"
+        )
+        result = await asyncio.wait_for(
+            _store(engine).persist(
+                request=_evaluation_request(shared_key),
+                response=_evaluation_response(),
+                principal=principal_b,
+            ),
+            timeout=2,
+        )
+        assert result.inserted is True
+        assert result.checkpoint.tenant_id == tenant_b
+    finally:
+        await lock_transaction.rollback()
+        await lock_connection.close()
+
+
 class _FailingSigner(_TestSigner):
     async def sign(self, digest: bytes) -> bytes:
         raise TimeoutError("managed signing service unavailable")
+
+
+class _StalledSigner(_TestSigner):
+    async def sign(self, digest: bytes) -> bytes:
+        await asyncio.Event().wait()
+        return await super().sign(digest)
 
 
 @pytest.mark.anyio
@@ -660,6 +824,38 @@ async def test_signer_failure_rolls_back_every_evidence_record(engine: AsyncEngi
     async with AsyncSession(engine) as session:
         for model in (CanonicalAction, Decision, AuditEvent, OutboxDelivery):
             assert await session.scalar(select(model).where(model.tenant_id == tenant_id)) is None
+
+
+@pytest.mark.anyio
+async def test_cancelled_audit_signing_rolls_back_and_idempotent_retry_recovers(
+    engine: AsyncEngine,
+) -> None:
+    tenant_id = uuid4()
+    async with AsyncSession(engine) as session, session.begin():
+        session.add(Tenant(id=tenant_id, slug=f"tenant-{tenant_id.hex}", display_name="Tenant"))
+    principal = Principal(
+        "issuer", "subject", str(tenant_id), IdentityKind.WORKLOAD, workload_id="agent-a"
+    )
+    request = _evaluation_request("cancelled-audit-signing")
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(
+            _store(engine, _StalledSigner()).persist(
+                request=request,
+                response=_evaluation_response(),
+                principal=principal,
+            ),
+            timeout=0.1,
+        )
+    async with AsyncSession(engine) as session:
+        for model in (CanonicalAction, Decision, AuditEvent, OutboxDelivery):
+            assert await session.scalar(select(model).where(model.tenant_id == tenant_id)) is None
+
+    recovered = await _store(engine).persist(
+        request=request,
+        response=_evaluation_response(),
+        principal=principal,
+    )
+    assert recovered.inserted is True
 
 
 class _PublicResolver:
@@ -893,8 +1089,10 @@ async def test_batch_saturation_and_concurrency_are_strictly_bounded(engine: Asy
     assert len(pending) >= 3
 
 
-def _ack_response(claim, *, tenant_id=None, outcome="EXECUTED") -> TransportResponse:
-    issued_at = datetime.now(UTC)
+def _ack_response(
+    claim, *, tenant_id=None, outcome="EXECUTED", issued_at: datetime | None = None
+) -> TransportResponse:
+    issued_at = issued_at or datetime.now(UTC)
     return TransportResponse(
         200,
         {
@@ -963,6 +1161,51 @@ async def test_only_bound_verified_broker_acknowledgement_sets_executed(
     assert acknowledgement_span.parent is not None
     assert acknowledgement_span.parent.span_id == outbox_span.context.span_id
     assert acknowledgement_span.attributes["dusk.outbox.delivery_id"] == str(durable.delivery_id)
+
+
+@pytest.mark.anyio
+async def test_broker_acknowledgement_freshness_uses_postgresql_not_worker_clock(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _make_broker_delivery(engine, "trusted-database-clock")
+    skewed_worker_time = datetime.now(UTC) + timedelta(days=365)
+    result = await _worker(
+        engine,
+        _RecordingTransport([_ack_response]),
+        kind=DestinationKind.ENFORCEMENT_BROKER,
+        now=skewed_worker_time,
+    ).run_once()
+    assert result.delivered == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+    assert decision is not None
+    assert decision.response_status == "EXECUTED"
+
+
+@pytest.mark.anyio
+async def test_stale_broker_acknowledgement_fails_closed_against_postgresql_clock(
+    engine: AsyncEngine,
+) -> None:
+    await _isolate_worker_queue(engine)
+    _, durable = await _make_broker_delivery(engine, "stale-database-clock")
+    stale_time = datetime.now(UTC) - timedelta(seconds=301)
+    result = await _worker(
+        engine,
+        _RecordingTransport([lambda claim: _ack_response(claim, issued_at=stale_time)]),
+        kind=DestinationKind.ENFORCEMENT_BROKER,
+        now=datetime.now(UTC) - timedelta(days=365),
+    ).run_once()
+    assert result.retried == 1
+    async with AsyncSession(engine) as session:
+        decision = await session.scalar(select(Decision).where(Decision.id == durable.decision_id))
+        delivery = await session.scalar(
+            select(OutboxDelivery).where(OutboxDelivery.decision_id == durable.decision_id)
+        )
+    assert decision is not None and delivery is not None
+    assert decision.response_status == "DELIVERY_PENDING"
+    assert delivery.safe_diagnostic_code == "ACKNOWLEDGEMENT_STALE"
+    assert delivery.acknowledgement_digest is None
 
 
 @pytest.mark.anyio

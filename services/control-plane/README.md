@@ -99,6 +99,7 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_MAX_OVERFLOW` | `10` | `0..100` temporary overflow connections |
 | `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
+| `DUSK_CP_EVALUATION_TIMEOUT_SECONDS` | `10` | `0.1..30` fail-closed end-to-end v2 evaluation deadline |
 | `DUSK_CP_DECISION_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_DASHBOARD_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_OPERATIONS_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, an active policy pack, and a cursor-signing key |
@@ -208,6 +209,9 @@ documented in
 Reliable delivery, SSRF enforcement, retry, lease, deduplication, and broker
 acknowledgement semantics are documented in
 [`docs/control-plane-outbox-delivery.md`](../../docs/control-plane-outbox-delivery.md).
+The failure matrix, bounded recovery objectives, fault-injection evidence, and
+operator recovery procedure are documented in
+[`docs/control-plane-resilience.md`](../../docs/control-plane-resilience.md).
 
 CloudTrail, Azure Activity Log, and Kubernetes AdmissionReview normalization is
 strict and extracts only canonical policy fields. Production collectors sign

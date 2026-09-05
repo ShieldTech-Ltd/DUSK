@@ -14,6 +14,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Production resilience qualification for the control plane, including
+  concurrent idempotent evaluation serialization, real PostgreSQL connection-loss
+  recovery, mixed-version migration rollback and retry, database-trusted broker
+  acknowledgement time, and documented RTO/RPO recovery procedures.
 - Production-ready AWS, Azure, and Kubernetes policy-evidence boundaries:
   `DUSK-CLOUD-001` through `DUSK-CLOUD-010`, strict native event
   normalization, tenant-bound Ed25519 evidence, durable PostgreSQL replay

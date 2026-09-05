@@ -7,7 +7,7 @@ import hmac
 import json
 import re
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -225,12 +225,10 @@ class PostgresDecisionEvidenceStore:
         database: Database,
         signer: AuditSigner,
         *,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         telemetry: Telemetry | None = None,
     ) -> None:
         self._database = database
         self._signer = signer
-        self._clock = clock
         self._telemetry = telemetry
 
     async def persist(
@@ -302,6 +300,12 @@ class PostgresDecisionEvidenceStore:
 
         redacted_action = redact_for_storage(request.action.model_dump(mode="json"))
         input_digest = hashlib.sha256(_canonical_bytes(request)).digest()
+        # Serialize only retries for this tenant/key.  The database lock closes the
+        # lookup/insert race across processes while preserving cross-tenant progress.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 211))"),
+            {"lock_key": f"{tenant_id}:{request.idempotency_key}"},
+        )
         existing = await session.execute(
             select(Decision, StoredCanonicalAction.input_digest)
             .join(
@@ -345,7 +349,8 @@ class PostgresDecisionEvidenceStore:
                 float((decision.pipeline_timings or {}).get("audit_ms", 0)),
             )
 
-        principal_id = await _upsert_principal(session, tenant_id, principal, self._clock())
+        observed_at = await _database_now(session)
+        principal_id = await _upsert_principal(session, tenant_id, principal, observed_at)
         action = StoredCanonicalAction(
             tenant_id=tenant_id,
             input_digest=input_digest,
@@ -402,9 +407,7 @@ class PostgresDecisionEvidenceStore:
             .limit(1)
         )
         sequence = 1 if previous is None else previous.sequence + 1
-        occurred_at = await session.scalar(text("SELECT clock_timestamp()"))
-        if not isinstance(occurred_at, datetime):
-            raise DurableCommitUnavailableError("trusted database time unavailable")
+        occurred_at = await _database_now(session)
         metadata = _integrity_metadata(
             decision,
             input_digest,
@@ -634,6 +637,13 @@ async def _upsert_principal(
     value = await session.scalar(statement)
     if value is None:
         raise DurableCommitUnavailableError("principal persistence failed")
+    return value
+
+
+async def _database_now(session: AsyncSession) -> datetime:
+    value = await session.scalar(text("SELECT clock_timestamp()"))
+    if not isinstance(value, datetime):
+        raise DurableCommitUnavailableError("trusted database time unavailable")
     return value
 
 

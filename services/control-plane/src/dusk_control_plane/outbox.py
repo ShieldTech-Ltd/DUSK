@@ -600,8 +600,11 @@ class OutboxWorker:
             or acknowledgement.delivery_id != claim.delivery_id
         ):
             raise DeliveryError("ACKNOWLEDGEMENT_INVALID")
-        now = self._clock()
-        age = (now - acknowledgement.issued_at).total_seconds()
+
+    def _validate_acknowledgement_freshness(
+        self, acknowledgement: BrokerAcknowledgement, trusted_now: datetime
+    ) -> None:
+        age = (trusted_now - acknowledgement.issued_at).total_seconds()
         if age < -30 or age > self._config.acknowledgement_max_age_seconds:
             raise DeliveryError("ACKNOWLEDGEMENT_STALE")
 
@@ -617,6 +620,8 @@ class OutboxWorker:
             if row is None:
                 return WorkerRunStats(stale_results=1)
             now = await _database_now(session)
+            if acknowledgement is not None:
+                self._validate_acknowledgement_freshness(acknowledgement, now)
             row.state = "DELIVERED"
             row.delivered_at = now
             row.locked_until = None

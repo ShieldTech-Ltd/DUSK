@@ -79,6 +79,21 @@ _integration_health_authorization = require_route_policy("GET", "/v2/integration
 _service_status_authorization = require_route_policy("GET", "/v2/service/status")
 
 
+async def _bounded_evaluate(
+    service: DurableEvaluationService,
+    body: EvaluationRequest,
+    principal: Principal,
+    timeout_seconds: float,
+) -> EvaluationResponse:
+    try:
+        return await asyncio.wait_for(
+            service.evaluate(body, principal),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise EvaluationUnavailableError from exc
+
+
 def _install_v2_routes(
     app: FastAPI,
     container: AppContainer,
@@ -102,7 +117,12 @@ def _install_v2_routes(
         service = container.evaluation_service
         if service is None or not isinstance(service, DurableEvaluationService):
             raise EvaluationUnavailableError
-        response = await service.evaluate(body, principal)
+        response = await _bounded_evaluate(
+            service,
+            body,
+            principal,
+            container.settings.evaluation_timeout_seconds,
+        )
         set_decision_trace_id(response.trace_id)
         return response
 
