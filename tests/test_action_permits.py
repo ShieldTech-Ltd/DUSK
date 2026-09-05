@@ -108,6 +108,44 @@ def test_permit_rejects_tampered_action_and_expiry() -> None:
         )
 
 
+def test_permit_rejects_wrong_public_key() -> None:
+    key = Ed25519PrivateKey.generate()
+    wrong_key = Ed25519PrivateKey.generate()
+    now = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)
+    permit = issue_permit(
+        key,
+        tenant_id="tenant-a",
+        agent_id="agent-1",
+        action=_action(),
+        policy_version="enterprise-v1",
+        now=now,
+    )
+    with pytest.raises(PermitError):
+        verify_permit(
+            permit,
+            wrong_key.public_key(),
+            tenant_id="tenant-a",
+            agent_id="agent-1",
+            action=_action(),
+            policy_version="enterprise-v1",
+            now=now,
+        )
+
+
+def test_permit_rejects_boolean_substitution_for_integer() -> None:
+    key = Ed25519PrivateKey.generate()
+    permit = issue_permit(key, tenant_id="t", agent_id="a", action={"count": 1}, policy_version="p")
+    with pytest.raises(PermitError, match="binding"):
+        verify_permit(
+            permit,
+            key.public_key(),
+            tenant_id="t",
+            agent_id="a",
+            action={"count": True},
+            policy_version="p",
+        )
+
+
 def test_permit_is_single_use() -> None:
     key = Ed25519PrivateKey.generate()
     now = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)
