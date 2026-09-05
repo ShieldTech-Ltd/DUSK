@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.validate_control_plane_deployment import validate_promotion, validate_values
+from scripts.validate_control_plane_deployment import (
+    record_promotion,
+    validate_promotion,
+    validate_values,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CHART = ROOT / "deploy/helm/dusk-control-plane"
@@ -33,6 +37,26 @@ def test_workload_and_migration_use_restricted_runtime() -> None:
     assert "pg_try_advisory_lock" in (
         ROOT / "services/control-plane/src/dusk_control_plane/migration.py"
     ).read_text(encoding="utf-8")
+
+
+def test_first_install_hooks_create_dependencies_before_migration() -> None:
+    service_account = (CHART / "templates/serviceaccount.yaml").read_text(encoding="utf-8")
+    external_secret = (CHART / "templates/externalsecret.yaml").read_text(encoding="utf-8")
+    migration = (CHART / "templates/migration-job.yaml").read_text(encoding="utf-8")
+    for manifest in (service_account, external_secret, migration):
+        assert '"helm.sh/hook": pre-install,pre-upgrade' in manifest
+    assert '"helm.sh/hook-weight": "-30"' in service_account
+    assert '"helm.sh/hook-weight": "-20"' in external_secret
+    assert '"helm.sh/hook-weight": "-10"' in migration
+    assert "serviceAccountName:" in migration
+    assert "secretKeyRef:" in migration
+
+
+def test_runtime_image_has_no_mutable_os_package_operations() -> None:
+    dockerfile = (ROOT / "services/control-plane/Dockerfile").read_text(encoding="utf-8")
+    assert "FROM ${PYTHON_IMAGE}" in dockerfile
+    assert "@sha256:" in dockerfile
+    assert "apt-get" not in dockerfile
 
 
 def test_manifests_do_not_embed_kubernetes_secrets() -> None:
@@ -78,7 +102,7 @@ def test_promotion_requires_the_same_verified_digest(tmp_path: Path) -> None:
             "evidence_uri": f"https://evidence.invalid/{name}",
             "approved_at": "2026-09-05T12:00:00Z",
         }
-        for name in ("development", "staging", "production")
+        for name in ("development", "staging")
     ]
     record = tmp_path / "promotion.json"
     record.write_text(json.dumps({"image_digest": digest, "environments": environments}))
@@ -87,3 +111,58 @@ def test_promotion_requires_the_same_verified_digest(tmp_path: Path) -> None:
     record.write_text(json.dumps({"image_digest": digest, "environments": environments}))
     with pytest.raises(ValueError, match="same image digest"):
         validate_promotion(record)
+
+
+def test_promotion_rejects_skipped_environment(tmp_path: Path) -> None:
+    digest = "sha256:" + ("a" * 64)
+    record = tmp_path / "promotion.json"
+    record.write_text(
+        json.dumps(
+            {
+                "image_digest": digest,
+                "environments": [],
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="ordered evidence"):
+        validate_promotion(record, target_environment="production")
+
+
+def test_promotion_rejects_requested_digest_change(tmp_path: Path) -> None:
+    digest = "sha256:" + ("a" * 64)
+    record = tmp_path / "promotion.json"
+    record.write_text(json.dumps({"image_digest": digest, "environments": []}))
+    with pytest.raises(ValueError, match="requested image digest"):
+        validate_promotion(
+            record,
+            target_environment="development",
+            expected_digest="sha256:" + ("b" * 64),
+        )
+
+
+def test_completed_promotion_advances_ordered_state(tmp_path: Path) -> None:
+    digest = "sha256:" + ("a" * 64)
+    record = tmp_path / "promotion.json"
+    record.write_text(json.dumps({"image_digest": digest, "environments": []}))
+    record_promotion(
+        record,
+        target_environment="development",
+        image_digest=digest,
+        evidence_uri="https://github.com/ShieldTech-Ltd/DUSK/actions/runs/1",
+    )
+    state = json.loads(record.read_text(encoding="utf-8"))
+    assert [item["name"] for item in state["environments"]] == ["development"]
+    validate_promotion(record, target_environment="staging", expected_digest=digest)
+
+
+def test_workflow_enforces_promotion_validator() -> None:
+    workflow = (ROOT / ".github/workflows/promote-control-plane.yml").read_text(encoding="utf-8")
+    assert "CONTROL_PLANE_PROMOTION_EVIDENCE_PATH" in workflow
+    assert "validate_control_plane_deployment.py promotion" in workflow
+    assert '--target-environment "$TARGET_ENVIRONMENT"' in workflow
+    assert workflow.count('--image-digest "$DIGEST"') == 2
+    assert "record-promotion" in workflow
+    assert "group: control-plane-promotion" in workflow
+    assert "validate_control_plane_deployment.py first-install" in (
+        ROOT / ".github/workflows/dusk.yml"
+    ).read_text(encoding="utf-8")

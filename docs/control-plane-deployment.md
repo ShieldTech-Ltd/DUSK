@@ -75,22 +75,37 @@ disabled NetworkPolicy, missing TLS, and non-digest images.
 ## Migration, promotion, and rollback
 
 Helm runs a bounded pre-install/pre-upgrade migration Job using the same image
-digest as the application. The runner holds a PostgreSQL advisory lock, applies
-only the additive Alembic chain, and enforces connection, lock, statement, Job,
-and Helm timeouts. A concurrent migration fails safely instead of racing.
+digest as the application. Hook weights create the ServiceAccount first, then
+the ExternalSecret, and finally the migration Job. The Job's required Secret
+reference keeps its Pod pending until the External Secrets operator has created
+the target Secret. The runner holds a PostgreSQL advisory lock, applies only the
+additive Alembic chain, and enforces connection, lock, statement, Job, and Helm
+timeouts. A concurrent migration fails safely instead of racing.
 
 Promote in this order: development, staging, production. At every boundary,
 verify the keyless signature, SBOM attestation, SLSA provenance, exact digest,
-tests, security approval, and immutable evidence URI. Validate the collected
-record with:
+tests, security approval, and immutable workflow-run URI. The deployment runner
+maintains an ordered promotion-state file outside the repository. Initialise it
+for a newly published digest as follows:
+
+```json
+{"image_digest":"sha256:<64 lowercase hexadecimal characters>","environments":[]}
+```
+
+Set the protected-environment variable
+`CONTROL_PLANE_PROMOTION_EVIDENCE_PATH` to the same absolute runner-owned path
+for all three environments. The workflow serializes promotions globally,
+validates all prior states before deploying, and atomically records a successful
+deployment afterward. Validate a production transition manually with:
 
 ```sh
-python scripts/validate_control_plane_deployment.py promotion promotion.json
+python scripts/validate_control_plane_deployment.py promotion promotion.json \
+  --target-environment production --image-digest sha256:<digest>
 ```
 
 The manual `promote-control-plane.yml` workflow runs only on a protected,
 pre-authenticated `dusk-deployer` runner. Each protected environment supplies a
-non-secret values-file path and namespace. The runner obtains short-lived
+non-secret values-file path, namespace, and the shared promotion-state path. The runner obtains short-lived
 workload identity outside the repository; do not store a kubeconfig or cloud
 access key in GitHub. Account-backed runners and environments are created only
 at the deferred qualification stage.

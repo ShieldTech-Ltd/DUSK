@@ -167,6 +167,15 @@ jobs:
           helm template dusk-control-plane deploy/helm/dusk-control-plane \
             --namespace dusk-system > /tmp/dusk-control-plane.yaml
           test -s /tmp/dusk-control-plane.yaml
+          helm template dusk-control-plane deploy/helm/dusk-control-plane \
+            --namespace dusk-system \
+            --set externalSecret.enabled=true \
+            --set externalSecret.secretStoreRef.name=ci-store \
+            --set 'externalSecret.data[0].secretKey=database-url' \
+            --set 'externalSecret.data[0].remoteRef.key=ci/database-url' \
+            > /tmp/dusk-control-plane-first-install.yaml
+          python scripts/validate_control_plane_deployment.py first-install \
+            /tmp/dusk-control-plane-first-install.yaml
 
   security-gate:
     if: always()

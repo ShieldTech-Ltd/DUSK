@@ -36,10 +36,7 @@ LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.revision="${OCI_REVISION}" \
     org.opencontainers.image.licenses="Apache-2.0"
 
-RUN apt-get update \
-    && apt-get upgrade --yes \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 dusk \
+RUN groupadd --gid 10001 dusk \
     && useradd --no-create-home --uid 10001 --gid 10001 --shell /usr/sbin/nologin dusk \
     && mkdir --mode=0555 /app \
     && chown 10001:10001 /app
