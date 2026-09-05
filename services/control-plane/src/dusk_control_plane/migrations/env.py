@@ -59,6 +59,7 @@ async def _run_online() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        hide_parameters=True,
     )
     async with engine.connect() as connection:
         await connection.run_sync(_run_migrations)

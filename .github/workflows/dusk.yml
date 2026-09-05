@@ -154,9 +154,23 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  deployment-manifests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+        with: {version: v3.18.6}
+      - name: Lint and render the production chart
+        run: |
+          helm lint deploy/helm/dusk-control-plane
+          helm template dusk-control-plane deploy/helm/dusk-control-plane \
+            --namespace dusk-system > /tmp/dusk-control-plane.yaml
+          test -s /tmp/dusk-control-plane.yaml
+
   security-gate:
     if: always()
-    needs: [correctness, compatibility, security-tools, codeql, containers]
+    needs: [correctness, compatibility, security-tools, codeql, containers, deployment-manifests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
