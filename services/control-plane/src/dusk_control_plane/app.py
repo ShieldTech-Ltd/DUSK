@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Annotated, Any
@@ -54,7 +55,13 @@ from dusk_control_plane.operations import (
     PolicySummary,
     ServiceStatus,
 )
-from dusk_control_plane.request_context import new_request_id, reset_request_id, set_request_id
+from dusk_control_plane.request_context import (
+    new_request_id,
+    reset_decision_trace_id,
+    reset_request_id,
+    set_decision_trace_id,
+    set_request_id,
+)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 logger = logging.getLogger(__name__)
@@ -70,6 +77,21 @@ _policies_authorization = require_route_policy("GET", "/v2/policies")
 _policy_summary_authorization = require_route_policy("GET", "/v2/policies/summary")
 _integration_health_authorization = require_route_policy("GET", "/v2/integrations/health")
 _service_status_authorization = require_route_policy("GET", "/v2/service/status")
+
+
+async def _bounded_evaluate(
+    service: DurableEvaluationService,
+    body: EvaluationRequest,
+    principal: Principal,
+    timeout_seconds: float,
+) -> EvaluationResponse:
+    try:
+        return await asyncio.wait_for(
+            service.evaluate(body, principal),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError as exc:
+        raise EvaluationUnavailableError from exc
 
 
 def _install_v2_routes(
@@ -95,7 +117,14 @@ def _install_v2_routes(
         service = container.evaluation_service
         if service is None or not isinstance(service, DurableEvaluationService):
             raise EvaluationUnavailableError
-        return await service.evaluate(body, principal)
+        response = await _bounded_evaluate(
+            service,
+            body,
+            principal,
+            container.settings.evaluation_timeout_seconds,
+        )
+        set_decision_trace_id(response.trace_id)
+        return response
 
     if container.settings.dashboard_read_api_enabled:
         _install_dashboard_routes(app, container, common_errors)
@@ -335,12 +364,14 @@ def _create_lifespan(
                     await asyncio.gather(outbox_task, return_exceptions=True)
             if container.database is not None:
                 await container.database.close()
+            if container.telemetry_runtime is not None:
+                container.telemetry_runtime.shutdown()
             application.state.started = False
 
     return lifespan
 
 
-def create_app(
+def create_app(  # noqa: C901
     *,
     container: AppContainer | None = None,
     readiness_probes: Sequence[DependencyProbe] = (),
@@ -378,7 +409,13 @@ def create_app(
     ) -> Response:
         request_id = new_request_id()
         token = set_request_id(request_id)
-        try:
+        trace_token = set_decision_trace_id(None)
+        started = time.perf_counter()
+        telemetry = (
+            resolved.telemetry_runtime.telemetry if resolved.telemetry_runtime is not None else None
+        )
+
+        async def dispatch() -> Response:
             try:
                 content_length = request.headers.get("content-length")
                 if (
@@ -395,18 +432,41 @@ def create_app(
                 else:
                     response = await call_next(request)
             except Exception:  # noqa: BLE001 - map unexpected failures to a safe boundary
-                logger.error("unhandled control-plane request failure request_id=%s", request_id)
+                logger.error(
+                    "unhandled control-plane request failure",
+                    extra={"event_code": "request.unhandled_failure"},
+                )
                 response = error_response(
                     status_code=500,
                     code="INTERNAL_ERROR",
                     message="Internal service error",
                     retryable=True,
                 )
-            response.headers[REQUEST_ID_HEADER] = request_id
-            response.headers["Cache-Control"] = "no-store"
-            response.headers["X-Content-Type-Options"] = "nosniff"
+            if telemetry is None:
+                response.headers[REQUEST_ID_HEADER] = request_id
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["X-Content-Type-Options"] = "nosniff"
+            else:
+                with telemetry.stage("response"):
+                    response.headers[REQUEST_ID_HEADER] = request_id
+                    response.headers["Cache-Control"] = "no-store"
+                    response.headers["X-Content-Type-Options"] = "nosniff"
+                route = getattr(request.scope.get("route"), "path", "unmatched")
+                telemetry.record_request(
+                    method=request.method,
+                    route=route,
+                    status_code=response.status_code,
+                    duration_ms=(time.perf_counter() - started) * 1000,
+                )
             return response
+
+        try:
+            if telemetry is None:
+                return await dispatch()
+            with telemetry.request(method=request.method, headers=request.headers):
+                return await dispatch()
         finally:
+            reset_decision_trace_id(trace_token)
             reset_request_id(token)
 
     common_errors: dict[int | str, dict[str, Any]] = {500: {"model": ErrorEnvelope}}

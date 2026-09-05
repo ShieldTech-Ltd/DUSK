@@ -16,6 +16,7 @@ EXPECTED_TABLES = {
     "canonical_actions",
     "dashboard_aggregates",
     "decisions",
+    "evidence_replay_claims",
     "integration_health",
     "outbox_deliveries",
     "policy_matches",

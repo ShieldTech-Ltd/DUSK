@@ -99,10 +99,20 @@ are bounded by the corresponding `DUSK_CP_DATABASE_*` settings.
 | `DUSK_CP_DATABASE_MAX_OVERFLOW` | `10` | `0..100` temporary overflow connections |
 | `DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS` | `5.0` | `0.1..30.0` for pool and connection acquisition |
 | `DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS` | `5000` | `100..60000` server-enforced statement timeout |
+| `DUSK_CP_EVALUATION_TIMEOUT_SECONDS` | `10` | `0.1..30` fail-closed end-to-end v2 evaluation deadline |
 | `DUSK_CP_DECISION_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_DASHBOARD_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, and a cursor-signing key |
 | `DUSK_CP_OPERATIONS_READ_API_ENABLED` | `false` | Requires v2, PostgreSQL, an active policy pack, and a cursor-signing key |
 | `DUSK_CP_INTEGRATION_HEALTH_STALE_AFTER_SECONDS` | `120` | `30..3600`; older measurements are reported as stale |
+| `DUSK_CP_OBSERVABILITY_ENABLED` | `false` | Requires an authenticated HTTPS OTLP endpoint when enabled |
+| `DUSK_CP_OTLP_ENDPOINT` | unset | HTTPS collector base URL without credentials, query, or fragment |
+| `DUSK_CP_OTLP_HEADERS` | unset | Secret bounded JSON object containing collector authentication headers |
+| `DUSK_CP_TELEMETRY_QUEUE_SIZE` | `2048` | `128..16384` queued records |
+| `DUSK_CP_TELEMETRY_BATCH_SIZE` | `256` | `1..2048` and no greater than queue size |
+| `DUSK_CP_TELEMETRY_EXPORT_INTERVAL_MS` | `5000` | `1000..60000` |
+| `DUSK_CP_TELEMETRY_EXPORT_TIMEOUT_MS` | `1000` | `100..10000` |
+| `DUSK_CP_PRIVACY_LIFECYCLE_ENABLED` | `false` | Enables injected retention and controlled-export services; requires v2, PostgreSQL, and an audit signer |
+| `DUSK_CP_RETENTION_BATCH_SIZE` | `100` | Maximum records per cleanup transaction; `1..500` |
 | `DUSK_CP_DECISION_CURSOR_SIGNING_KEY` | unset | Secret with at least 32 characters; rotate only after existing cursors expire |
 
 The decision investigation API is separately activated with
@@ -121,6 +131,15 @@ routes without changing the schema or the `/v1/gate` compatibility boundary.
 The complete response, authorization, freshness, and rollback contract is in
 [`docs/control-plane-policy-operations-api.md`](../../docs/control-plane-policy-operations-api.md).
 
+OpenTelemetry export and structured JSON logging are documented in
+[`docs/control-plane-observability.md`](../../docs/control-plane-observability.md),
+including the telemetry threat boundary, fixed metric dimensions, measured
+pipeline stages, exporter backpressure behavior, and staging SLO gates.
+
+Retention enforcement, legal holds, signed deletion evidence, controlled
+administrative export, and restore constraints are documented in
+[`docs/control-plane-data-lifecycle.md`](../../docs/control-plane-data-lifecycle.md).
+
 Transactional outbox workers are separately disabled by default. Enabling them
 requires storage plus injected destination, credential, DNS, pinned transport,
 and acknowledgement-verification dependencies.
@@ -137,6 +156,16 @@ and acknowledgement-verification dependencies.
 | `DUSK_CP_OUTBOX_RETRY_BASE_SECONDS` | `1.0` | `0.1..60.0` |
 | `DUSK_CP_OUTBOX_RETRY_MAX_SECONDS` | `300.0` | `1.0..3600.0` and at least retry base |
 | `DUSK_CP_OUTBOX_ACKNOWLEDGEMENT_MAX_AGE_SECONDS` | `300` | `30..3600` |
+| `DUSK_CP_ENFORCEMENT_BROKER_ENABLED` | `false` | Requires v2, PostgreSQL, and the outbox worker |
+| `DUSK_CP_ENFORCEMENT_BROKER_DESTINATION_KEY` | `provider-enforcement-broker` | Trusted registry key; never a request-controlled URL |
+
+When broker routing is enabled, only an `ALLOW` decision creates an
+`ACTION_EXECUTION` intent for the credential-holding broker. `BLOCK` and
+`WOULD-BLOCK` decisions create only `DECISION_RECORDED` webhook intents. The
+broker receives the action digest, decision identity, audit sequence, and trace
+identity; it does not receive provider credentials through the control plane.
+An action is reported as `EXECUTED` only after a fresh, cryptographically
+verified broker acknowledgement bound to the tenant, decision, and delivery.
 
 Start the pinned local PostgreSQL profile and apply the schema with:
 
@@ -157,7 +186,8 @@ alembic -c services/control-plane/alembic.ini downgrade -1
 The baseline schema stores tenant-qualified principals and roles, redacted
 canonical actions, decisions, policy matches, tamper-evident audit metadata,
 integration health, transactional outbox deliveries, agent-risk rollups, and
-dashboard aggregates. It does not store raw requests, tokens, credentials,
+dashboard aggregates. Durable provider-evidence nonce claims prevent replay
+across replicas without retaining provider payloads. It does not store raw requests, tokens, credentials,
 prompts, or unrestricted provider payloads. Decision details can be tombstoned
 without deleting decision identity or audit-integrity metadata.
 
@@ -179,3 +209,16 @@ documented in
 Reliable delivery, SSRF enforcement, retry, lease, deduplication, and broker
 acknowledgement semantics are documented in
 [`docs/control-plane-outbox-delivery.md`](../../docs/control-plane-outbox-delivery.md).
+The failure matrix, bounded recovery objectives, fault-injection evidence, and
+operator recovery procedure are documented in
+[`docs/control-plane-resilience.md`](../../docs/control-plane-resilience.md).
+
+CloudTrail, Azure Activity Log, and Kubernetes AdmissionReview normalization is
+strict and extracts only canonical policy fields. Production collectors sign
+each domain envelope with a provisioned Ed25519 key. The control plane verifies
+the signature, active key ID, source/domain allow-list, authenticated tenant,
+payload digest, freshness, and durable nonce before policy evaluation. Every v2
+evidence envelope therefore requires `tenant_id`, `key_id`, `nonce`, and
+`signature`; caller-asserted trust markers remain prohibited. Provider field
+mappings and launch certification requirements are documented in
+[`docs/provider-certification.md`](../../docs/provider-certification.md).

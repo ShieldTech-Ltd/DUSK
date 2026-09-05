@@ -95,7 +95,10 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_error(_request: Request, _exc: Exception) -> JSONResponse:
-        logger.error("unhandled control-plane request failure request_id=%s", get_request_id())
+        logger.error(
+            "unhandled control-plane request failure",
+            extra={"event_code": "request.unhandled_failure"},
+        )
         return error_response(
             status_code=500,
             code="INTERNAL_ERROR",

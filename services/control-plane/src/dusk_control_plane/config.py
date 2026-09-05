@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     api_docs_enabled: bool = False
     v2_enabled: bool = False
     readiness_timeout_ms: int = Field(default=1000, ge=50, le=5000)
+    evaluation_timeout_seconds: float = Field(default=10.0, ge=0.1, le=30.0)
     max_request_body_bytes: int = Field(default=1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     oidc_issuer: str | None = Field(default=None, min_length=1, max_length=512)
     oidc_audience: str | None = Field(default=None, min_length=1, max_length=256)
@@ -73,6 +74,15 @@ class Settings(BaseSettings):
     dashboard_read_api_enabled: bool = False
     operations_read_api_enabled: bool = False
     integration_health_stale_after_seconds: int = Field(default=120, ge=30, le=3600)
+    observability_enabled: bool = False
+    otlp_endpoint: str | None = Field(default=None, min_length=1, max_length=1024)
+    otlp_headers: SecretStr | None = Field(default=None, max_length=4096)
+    telemetry_queue_size: int = Field(default=2048, ge=128, le=16_384)
+    telemetry_batch_size: int = Field(default=256, ge=1, le=2048)
+    telemetry_export_interval_ms: int = Field(default=5000, ge=1000, le=60_000)
+    telemetry_export_timeout_ms: int = Field(default=1000, ge=100, le=10_000)
+    privacy_lifecycle_enabled: bool = False
+    retention_batch_size: int = Field(default=100, ge=1, le=500)
     decision_cursor_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
     )
@@ -86,6 +96,10 @@ class Settings(BaseSettings):
     outbox_retry_base_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
     outbox_retry_max_seconds: float = Field(default=300.0, ge=1.0, le=3600.0)
     outbox_acknowledgement_max_age_seconds: int = Field(default=300, ge=30, le=3600)
+    enforcement_broker_enabled: bool = False
+    enforcement_broker_destination_key: str = Field(
+        default="provider-enforcement-broker", min_length=1, max_length=128
+    )
 
     @model_validator(mode="after")
     def protect_non_local_deployments(self) -> Settings:
@@ -125,6 +139,8 @@ class Settings(BaseSettings):
         self._validate_decision_reads()
         self._validate_dashboard_reads()
         self._validate_operations_reads()
+        self._validate_observability()
+        self._validate_privacy_lifecycle()
         self._validate_outbox()
         return self
 
@@ -152,6 +168,28 @@ class Settings(BaseSettings):
         if self.decision_cursor_signing_key is None:
             raise ValueError("operations_read_api_enabled requires decision_cursor_signing_key")
 
+    def _validate_observability(self) -> None:
+        if not self.observability_enabled:
+            return
+        if self.otlp_endpoint is None:
+            raise ValueError("observability_enabled requires otlp_endpoint")
+        try:
+            parsed = urlsplit(self.otlp_endpoint)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("otlp_endpoint must be a valid HTTPS URL") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("otlp_endpoint must be an HTTPS URL without credentials or query")
+        if self.telemetry_batch_size > self.telemetry_queue_size:
+            raise ValueError("telemetry_batch_size must not exceed telemetry_queue_size")
+
     def _validate_outbox(self) -> None:
         if self.outbox_worker_enabled and not self.storage_enabled:
             raise ValueError("outbox_worker_enabled requires storage_enabled")
@@ -167,6 +205,16 @@ class Settings(BaseSettings):
         )
         if self.outbox_lease_seconds < minimum_lease:
             raise ValueError("outbox_lease_seconds must cover the bounded delivery attempt")
+        if self.enforcement_broker_enabled and (
+            not self.v2_enabled or not self.storage_enabled or not self.outbox_worker_enabled
+        ):
+            raise ValueError(
+                "enforcement_broker_enabled requires v2, storage, and the outbox worker"
+            )
+
+    def _validate_privacy_lifecycle(self) -> None:
+        if self.privacy_lifecycle_enabled and (not self.v2_enabled or not self.storage_enabled):
+            raise ValueError("privacy_lifecycle_enabled requires v2_enabled and storage_enabled")
 
     def _validate_storage(self) -> None:
         if not self.storage_enabled:

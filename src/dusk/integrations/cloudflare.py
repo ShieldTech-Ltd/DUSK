@@ -27,8 +27,8 @@ def _build_no_redirect_opener() -> urllib.request.OpenerDirector:
     """
 
     class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-        def redirect_request(  # type: ignore[override]
-            self, req: Request, fp: object, code: int, msg: str, headers: object, newurl: str
+        def redirect_request(
+            self, _req: Request, _fp: object, _code: int, _msg: str, _headers: object, newurl: str
         ) -> None:
             raise GatewayBlockedError(
                 f"Gateway redirect to {newurl!r} refused: HTTPS-only enforcement"
@@ -65,7 +65,8 @@ class CloudflareGatewayClient:
         decision = gate(action)
         if decision != "ALLOW":
             raise GatewayBlockedError(f"DUSK decision {decision} blocked Gateway request")
-        request = Request(
+        # The constructor requires HTTPS and the default opener refuses redirects.
+        request = Request(  # noqa: S310
             self._endpoint,
             data=json.dumps(payload, separators=(",", ":")).encode(),
             headers={

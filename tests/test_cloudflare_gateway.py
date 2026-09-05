@@ -1,9 +1,36 @@
 import json
 import urllib.error
+import urllib.request
 
 import pytest
 
-from dusk.integrations.cloudflare import CloudflareGatewayClient, GatewayBlockedError, GatewayError
+from dusk.integrations.cloudflare import (
+    CloudflareGatewayClient,
+    GatewayBlockedError,
+    GatewayError,
+    _build_no_redirect_opener,
+)
+
+
+@pytest.mark.parametrize("endpoint", ["http://gateway.example", "file:///etc/passwd", "ftp://host"])
+def test_non_https_endpoints_are_rejected(endpoint: str) -> None:
+    with pytest.raises(ValueError, match="HTTPS"):
+        CloudflareGatewayClient(endpoint, "secret")
+
+
+@pytest.mark.parametrize("destination", ["http://other.example", "https://other.example"])
+def test_redirect_callback_refuses_forwarding(destination: str) -> None:
+    opener = _build_no_redirect_opener()
+    handler = next(h for h in opener.handlers if isinstance(h, urllib.request.HTTPRedirectHandler))
+    with pytest.raises(GatewayBlockedError, match="redirect"):
+        handler.redirect_request(
+            urllib.request.Request("https://gateway.example"),
+            None,
+            302,
+            "Found",
+            {},
+            destination,
+        )
 
 
 class _MockResponse:

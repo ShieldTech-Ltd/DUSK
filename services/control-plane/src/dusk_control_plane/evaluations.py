@@ -11,14 +11,16 @@ from dusk.application import BehavioralDecision
 from pydantic import BaseModel, ConfigDict, Field
 
 from dusk_control_plane.identity import Principal
+from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.policy import (
+    CombinedDecision,
     EnforcementMode,
     EvidenceSubmission,
     PolicyIntegration,
     SafePolicyMatch,
 )
 
-INSTRUMENTED_PIPELINE_STAGES = ("behavioral", "policy", "total")
+INSTRUMENTED_EVALUATION_STAGES = ("normalization", "behavioral", "policy")
 
 
 class EvaluationUnavailableError(Exception):
@@ -44,6 +46,10 @@ class EvidenceEnvelope(EvaluationModel):
     observed_at: datetime
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     payload: dict[str, object]
+    tenant_id: str = Field(min_length=1, max_length=200)
+    key_id: str = Field(min_length=1, max_length=200)
+    nonce: str = Field(min_length=16, max_length=200)
+    signature: str = Field(min_length=80, max_length=128)
 
 
 class EvaluationRequest(EvaluationModel):
@@ -63,8 +69,13 @@ class PolicyMatchResponse(EvaluationModel):
 
 
 class PipelineTimings(EvaluationModel):
+    normalization_ms: float = Field(default=0, ge=0)
+    baseline_ms: float | None = Field(default=None, ge=0)
     behavioral_ms: float = Field(ge=0)
+    sie_ms: float | None = Field(default=None, ge=0)
     policy_ms: float = Field(ge=0)
+    persistence_ms: float | None = Field(default=None, ge=0)
+    audit_ms: float | None = Field(default=None, ge=0)
     total_ms: float = Field(ge=0)
 
 
@@ -109,44 +120,48 @@ class PolicyEvaluationService:
         *,
         mode: EnforcementMode,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._policy = policy
         self._behavioral = behavioral
         self._mode = mode
         self._clock = clock
+        self._telemetry = telemetry
+
+    def with_telemetry(self, telemetry: Telemetry) -> PolicyEvaluationService:
+        return PolicyEvaluationService(
+            self._policy,
+            self._behavioral,
+            mode=self._mode,
+            clock=self._clock,
+            telemetry=telemetry,
+        )
 
     async def evaluate(
         self, request: EvaluationRequest, principal: Principal
     ) -> EvaluationResponse:
         started = time.perf_counter()
-        behavioral = await self._behavioral.evaluate(request.action, principal)
+        if self._telemetry is None:
+            action_context, submissions = self._normalize(request, principal)
+        else:
+            with self._telemetry.stage("normalization"):
+                action_context, submissions = self._normalize(request, principal)
+        after_normalization = time.perf_counter()
+        if self._telemetry is None:
+            behavioral = await self._behavioral.evaluate(request.action, principal)
+        else:
+            with self._telemetry.stage("behavioral"):
+                behavioral = await self._behavioral.evaluate(request.action, principal)
         after_behavioral = time.perf_counter()
-        action_context = {
-            "type": request.action.action_type,
-            "target": request.action.target,
-            "consequential": request.action.consequential,
-            "tenant_id": principal.tenant_id,
-            **request.action.attributes,
-        }
-        submissions = tuple(
-            EvidenceSubmission(
-                domain=value.domain,
-                source_identity=value.source_identity,
-                provenance=value.provenance,
-                observed_at=value.observed_at,
-                digest=value.digest,
-                payload=value.payload,
+        if self._telemetry is None:
+            combined = await self._evaluate_policy(
+                principal, action_context, submissions, behavioral.verdict
             )
-            for value in request.evidence
-        )
-        combined = await self._policy.evaluate(
-            principal=principal,
-            action_context=action_context,
-            evidence=submissions,
-            behavioral_verdict=behavioral.verdict,
-            mode=self._mode,
-            now=self._clock(),
-        )
+        else:
+            with self._telemetry.stage("policy", decision_trace_id=behavioral.trace_id):
+                combined = await self._evaluate_policy(
+                    principal, action_context, submissions, behavioral.verdict
+                )
         finished = time.perf_counter()
         return EvaluationResponse(
             trace_id=behavioral.trace_id,
@@ -164,11 +179,57 @@ class PolicyEvaluationService:
             evidence_degraded=combined.evidence_degraded,
             response_status="DECIDED",
             pipeline_timings=PipelineTimings(
-                behavioral_ms=(after_behavioral - started) * 1000,
+                normalization_ms=(after_normalization - started) * 1000,
+                behavioral_ms=(after_behavioral - after_normalization) * 1000,
                 policy_ms=(finished - after_behavioral) * 1000,
                 total_ms=(finished - started) * 1000,
             ),
             similar_decision_ids=(),
+        )
+
+    @staticmethod
+    def _normalize(
+        request: EvaluationRequest, principal: Principal
+    ) -> tuple[dict[str, object], tuple[EvidenceSubmission, ...]]:
+        return (
+            {
+                "type": request.action.action_type,
+                "target": request.action.target,
+                "consequential": request.action.consequential,
+                "tenant_id": principal.tenant_id,
+                **request.action.attributes,
+            },
+            tuple(
+                EvidenceSubmission(
+                    domain=value.domain,
+                    source_identity=value.source_identity,
+                    provenance=value.provenance,
+                    observed_at=value.observed_at,
+                    digest=value.digest,
+                    payload=value.payload,
+                    tenant_id=value.tenant_id,
+                    key_id=value.key_id,
+                    nonce=value.nonce,
+                    signature=value.signature,
+                )
+                for value in request.evidence
+            ),
+        )
+
+    async def _evaluate_policy(
+        self,
+        principal: Principal,
+        action_context: dict[str, object],
+        submissions: tuple[EvidenceSubmission, ...],
+        behavioral_verdict: str,
+    ) -> CombinedDecision:
+        return await self._policy.evaluate(
+            principal=principal,
+            action_context=action_context,
+            evidence=submissions,
+            behavioral_verdict=behavioral_verdict,
+            mode=self._mode,
+            now=self._clock(),
         )
 
 

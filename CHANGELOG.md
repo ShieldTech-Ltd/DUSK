@@ -14,6 +14,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   and the DUSK gate secret.
 
 ### Added
+- Production resilience qualification for the control plane, including
+  concurrent idempotent evaluation serialization, real PostgreSQL connection-loss
+  recovery, mixed-version migration rollback and retry, database-trusted broker
+  acknowledgement time, and documented RTO/RPO recovery procedures.
+- Production-ready AWS, Azure, and Kubernetes policy-evidence boundaries:
+  `DUSK-CLOUD-001` through `DUSK-CLOUD-010`, strict native event
+  normalization, tenant-bound Ed25519 evidence, durable PostgreSQL replay
+  claims, allow-only enforcement-broker routing, and fail-closed release
+  certification. Live provider qualification is deliberately deferred to
+  issue #251 after backend/frontend localhost validation.
+- Bounded, dry-run-first tenant retention enforcement with legal-hold locking,
+  signed deletion evidence, preserved audit continuity, controlled compliance
+  export, and defence-in-depth secret-value redaction.
+- Default-off OpenTelemetry tracing and RED metrics with bounded OTLP export,
+  allow-listed structured JSON logs, request/decision/audit/outbox correlation,
+  and measured normalization, behavioral, policy, persistence, audit, response,
+  delivery, and broker-acknowledgement stages.
 - Tenant-scoped dashboard summary, decision-volume, action-breakdown, and
   agent-risk investigation APIs backed only by persisted PostgreSQL decisions,
   with UTC comparison windows, measured p95 latency, explicit freshness and
