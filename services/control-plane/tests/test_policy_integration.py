@@ -28,6 +28,7 @@ from dusk_control_plane.policy import (
     PolicyIntegration,
     PolicyUnavailableError,
     VerifiedEvidence,
+    certification_gated_rule_ids,
     combine_decisions,
 )
 
@@ -101,18 +102,65 @@ def _principal() -> Principal:
     return Principal("issuer", "subject", "tenant-a", IdentityKind.WORKLOAD, workload_id="agent-a")
 
 
+def _integration(pack, verifier) -> PolicyIntegration:
+    return PolicyIntegration(
+        pack,
+        verifier,
+        certified_rule_ids=certification_gated_rule_ids(pack),
+    )
+
+
 def _submission(payload: dict[str, object], *, observed_at: datetime = NOW) -> EvidenceSubmission:
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     return EvidenceSubmission(
-        "action", "aws-cloudtrail", "signed-event", observed_at, f"sha256:{digest}", payload
+        "action",
+        "aws-cloudtrail",
+        "signed-event",
+        observed_at,
+        f"sha256:{digest}",
+        payload,
+        "tenant-a",
+        "test-key",
+        "test-nonce-00000001",
+        "a" * 86,
     )
 
 
 def test_activation_rejects_missing_live_prerequisites() -> None:
     with pytest.raises(PolicyActivationError, match="unavailable live evidence"):
         PolicyIntegration(load_enterprise_pack(), _Verifier(frozenset({"action"})))
+
+
+def test_cloud_rules_cannot_activate_before_live_certification() -> None:
+    pack = load_enterprise_pack()
+    domains = frozenset(
+        condition.field.split(".", 1)[0]
+        for rule in pack.rules
+        if rule.status == "enforced"
+        for condition in rule.conditions
+    )
+
+    with pytest.raises(PolicyActivationError, match="approved live certification"):
+        PolicyIntegration(pack, _Verifier(domains))
+
+
+def test_certification_cannot_name_unknown_or_ungated_rules() -> None:
+    pack = load_enterprise_pack()
+    domains = frozenset(
+        condition.field.split(".", 1)[0]
+        for rule in pack.rules
+        if rule.status == "enforced"
+        for condition in rule.conditions
+    )
+
+    with pytest.raises(PolicyActivationError, match="unknown or ungated"):
+        PolicyIntegration(
+            pack,
+            _Verifier(domains),
+            certified_rule_ids=certification_gated_rule_ids(pack) | {"DUSK-IAM-001"},
+        )
 
 
 @pytest.mark.anyio
@@ -124,7 +172,7 @@ async def test_verified_context_derives_identity_and_returns_safe_policy_metadat
         if rule.status == "enforced"
         for condition in rule.conditions
     )
-    integration = PolicyIntegration(pack, _Verifier(domains))
+    integration = _integration(pack, _Verifier(domains))
     action = {"type": "network.firewall.update", "cidrs": ["0.0.0.0/0"], "consequential": True}
     result = await integration.evaluate(
         principal=_principal(),
@@ -150,7 +198,7 @@ async def test_stale_evidence_fails_closed_and_caller_asserted_trust_is_rejected
         if rule.status == "enforced"
         for condition in rule.conditions
     )
-    integration = PolicyIntegration(pack, _Verifier(domains))
+    integration = _integration(pack, _Verifier(domains))
     action = {"type": "noop", "consequential": True}
     stale = await integration.evaluate(
         principal=_principal(),
@@ -225,7 +273,7 @@ async def test_v2_response_includes_policy_evidence_and_real_stage_timings() -> 
         idempotency_key="request-1",
     )
     response = await PolicyEvaluationService(
-        PolicyIntegration(pack, _Verifier(domains)),
+        _integration(pack, _Verifier(domains)),
         _Behavioral(),
         mode=EnforcementMode.ENFORCE,
         clock=lambda: NOW,
@@ -252,7 +300,7 @@ async def test_policy_provider_outage_fails_closed() -> None:
         for condition in rule.conditions
     )
     action = {"type": "noop", "consequential": True}
-    integration = PolicyIntegration(pack, _UnavailableVerifier(domains))
+    integration = _integration(pack, _UnavailableVerifier(domains))
     with pytest.raises(PolicyUnavailableError):
         await integration.evaluate(
             principal=_principal(),

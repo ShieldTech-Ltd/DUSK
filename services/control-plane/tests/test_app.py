@@ -214,6 +214,10 @@ def test_v2_evaluation_route_fails_closed_without_activated_service() -> None:
                         "observed_at": "2026-09-01T00:00:00Z",
                         "digest": "sha256:" + "0" * 64,
                         "payload": {"type": "network.firewall.update"},
+                        "tenant_id": "tenant-a",
+                        "key_id": "test-key",
+                        "nonce": "test-nonce-00000001",
+                        "signature": "a" * 86,
                     }
                 ],
                 "idempotency_key": "request-1",

@@ -19,7 +19,6 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from dusk_control_plane.config import Settings
-from dusk_control_plane.request_context import get_request_id
 
 logger = logging.getLogger(__name__)
 _bearer = HTTPBearer(auto_error=False)
@@ -455,13 +454,15 @@ async def authenticated_principal(
     try:
         return await authenticator.authenticate(credential.credentials)
     except IdentityProviderUnavailableError:
-        logger.warning("identity provider unavailable request_id=%s", get_request_id())
+        logger.warning(
+            "identity provider unavailable",
+            extra={"event_code": "identity.provider_unavailable"},
+        )
         raise
-    except AuthenticationRejectedError as exc:
+    except AuthenticationRejectedError:
         logger.info(
-            "authentication rejected request_id=%s reason=%s",
-            get_request_id(),
-            exc.reason_code,
+            "authentication rejected",
+            extra={"event_code": "identity.authentication_rejected"},
         )
         raise
 

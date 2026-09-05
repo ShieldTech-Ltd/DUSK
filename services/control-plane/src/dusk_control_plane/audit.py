@@ -6,7 +6,8 @@ import hashlib
 import hmac
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -14,7 +15,7 @@ from typing import Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,7 @@ from dusk_control_plane.evaluations import (
     PolicyMatchResponse,
 )
 from dusk_control_plane.identity import Principal
+from dusk_control_plane.observability import Telemetry
 from dusk_control_plane.storage.database import Database
 from dusk_control_plane.storage.models import (
     AuditEvent,
@@ -44,7 +46,19 @@ from dusk_control_plane.storage.models import (
 AUDIT_FORMAT = "dusk.audit.v1"
 AUDIT_EVENT_TYPE = "evaluation.decided"
 _SENSITIVE_KEY = re.compile(
-    r"(?:authorization|cookie|credential|password|prompt|secret|session|token)", re.IGNORECASE
+    r"(?:authorization|cookie|credential|password|prompt|provider.?payload|raw.?request|"
+    r"response.?body|secret|session|token)",
+    re.IGNORECASE,
+)
+_SENSITIVE_VALUE = re.compile(
+    r"(?:"
+    r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"
+    r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"
+    r"|-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----"
+    r"|[a-z][a-z0-9+.-]*://[^\s/:]+:[^\s/@]+@"
+    r")",
+    re.IGNORECASE,
 )
 _MAX_CONTAINER_ITEMS = 256
 _MAX_STRING_LENGTH = 4096
@@ -78,16 +92,56 @@ class DurableDecision:
     checkpoint: AuditCheckpoint
     inserted: bool
     response: EvaluationResponse
+    audit_ms: float = 0
 
 
 @dataclass(frozen=True)
 class OutboxIntent:
     destination_key: str = "decision-events"
     delivery_kind: str = "DECISION_RECORDED"
+    destination_kind: Literal["WEBHOOK", "ENFORCEMENT_BROKER"] = "WEBHOOK"
     max_attempts: int = 10
 
 
 DEFAULT_OUTBOX_INTENT = OutboxIntent()
+
+
+class OutboxIntentResolver(Protocol):
+    """Select a trusted destination from the durable decision result."""
+
+    def resolve(self, request: EvaluationRequest, response: EvaluationResponse) -> OutboxIntent: ...
+
+
+@dataclass(frozen=True)
+class ProviderBrokerIntentResolver:
+    """Route only allowed actions to a credential-holding enforcement broker."""
+
+    broker_destination_key: str
+    event_destination_key: str = "decision-events"
+    max_attempts: int = 10
+
+    def __post_init__(self) -> None:
+        keys = (self.broker_destination_key, self.event_destination_key)
+        if any(not key or len(key) > 128 for key in keys):
+            raise ValueError("broker destination keys are invalid")
+        if not 1 <= self.max_attempts <= 100:
+            raise ValueError("broker maximum attempts is invalid")
+
+    def resolve(self, request: EvaluationRequest, response: EvaluationResponse) -> OutboxIntent:
+        del request
+        if response.verdict == "ALLOW":
+            return OutboxIntent(
+                destination_key=self.broker_destination_key,
+                destination_kind="ENFORCEMENT_BROKER",
+                delivery_kind="ACTION_EXECUTION",
+                max_attempts=self.max_attempts,
+            )
+        return OutboxIntent(
+            destination_key=self.event_destination_key,
+            destination_kind="WEBHOOK",
+            delivery_kind="DECISION_RECORDED",
+            max_attempts=self.max_attempts,
+        )
 
 
 class DecisionEvidenceStore(Protocol):
@@ -115,25 +169,52 @@ class AuditSigner(Protocol):
 class DurableEvaluationService:
     """Require durable decision evidence before returning a consequential verdict."""
 
-    def __init__(self, evaluator: EvaluationService, evidence_store: DecisionEvidenceStore) -> None:
+    def __init__(
+        self,
+        evaluator: EvaluationService,
+        evidence_store: DecisionEvidenceStore,
+        telemetry: Telemetry | None = None,
+        intent_resolver: OutboxIntentResolver | None = None,
+    ) -> None:
         self._evaluator = evaluator
         self._evidence_store = evidence_store
+        self._telemetry = telemetry
+        self._intent_resolver = intent_resolver
 
     async def evaluate(
         self, request: EvaluationRequest, principal: Principal
     ) -> EvaluationResponse:
+        started = time.perf_counter()
         response = await self._evaluator.evaluate(request, principal)
+        intent = (
+            self._intent_resolver.resolve(request, response)
+            if self._intent_resolver is not None
+            else DEFAULT_OUTBOX_INTENT
+        )
+        persistence_started = time.perf_counter()
         try:
-            durable = await self._evidence_store.persist(
-                request=request,
-                response=response,
-                principal=principal,
-            )
+            if self._telemetry is None:
+                durable = await self._evidence_store.persist(
+                    request=request, response=response, principal=principal, intent=intent
+                )
+            else:
+                with self._telemetry.stage("persistence", decision_trace_id=response.trace_id):
+                    durable = await self._evidence_store.persist(
+                        request=request, response=response, principal=principal, intent=intent
+                    )
         except DurableCommitUnavailableError:
             raise
         except Exception as exc:  # noqa: BLE001 - fail closed at the durability boundary
             raise DurableCommitUnavailableError from exc
-        return durable.response
+        persistence_ms = (time.perf_counter() - persistence_started) * 1000
+        timings = durable.response.pipeline_timings.model_copy(
+            update={
+                "persistence_ms": persistence_ms,
+                "audit_ms": durable.audit_ms,
+                "total_ms": (time.perf_counter() - started) * 1000,
+            }
+        )
+        return durable.response.model_copy(update={"pipeline_timings": timings})
 
 
 class PostgresDecisionEvidenceStore:
@@ -144,11 +225,11 @@ class PostgresDecisionEvidenceStore:
         database: Database,
         signer: AuditSigner,
         *,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._database = database
         self._signer = signer
-        self._clock = clock
+        self._telemetry = telemetry
 
     async def persist(
         self,
@@ -158,13 +239,14 @@ class PostgresDecisionEvidenceStore:
         principal: Principal,
         intent: OutboxIntent = DEFAULT_OUTBOX_INTENT,
     ) -> DurableDecision:
+        started = time.perf_counter()
         try:
             tenant_id = UUID(principal.tenant_id)
         except ValueError as exc:
             raise DurableCommitUnavailableError("identity tenant is not a storage UUID") from exc
         try:
             async with self._database.transaction() as session:
-                return await self._persist_transaction(
+                durable = await self._persist_transaction(
                     session=session,
                     tenant_id=tenant_id,
                     request=request,
@@ -172,6 +254,31 @@ class PostgresDecisionEvidenceStore:
                     principal=principal,
                     intent=intent,
                 )
+                if durable.inserted:
+                    persistence_ms = (time.perf_counter() - started) * 1000
+                    timings = durable.response.pipeline_timings.model_copy(
+                        update={
+                            "persistence_ms": persistence_ms,
+                            "audit_ms": durable.audit_ms,
+                            "total_ms": durable.response.pipeline_timings.total_ms + persistence_ms,
+                        }
+                    )
+                    await session.execute(
+                        update(Decision)
+                        .where(Decision.id == durable.decision_id, Decision.tenant_id == tenant_id)
+                        .values(pipeline_timings=timings.model_dump(mode="json"))
+                    )
+                    durable = DurableDecision(
+                        decision_id=durable.decision_id,
+                        trace_id=durable.trace_id,
+                        audit_event_id=durable.audit_event_id,
+                        delivery_id=durable.delivery_id,
+                        checkpoint=durable.checkpoint,
+                        inserted=True,
+                        response=durable.response.model_copy(update={"pipeline_timings": timings}),
+                        audit_ms=durable.audit_ms,
+                    )
+                return durable
         except DurableCommitUnavailableError:
             raise
         except (DBAPIError, SQLAlchemyError, TimeoutError) as exc:
@@ -193,6 +300,12 @@ class PostgresDecisionEvidenceStore:
 
         redacted_action = redact_for_storage(request.action.model_dump(mode="json"))
         input_digest = hashlib.sha256(_canonical_bytes(request)).digest()
+        # Serialize only retries for this tenant/key.  The database lock closes the
+        # lookup/insert race across processes while preserving cross-tenant progress.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 211))"),
+            {"lock_key": f"{tenant_id}:{request.idempotency_key}"},
+        )
         existing = await session.execute(
             select(Decision, StoredCanonicalAction.input_digest)
             .join(
@@ -233,9 +346,11 @@ class PostgresDecisionEvidenceStore:
                 AuditCheckpoint(tenant_id, audit.sequence, audit.digest),
                 False,
                 stored_response,
+                float((decision.pipeline_timings or {}).get("audit_ms", 0)),
             )
 
-        principal_id = await _upsert_principal(session, tenant_id, principal, self._clock())
+        observed_at = await _database_now(session)
+        principal_id = await _upsert_principal(session, tenant_id, principal, observed_at)
         action = StoredCanonicalAction(
             tenant_id=tenant_id,
             input_digest=input_digest,
@@ -292,9 +407,7 @@ class PostgresDecisionEvidenceStore:
             .limit(1)
         )
         sequence = 1 if previous is None else previous.sequence + 1
-        occurred_at = await session.scalar(text("SELECT clock_timestamp()"))
-        if not isinstance(occurred_at, datetime):
-            raise DurableCommitUnavailableError("trusted database time unavailable")
+        occurred_at = await _database_now(session)
         metadata = _integrity_metadata(
             decision,
             input_digest,
@@ -311,13 +424,27 @@ class PostgresDecisionEvidenceStore:
             previous_digest=None if previous is None else previous.digest,
             integrity_metadata=metadata,
         )
+        audit_event_id = uuid4()
+        delivery_id = uuid4()
+        audit_started = time.perf_counter()
         try:
-            signature = await self._signer.sign(digest)
+            if self._telemetry is None:
+                signature = await self._signer.sign(digest)
+            else:
+                with self._telemetry.stage(
+                    "audit",
+                    decision_trace_id=response.trace_id,
+                    decision_id=str(decision.id),
+                    audit_event_id=str(audit_event_id),
+                    delivery_id=str(delivery_id),
+                ):
+                    signature = await self._signer.sign(digest)
         except Exception as exc:  # noqa: BLE001 - signer detail cannot cross the boundary
             raise DurableCommitUnavailableError("audit signing unavailable") from exc
         if not signature or len(signature) > 8192 or not self._signer.key_id:
             raise DurableCommitUnavailableError("audit signer returned invalid evidence")
         audit = AuditEvent(
+            id=audit_event_id,
             tenant_id=tenant_id,
             sequence=sequence,
             event_type=AUDIT_EVENT_TYPE,
@@ -331,13 +458,13 @@ class PostgresDecisionEvidenceStore:
             integrity_metadata=metadata,
             sensitive_detail=None,
         )
-        delivery_id = uuid4()
         delivery = OutboxDelivery(
             tenant_id=tenant_id,
             decision_id=decision.id,
             delivery_id=delivery_id,
             deduplication_key=f"decision:{decision.id}",
             destination_key=intent.destination_key,
+            destination_kind=intent.destination_kind,
             delivery_kind=intent.delivery_kind,
             redacted_payload={
                 "audit_digest": digest.hex(),
@@ -345,12 +472,14 @@ class PostgresDecisionEvidenceStore:
                 "decision_id": str(decision.id),
                 "trace_id": str(decision.trace_id),
                 "verdict": decision.verdict,
+                "action_digest": input_digest.hex(),
             },
             max_attempts=intent.max_attempts,
             next_attempt_at=occurred_at,
         )
         session.add_all((audit, delivery))
         await session.flush()
+        audit_ms = (time.perf_counter() - audit_started) * 1000
         return DurableDecision(
             decision.id,
             decision.trace_id,
@@ -364,6 +493,7 @@ class PostgresDecisionEvidenceStore:
                     "response_status": "DELIVERY_PENDING",
                 }
             ),
+            audit_ms,
         )
 
 
@@ -376,7 +506,7 @@ def redact_for_storage(value: object, *, _depth: int = 0) -> JsonValue:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        return value[:_MAX_STRING_LENGTH]
+        return _redact_string(value)
     if isinstance(value, Mapping):
         if len(value) > _MAX_CONTAINER_ITEMS:
             raise ValueError("stored object exceeds maximum field count")
@@ -394,6 +524,10 @@ def redact_for_storage(value: object, *, _depth: int = 0) -> JsonValue:
             raise ValueError("stored array exceeds maximum item count")
         return [redact_for_storage(item, _depth=_depth + 1) for item in value]
     raise ValueError("stored content must be JSON compatible")
+
+
+def _redact_string(value: str) -> str:
+    return "[REDACTED]" if _SENSITIVE_VALUE.search(value) else value[:_MAX_STRING_LENGTH]
 
 
 def audit_digest(
@@ -503,6 +637,13 @@ async def _upsert_principal(
     value = await session.scalar(statement)
     if value is None:
         raise DurableCommitUnavailableError("principal persistence failed")
+    return value
+
+
+async def _database_now(session: AsyncSession) -> datetime:
+    value = await session.scalar(text("SELECT clock_timestamp()"))
+    if not isinstance(value, datetime):
+        raise DurableCommitUnavailableError("trusted database time unavailable")
     return value
 
 

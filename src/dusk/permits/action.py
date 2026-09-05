@@ -122,7 +122,7 @@ def verify_permit(
     current = _utc(now or datetime.now(UTC))
     if permit.tenant_id != tenant_id or permit.agent_id != agent_id:
         raise PermitBindingError("permit binding mismatch")
-    if permit.action != action or permit.policy_version != policy_version:
+    if _canonical(permit.action) != _canonical(action) or permit.policy_version != policy_version:
         raise PermitBindingError("permit binding mismatch")
     if current < permit.issued_at or current >= permit.expires_at:
         raise PermitExpiredError("permit expired or not yet valid")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 from copy import deepcopy
@@ -155,6 +156,10 @@ def _request() -> EvaluationRequest:
                 observed_at=NOW,
                 digest="sha256:" + "0" * 64,
                 payload={"type": "storage.delete"},
+                tenant_id="tenant-a",
+                key_id="test-key",
+                nonce="test-nonce-00000001",
+                signature="a" * 86,
             ),
         ),
         idempotency_key="request-1",
@@ -184,6 +189,12 @@ def _response() -> EvaluationResponse:
 
 class _Evaluator:
     async def evaluate(self, request, principal):
+        return _response()
+
+
+class _StalledEvaluator:
+    async def evaluate(self, request, principal):
+        await asyncio.sleep(60)
         return _response()
 
 
@@ -261,3 +272,37 @@ def test_durable_commit_outage_returns_sanitized_retryable_503() -> None:
     assert response.json()["error"]["retryable"] is True
     assert "secret" not in response.text
     assert "private-host" not in response.text
+
+
+def test_stalled_evaluation_is_cancelled_by_fail_closed_request_deadline() -> None:
+    settings = Settings(
+        environment=Environment.TEST,
+        v2_enabled=True,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/jwks.json",
+        evaluation_timeout_seconds=0.1,
+    )
+    store = _Store()
+    service = DurableEvaluationService(_StalledEvaluator(), store)
+    app = create_app(
+        container=AppContainer(
+            settings=settings,
+            authenticator=_Authenticator(),
+            evaluation_service=service,
+        )
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v2/evaluations",
+            headers={"Authorization": "Bearer test-token"},
+            json=_request().model_dump(mode="json"),
+        )
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "EVALUATION_UNAVAILABLE",
+        "message": "Evaluation is temporarily unavailable",
+        "request_id": response.headers["X-Request-ID"],
+        "retryable": True,
+    }
+    assert store.calls == 0

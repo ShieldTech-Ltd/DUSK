@@ -1183,6 +1183,18 @@
             "title": "Domain",
             "type": "string"
           },
+          "key_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Key Id",
+            "type": "string"
+          },
+          "nonce": {
+            "maxLength": 200,
+            "minLength": 16,
+            "title": "Nonce",
+            "type": "string"
+          },
           "observed_at": {
             "format": "date-time",
             "title": "Observed At",
@@ -1199,10 +1211,22 @@
             "title": "Provenance",
             "type": "string"
           },
+          "signature": {
+            "maxLength": 128,
+            "minLength": 80,
+            "title": "Signature",
+            "type": "string"
+          },
           "source_identity": {
             "maxLength": 200,
             "minLength": 1,
             "title": "Source Identity",
+            "type": "string"
+          },
+          "tenant_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Tenant Id",
             "type": "string"
           }
         },
@@ -1212,7 +1236,11 @@
           "provenance",
           "observed_at",
           "digest",
-          "payload"
+          "payload",
+          "tenant_id",
+          "key_id",
+          "nonce",
+          "signature"
         ],
         "title": "EvidenceEnvelope",
         "type": "object"
@@ -1463,15 +1491,69 @@
       "PipelineTimings": {
         "additionalProperties": false,
         "properties": {
+          "audit_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Ms"
+          },
+          "baseline_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Ms"
+          },
           "behavioral_ms": {
             "minimum": 0.0,
             "title": "Behavioral Ms",
             "type": "number"
           },
+          "normalization_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Normalization Ms",
+            "type": "number"
+          },
+          "persistence_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persistence Ms"
+          },
           "policy_ms": {
             "minimum": 0.0,
             "title": "Policy Ms",
             "type": "number"
+          },
+          "sie_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sie Ms"
           },
           "total_ms": {
             "minimum": 0.0,

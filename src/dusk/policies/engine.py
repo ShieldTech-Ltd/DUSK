@@ -20,6 +20,7 @@ _OPERATORS = {
     "equals",
     "in",
     "contains",
+    "contains_any",
     "exists",
     "not_equals",
     "not_equals_or_missing",
@@ -65,6 +66,9 @@ _CONTEXT_DOMAINS: frozenset[str] = frozenset(
         "permit",
         "approval",
         "execution",
+        "cloud",
+        "kubernetes",
+        "infrastructure",
     }
 )
 
@@ -362,6 +366,14 @@ def _compare_numeric_condition(actual: object, expected: object, op: str) -> boo
     return _compare_numeric(actual, expected, op)
 
 
+def _compare_collection(actual: object, expected: object, op: str) -> bool:
+    if not isinstance(actual, (str, list, tuple, set)):
+        return False
+    if op == "contains":
+        return expected in actual
+    return isinstance(expected, list) and any(value in actual for value in expected)
+
+
 def _compare(actual: object, condition: Condition, context: Mapping[str, object]) -> bool:
     expected = condition.value
     if isinstance(expected, str) and expected.startswith("$"):
@@ -376,8 +388,8 @@ def _compare(actual: object, condition: Condition, context: Mapping[str, object]
         return actual is _MISSING or expected is _MISSING or actual != expected
     if condition.operator == "not_true":
         return actual is not True
-    if condition.operator == "contains":
-        return isinstance(actual, (str, list, tuple, set)) and expected in actual
+    if condition.operator in {"contains", "contains_any"}:
+        return _compare_collection(actual, expected, condition.operator)
     if condition.operator == "in":
         return isinstance(expected, list) and actual in expected
     if condition.operator in {

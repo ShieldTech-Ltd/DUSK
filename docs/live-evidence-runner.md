@@ -1,6 +1,6 @@
 # Live Sandbox Evidence Runner
 
-The restricted proxy is the only path from a DUSK decision to a downstream tool. A live demonstration should run with a real provider in an isolated sandbox and capture the following fields for every scenario:
+The restricted proxy verifies signed permits before invoking a caller-supplied executor. Deployments must separately ensure tools cannot be reached outside the proxy. A future live demonstration should run with a real provider in an isolated sandbox and capture the following fields for every scenario:
 
 - model identifier and provider
 - action type and protected target
@@ -8,7 +8,7 @@ The restricted proxy is the only path from a DUSK decision to a downstream tool.
 - execution status, either `allowed and executed` or `blocked before execution`
 - trace identifier
 
-The evidence formatter in `dusk.proxy_evidence.format_decision` intentionally records only safe summary fields. It does not include credentials, prompts containing secrets, raw tokens, or private customer data.
+The `dusk.proxy_evidence` module is currently a placeholder; no evidence formatter or live runner is implemented by this PR. A future formatter must record only safe summary fields and exclude credentials, prompts containing secrets, raw tokens, and private customer data.
 
 ## Demonstration sequence
 

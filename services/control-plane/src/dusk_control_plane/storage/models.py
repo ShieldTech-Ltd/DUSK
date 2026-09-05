@@ -527,6 +527,37 @@ class DashboardAggregate(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class EvidenceReplayClaim(Base):
+    """Minimal durable nonce claim for cryptographically signed provider evidence."""
+
+    __tablename__ = "evidence_replay_claims"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
+        UniqueConstraint("tenant_id", "id", name="uq_evidence_replay_claims_tenant_id_id"),
+        UniqueConstraint(
+            "tenant_id",
+            "source_identity",
+            "nonce",
+            name="uq_evidence_replay_claim",
+        ),
+        Index("ix_evidence_replay_claims_tenant_observed", "tenant_id", "observed_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    tenant_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    source_identity: Mapped[str] = mapped_column(String(200), nullable=False)
+    nonce: Mapped[str] = mapped_column(String(200), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    claimed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 TENANT_SCOPED_MODELS = (
     PrincipalRecord,
     RoleAssignment,
@@ -538,4 +569,5 @@ TENANT_SCOPED_MODELS = (
     OutboxDelivery,
     AgentRiskRollup,
     DashboardAggregate,
+    EvidenceReplayClaim,
 )
