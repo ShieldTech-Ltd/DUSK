@@ -203,6 +203,17 @@ def test_migration_upgrade_is_retryable_and_matches_current_metadata() -> None:
     command.check(config)
 
 
+def test_deployment_migration_applies_timeouts_to_alembic_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert DATABASE_URL is not None
+    monkeypatch.setenv("DUSK_CP_DATABASE_URL", DATABASE_URL)
+    monkeypatch.setenv("DUSK_CP_ALEMBIC_CONFIG", str(Path(__file__).parents[2] / "alembic.ini"))
+    monkeypatch.setenv("DUSK_CP_MIGRATION_LOCK_TIMEOUT_MS", "1000")
+    monkeypatch.setenv("DUSK_CP_MIGRATION_STATEMENT_TIMEOUT_MS", "30000")
+    asyncio.run(migrate())
+
+
 def test_latest_migration_supports_mixed_version_rollback_and_retry() -> None:
     config = _alembic_config()
     assert DATABASE_URL is not None

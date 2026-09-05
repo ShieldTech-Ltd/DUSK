@@ -1,6 +1,6 @@
 {{- if .Values.ingress.enabled }}
-{{- required "ingress.className is required" .Values.ingress.className }}
-{{- required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName }}
+{{- $_ := required "ingress.className is required" .Values.ingress.className }}
+{{- $_ := required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

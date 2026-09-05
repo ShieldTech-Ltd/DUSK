@@ -52,6 +52,24 @@ def test_first_install_hooks_create_dependencies_before_migration() -> None:
     assert "secretKeyRef:" in migration
 
 
+def test_ingress_validations_do_not_render_as_yaml_content() -> None:
+    ingress = (CHART / "templates/ingress.yaml").read_text(encoding="utf-8")
+    assert '$_ := required "ingress.className is required"' in ingress
+    assert '$_ := required "ingress.tlsSecretName is required"' in ingress
+    workflow = (ROOT / ".github/workflows/dusk.yml").read_text(encoding="utf-8")
+    assert "--set ingress.enabled=true" in workflow
+    assert "--set ingress.className=nginx" in workflow
+    assert "--set ingress.tlsSecretName=dusk-tls" in workflow
+
+
+def test_ci_executes_migrations_from_built_image_against_postgresql() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/dusk.yml").read_text(encoding="utf-8"))
+    containers = workflow["jobs"]["containers"]
+    assert containers["services"]["postgresql"]["image"].startswith("postgres:")
+    controls = (ROOT / "scripts/ci/container_controls.sh").read_text(encoding="utf-8")
+    assert '"$control_plane_id" dusk-control-plane-migrate' in controls
+
+
 def test_runtime_image_has_no_mutable_os_package_operations() -> None:
     dockerfile = (ROOT / "services/control-plane/Dockerfile").read_text(encoding="utf-8")
     assert "FROM ${PYTHON_IMAGE}" in dockerfile

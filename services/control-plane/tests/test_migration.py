@@ -32,3 +32,16 @@ def test_alembic_configuration_must_exist(monkeypatch: pytest.MonkeyPatch, tmp_p
     monkeypatch.setenv("DUSK_CP_ALEMBIC_CONFIG", str(tmp_path / "missing.ini"))
     with pytest.raises(MigrationConfigurationError, match="unavailable"):
         _alembic_config()
+
+
+def test_alembic_configuration_uses_installed_migrations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = Path(__file__).parents[1] / "alembic.ini"
+    monkeypatch.setenv("DUSK_CP_ALEMBIC_CONFIG", str(config_path))
+    config = _alembic_config(lock_timeout_ms=1_000, statement_timeout_ms=30_000)
+    migrations = Path(config.get_main_option("script_location"))
+    assert migrations.is_dir()
+    assert migrations.name == "migrations"
+    assert config.get_main_option("dusk_lock_timeout_ms") == "1000"
+    assert config.get_main_option("dusk_statement_timeout_ms") == "30000"

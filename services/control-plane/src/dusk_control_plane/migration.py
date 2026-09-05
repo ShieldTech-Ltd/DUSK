@@ -45,12 +45,23 @@ def _database_url() -> str:
     return value
 
 
-def _alembic_config() -> Config:
+def _alembic_config(
+    *, lock_timeout_ms: int | None = None, statement_timeout_ms: int | None = None
+) -> Config:
     configured = os.environ.get("DUSK_CP_ALEMBIC_CONFIG", "/app/alembic.ini")
     path = Path(configured)
     if not path.is_file():
         raise MigrationConfigurationError("Alembic configuration is unavailable")
-    return Config(str(path))
+    config = Config(str(path))
+    migrations = Path(__file__).resolve().parent / "migrations"
+    if not migrations.is_dir():
+        raise MigrationConfigurationError("installed Alembic migrations are unavailable")
+    config.set_main_option("script_location", str(migrations))
+    if lock_timeout_ms is not None:
+        config.set_main_option("dusk_lock_timeout_ms", str(lock_timeout_ms))
+    if statement_timeout_ms is not None:
+        config.set_main_option("dusk_statement_timeout_ms", str(statement_timeout_ms))
+    return config
 
 
 async def migrate() -> None:
@@ -86,7 +97,11 @@ async def migrate() -> None:
             if acquired is not True:
                 raise MigrationLockUnavailableError("schema migration lock is already held")
             try:
-                await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
+                alembic_config = _alembic_config(
+                    lock_timeout_ms=lock_timeout,
+                    statement_timeout_ms=statement_timeout,
+                )
+                await asyncio.to_thread(command.upgrade, alembic_config, "head")
             finally:
                 await connection.execute(
                     text("SELECT pg_advisory_unlock(:lock_id)"),
