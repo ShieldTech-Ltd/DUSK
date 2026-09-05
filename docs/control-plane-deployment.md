@@ -34,7 +34,9 @@ validator rejects them when `--production` is supplied.
 ## Image integrity
 
 `.github/workflows/control-plane-image.yml` builds the image with locked,
-hash-verified Python dependencies. Pull requests build without publishing.
+hash-verified Python dependencies. The base image is digest-pinned and security
+updates come from a dated, immutable Debian snapshot, so rebuilding the same
+source cannot silently select newer operating-system packages. Pull requests build without publishing.
 Trusted `dev` and release-tag runs publish to GHCR by digest, attach BuildKit
 SBOM and SLSA provenance attestations, and add a repository-bound keyless Cosign
 signature. The workflow records the resulting immutable image reference as the

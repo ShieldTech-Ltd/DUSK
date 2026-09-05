@@ -28,6 +28,7 @@ FROM ${PYTHON_IMAGE} AS runtime
 ARG SOURCE_DATE_EPOCH=0
 ARG OCI_VERSION=0.0.0
 ARG OCI_REVISION=unknown
+ARG DEBIAN_SNAPSHOT=20260905T000000Z
 
 LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.description="Multi-tenant security decision control plane" \
@@ -36,7 +37,14 @@ LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.revision="${OCI_REVISION}" \
     org.opencontainers.image.licenses="Apache-2.0"
 
-RUN groupadd --gid 10001 dusk \
+RUN sed --in-place \
+      --expression="s|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|g" \
+      --expression="s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|g" \
+      /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 dusk \
     && useradd --no-create-home --uid 10001 --gid 10001 --shell /usr/sbin/nologin dusk \
     && mkdir --mode=0555 /app \
     && chown 10001:10001 /app
