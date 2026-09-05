@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import uuid
 from dataclasses import dataclass
@@ -17,8 +18,33 @@ class PermitError(ValueError):
     """Raised when an Action Permit cannot be trusted or consumed."""
 
 
+class PermitBindingError(PermitError):
+    """Identity or action binding on the permit does not match the call context."""
+
+
+class PermitExpiredError(PermitError):
+    """Permit is expired or its issued_at is in the future."""
+
+
+class PermitReplayError(PermitError):
+    """Permit has already been consumed by the replay guard."""
+
+
+class PermitSignatureError(PermitError):
+    """Permit signature is invalid or the encoded value is malformed."""
+
+
 class ReplayGuard:
-    """In-memory single-use permit store; production callers can adapt this interface."""
+    """In-memory single-use permit store.
+
+    WARNING: This is a single-process reference implementation. In any
+    multi-worker or multi-process deployment (Gunicorn prefork, Celery,
+    multiple Kubernetes pods) the consumed-permit set is not shared across
+    processes, so the same permit can be replayed against any worker that
+    has not yet seen it. Replace this with a shared atomic store (Redis
+    SET NX, a database upsert with a unique constraint, etc.) before
+    deploying to a distributed environment.
+    """
 
     def __init__(self) -> None:
         self._consumed: set[str] = set()
@@ -44,7 +70,7 @@ class ActionPermit:
     def unsigned_payload(self) -> dict[str, Any]:
         return {
             "agent_id": self.agent_id,
-            "action": self.action,
+            "action": copy.deepcopy(self.action),
             "expires_at": _timestamp(self.expires_at),
             "issued_at": _timestamp(self.issued_at),
             "permit_id": self.permit_id,
@@ -95,17 +121,17 @@ def verify_permit(
     """Verify and optionally consume a permit, failing closed on every mismatch."""
     current = _utc(now or datetime.now(UTC))
     if permit.tenant_id != tenant_id or permit.agent_id != agent_id:
-        raise PermitError("permit binding mismatch")
+        raise PermitBindingError("permit binding mismatch")
     if permit.action != action or permit.policy_version != policy_version:
-        raise PermitError("permit binding mismatch")
+        raise PermitBindingError("permit binding mismatch")
     if current < permit.issued_at or current >= permit.expires_at:
-        raise PermitError("permit expired or not yet valid")
+        raise PermitExpiredError("permit expired or not yet valid")
     try:
         public_key.verify(_decode(permit.signature), _canonical(permit.unsigned_payload()))
     except (InvalidSignature, ValueError) as exc:
-        raise PermitError("invalid permit signature") from exc
+        raise PermitSignatureError("invalid permit signature") from exc
     if replay_guard is not None and not replay_guard.consume(permit.permit_id):
-        raise PermitError("permit replay detected")
+        raise PermitReplayError("permit replay detected")
     return permit
 
 

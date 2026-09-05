@@ -18,6 +18,15 @@ class ExecutionBlockedError(PermissionError):
 
 
 class EmergencyKillSwitch:
+    """Thread-safe operator emergency stop for the restricted execution proxy.
+
+    Once activated, the kill switch cannot be deactivated without restarting
+    the process. This is intentional: fail-closed is the correct default for
+    an operator emergency stop, and a deactivation path would be an attack
+    surface. Note that process forks (Gunicorn prefork, Celery) do not share
+    kill switch state set after the fork across sibling workers.
+    """
+
     def __init__(self) -> None:
         self._lock = Lock()
         self._reason = ""
