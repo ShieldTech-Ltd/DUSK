@@ -27,10 +27,18 @@ function isContainerDecision(v: unknown): v is ContainerDecision {
   const d = v as Record<string, unknown>;
   return (
     (d.decision === "ALLOW" || d.decision === "BLOCK" || d.decision === "DENY") &&
+    (d.permit_id === null || typeof d.permit_id === "string") &&
     typeof d.action_digest === "string" &&
     typeof d.policy_version === "string" &&
-    Array.isArray(d.matched_rule_ids)
+    Array.isArray(d.matched_rule_ids) &&
+    (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string")
   );
+}
+
+function decisionStatus(decision: ContainerDecision["decision"]): number {
+  if (decision === "ALLOW") return 200;
+  if (decision === "BLOCK") return 403;
+  return 403; // DENY
 }
 
 function errorResponse(status: number, code: string, requestId: string): Response {
@@ -53,6 +61,8 @@ export class DuskRuntimeDO extends DurableObject<Env> {
     this.onEvent = undefined;
 
     // Start the container on first construction if it is configured.
+    // Container.start() is synchronous and void; failures surface on the
+    // next fetch() attempt as a 503 from containerFetch.
     if (ctx.container && !ctx.container.running) {
       ctx.container.start();
     }
@@ -117,12 +127,24 @@ export class DuskRuntimeDO extends DurableObject<Env> {
             headers: { "Content-Type": "application/json" },
           }),
         );
-        const guardBody = (await guardResponse.json()) as { result: string };
+        if (!guardResponse.ok) {
+          console.error(JSON.stringify({ event: "replay_guard_error", status: guardResponse.status, request_id: requestId }));
+          return errorResponse(503, "replay_guard_unavailable", requestId);
+        }
+        const guardBody = (await guardResponse.json()) as { result?: unknown };
+        if (typeof guardBody.result !== "string") {
+          console.error(JSON.stringify({ event: "replay_guard_malformed_response", request_id: requestId }));
+          return errorResponse(503, "replay_guard_unavailable", requestId);
+        }
         if (guardBody.result === "replayed") {
           replayStatus = "replayed";
           await this._writeReceipt(traceId, decision, replayStatus);
           this._emitEvent(traceId, decision, replayStatus);
           return errorResponse(409, "permit_replayed", requestId);
+        }
+        if (guardBody.result !== "ok") {
+          console.error(JSON.stringify({ event: "replay_guard_unexpected_result", result: guardBody.result, request_id: requestId }));
+          return errorResponse(503, "replay_guard_unavailable", requestId);
         }
         replayStatus = "ok";
       } catch {
@@ -146,6 +168,7 @@ export class DuskRuntimeDO extends DurableObject<Env> {
     }
 
     // Return only safe decision metadata to the Worker. No permits, tokens, or payloads.
+    // Status code is derived from the decision here, NOT forwarded from the container.
     return Response.json(
       {
         decision: decision.decision,
@@ -155,7 +178,7 @@ export class DuskRuntimeDO extends DurableObject<Env> {
         reason_code: decision.reason_code,
       },
       {
-        status: containerResponse.status,
+        status: decisionStatus(decision.decision),
         headers: { "X-DUSK-Request-ID": requestId },
       },
     );

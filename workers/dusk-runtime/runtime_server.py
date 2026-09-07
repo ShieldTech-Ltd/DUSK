@@ -9,6 +9,8 @@ Security contract:
 - Never emit permit bytes or signing key material to stdout/stderr.
 - Only safe metadata (decision, matched_rule_ids, action_digest, reason_code)
   leaves this process.
+- Refuses to start if DUSK_SIGNING_KEY is not set (use DUSK_ALLOW_EPHEMERAL_KEY=1
+  only in local development).
 """
 
 from __future__ import annotations
@@ -27,8 +29,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
-    NoEncryption,
-    PrivateFormat,
+    PublicFormat,
 )
 
 from dusk.permits import issue_permit
@@ -47,20 +48,35 @@ _MAX_BODY_BYTES = 131_072  # 128 KiB
 
 _POLICY = load_enterprise_pack()
 
-# Load or generate the Ed25519 signing key.
-# In production, DUSK_SIGNING_KEY is injected by the Durable Object as a
-# base64-encoded DER private key via the container environment.
-_RAW_KEY_B64 = os.environ.get("DUSK_SIGNING_KEY", "")
-if _RAW_KEY_B64:
-    _SIGNING_KEY: Ed25519PrivateKey = Ed25519PrivateKey.from_private_bytes(
-        base64.b64decode(_RAW_KEY_B64)
-    )
-    log.info("signing key loaded from environment")
-else:
-    _SIGNING_KEY = Ed25519PrivateKey.generate()
-    pub = _SIGNING_KEY.public_key().public_bytes(Encoding.Raw, PrivateFormat.Raw)  # type: ignore[arg-type]
-    log.info("ephemeral signing key generated (no DUSK_SIGNING_KEY set)")
-    del pub
+
+def _load_signing_key() -> Ed25519PrivateKey:
+    """Load the Ed25519 signing key from the environment.
+
+    DUSK_SIGNING_KEY must be a base64-encoded 32-byte raw Ed25519 private key.
+    The key is injected by the operator via Cloudflare Container environment
+    variables (typically sourced from a Cloudflare Secret or Wrangler binding).
+
+    Raises SystemExit if the key is absent and DUSK_ALLOW_EPHEMERAL_KEY != 1.
+    """
+    raw_b64 = os.environ.get("DUSK_SIGNING_KEY", "")
+    if raw_b64:
+        try:
+            return Ed25519PrivateKey.from_private_bytes(base64.b64decode(raw_b64))
+        except Exception as exc:
+            log.error('{"event":"signing_key_invalid","error":"%s"}', type(exc).__name__)
+            raise SystemExit(1) from exc
+
+    if os.environ.get("DUSK_ALLOW_EPHEMERAL_KEY") == "1":
+        key = Ed25519PrivateKey.generate()
+        pub_hex = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+        log.warning('{"event":"ephemeral_key_generated","pub_hex":"%s"}', pub_hex)
+        return key
+
+    log.error('{"event":"missing_signing_key","msg":"set DUSK_SIGNING_KEY or DUSK_ALLOW_EPHEMERAL_KEY=1"}')
+    raise SystemExit(1)
+
+
+_SIGNING_KEY: Ed25519PrivateKey = _load_signing_key()
 
 
 def _build_auth_context(
@@ -97,7 +113,6 @@ def _build_auth_context(
 def _reason_code(result_decision: Decision, matched_rule_ids: list[str]) -> str | None:
     if result_decision is Decision.ALLOW:
         return None
-    # Return the first matched rule id as the reason, or a generic code.
     return matched_rule_ids[0] if matched_rule_ids else "POLICY_DENY"
 
 
@@ -135,9 +150,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "invalid_payload"})
             return
 
-        # Extract identity fields; fall back to safe defaults.
-        tenant_id = str(payload.get("tenant_id") or "default")
-        agent_id = str(payload.get("agent_id") or "default")
+        # tenant_id and agent_id are required identity fields. Missing or
+        # empty values are rejected to prevent silent mis-scoping of permits.
+        tenant_id = payload.get("tenant_id")
+        agent_id = payload.get("agent_id")
+        if not tenant_id or not isinstance(tenant_id, str) or not tenant_id.strip():
+            self._send_json(400, {"error": "missing_tenant_id"})
+            return
+        if not agent_id or not isinstance(agent_id, str) or not agent_id.strip():
+            self._send_json(400, {"error": "missing_agent_id"})
+            return
 
         # The action is the payload minus identity routing fields.
         action: dict[str, Any] = {
@@ -151,7 +173,7 @@ class _Handler(BaseHTTPRequestHandler):
             context = _build_auth_context(action, tenant_id, agent_id)
             result = _POLICY.evaluate(context, stage=PolicyStage.AUTHORIZATION)
         except Exception:
-            log.error('{"event":"policy_eval_error"}')
+            log.error('{"event":"policy_eval_error"}', exc_info=True)
             self._send_json(500, {"error": "policy_error"})
             return
 
@@ -170,7 +192,7 @@ class _Handler(BaseHTTPRequestHandler):
                 )
                 permit_id: str | None = permit.permit_id
             except Exception:
-                log.error('{"event":"permit_issuance_error"}')
+                log.error('{"event":"permit_issuance_error"}', exc_info=True)
                 self._send_json(500, {"error": "permit_error"})
                 return
         else:
@@ -196,7 +218,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), _Handler)  # noqa: S104
+    server = HTTPServer(("0.0.0.0", port), _Handler)  # nosec B104
     log.info('{"event":"listening","port":%d}', port)
     server.serve_forever()
 

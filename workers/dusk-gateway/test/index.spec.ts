@@ -141,6 +141,12 @@ describe("DUSK Cloudflare gateway", () => {
     expect(response.status).toBe(503);
   });
 
+  it("fails closed when DUSK_GATEWAY_TOKEN is whitespace only", async () => {
+    const response = await dispatch(validRequest(), { DUSK_GATEWAY_TOKEN: "   ", DUSK_RUNTIME: configuredEnv.DUSK_RUNTIME } as never);
+
+    expect(response.status).toBe(503);
+  });
+
   it("routes a valid authorized action to the internal runtime binding exactly once", async () => {
     const runtimeStub = makeRuntimeStub(
       Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 }),
