@@ -1,0 +1,66 @@
+name: DUSK E2E Sandbox
+
+# Sandbox-only: never targets production resources.
+# Protected by the `sandbox` environment which requires a reviewer approval
+# and gates secrets. Real AWS/CF credentials are never available here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to test (default: current branch)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-sandbox:
+    name: E2E (sandbox)
+    runs-on: ubuntu-latest
+    environment: sandbox
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Node deps
+        run: npm ci
+
+      - name: Typecheck Worker
+        run: npm run typecheck:worker
+
+      - name: Test Worker (unit)
+        run: npm run test:worker
+
+      - name: Test Python (unit)
+        run: |
+          PYTHONPATH=src python -m pytest -q \
+            tests/test_cloudflare_gateway.py \
+            tests/test_secure_action_flow.py
+
+      - name: Dry-run deploy (build + bundle only)
+        run: npm run deploy:worker:dry-run
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_SANDBOX }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID_SANDBOX }}

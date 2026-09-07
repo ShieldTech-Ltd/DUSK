@@ -1,8 +1,8 @@
 {
   // Cloudflare Worker: dusk
   // Secrets are configured outside Git via `wrangler secret put`.
-  // Required secrets: DUSK_ORIGIN (HTTPS URL), DUSK_GATEWAY_TOKEN (high-entropy bearer secret).
-  // Never commit real values here.
+  // Required secrets: DUSK_GATEWAY_TOKEN (high-entropy bearer secret).
+  // Never commit real values, account IDs, or real URLs here.
   "name": "dusk",
   "main": "workers/dusk-gateway/src/index.ts",
   "compatibility_date": "2026-09-06",
@@ -10,5 +10,46 @@
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 1 }
-  }
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DUSK_RUNTIME", "class_name": "DuskRuntimeDO" },
+      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" }
+    ]
+  },
+  // exports replaces migrations for Container-capable DOs.
+  // DuskRuntimeDO attaches the dusk-runtime Container; ReplayGuardDO is SQLite-only.
+  "exports": {
+    "DuskRuntimeDO": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "dusk-runtime"
+    },
+    "ReplayGuardDO": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "containers": [
+    {
+      "name": "dusk-runtime",
+      "class_name": "DuskRuntimeDO",
+      "image": "./workers/dusk-runtime/Dockerfile",
+      "image_build_context": ".",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AUDIT_RECEIPTS",
+      "bucket_name": "dusk-audit-receipts"
+    }
+  ],
+  "analytics_engine_datasets": [
+    {
+      "binding": "DUSK_EVENTS",
+      "dataset": "dusk_events"
+    }
+  ]
 }

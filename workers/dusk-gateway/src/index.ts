@@ -1,10 +1,12 @@
+export { DuskRuntimeDO } from "./runtime-do";
+export { ReplayGuardDO } from "./replay-guard-do";
+
 const ACTION_PATH = "/v1/actions/evaluate";
 const MAX_BODY_BYTES = 65_536;
-const FORWARDED_RESPONSE_HEADERS = ["cache-control", "content-type"];
 
 export interface DuskGatewayEnv {
   DUSK_GATEWAY_TOKEN?: string;
-  DUSK_ORIGIN?: string;
+  DUSK_RUNTIME?: DurableObjectNamespace;
 }
 
 function errorResponse(status: number, code: string, requestId: string): Response {
@@ -64,25 +66,11 @@ function bearerToken(request: Request): string | null {
   return match?.[1] ?? null;
 }
 
-function configuredOrigin(env: DuskGatewayEnv): URL | null {
-  if (!env.DUSK_ORIGIN?.trim() || !env.DUSK_GATEWAY_TOKEN?.trim()) {
-    return null;
-  }
-  try {
-    const origin = new URL(env.DUSK_ORIGIN);
-    return origin.protocol === "https:" ? origin : null;
-  } catch {
-    return null;
-  }
-}
-
 function responseHeaders(upstream: Response, requestId: string): Headers {
   const headers = new Headers({ "X-DUSK-Request-ID": requestId });
-  for (const name of FORWARDED_RESPONSE_HEADERS) {
-    const value = upstream.headers.get(name);
-    if (value !== null) {
-      headers.set(name, value);
-    }
+  const ct = upstream.headers.get("content-type");
+  if (ct !== null) {
+    headers.set("content-type", ct);
   }
   return headers;
 }
@@ -91,7 +79,6 @@ async function handleAction(
   request: Request,
   env: DuskGatewayEnv,
   _context: ExecutionContext,
-  fetcher: typeof fetch = fetch,
 ): Promise<Response> {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
@@ -111,11 +98,10 @@ async function handleAction(
     return errorResponse(413, "payload_too_large", requestId);
   }
 
-  const origin = configuredOrigin(env);
-  if (origin === null) {
+  if (!env.DUSK_RUNTIME || !env.DUSK_GATEWAY_TOKEN?.trim()) {
     return errorResponse(503, "gateway_not_configured", requestId);
   }
-  if (!(await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN!))) {
+  if (!(await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN))) {
     return errorResponse(401, "unauthorized", requestId);
   }
 
@@ -132,18 +118,20 @@ async function handleAction(
     return errorResponse(400, "invalid_json", requestId);
   }
 
-  const destination = new URL(ACTION_PATH, origin);
+  const runtimeId = env.DUSK_RUNTIME.idFromName("runtime");
+  const runtimeStub = env.DUSK_RUNTIME.get(runtimeId);
   try {
-    const upstream = await fetcher(destination, {
-      body,
-      headers: {
-        "Content-Type": "application/json",
-        "X-DUSK-Gateway": "cloudflare-worker",
-        "X-DUSK-Gateway-Token": env.DUSK_GATEWAY_TOKEN!,
-        "X-DUSK-Request-ID": requestId,
-      },
-      method: "POST",
-    });
+    const upstream = await runtimeStub.fetch(
+      new Request(new URL(ACTION_PATH, "https://dusk-runtime"), {
+        method: "POST",
+        body,
+        headers: {
+          "Content-Type": "application/json",
+          "X-DUSK-Gateway": "cloudflare-worker",
+          "X-DUSK-Request-ID": requestId,
+        },
+      }),
+    );
     log("dusk_gateway_request", {
       duration_ms: Date.now() - startedAt,
       path,
@@ -152,13 +140,13 @@ async function handleAction(
     });
     return new Response(upstream.body, { headers: responseHeaders(upstream, requestId), status: upstream.status });
   } catch {
-    console.error(JSON.stringify({ event: "dusk_gateway_upstream_failure", path, request_id: requestId }));
-    return errorResponse(502, "dusk_unavailable", requestId);
+    console.error(JSON.stringify({ event: "dusk_gateway_runtime_failure", path, request_id: requestId }));
+    return errorResponse(503, "runtime_unavailable", requestId);
   }
 }
 
 export default {
-  fetch(request, env, context): Promise<Response> {
+  fetch(request: Request, env: DuskGatewayEnv, context: ExecutionContext): Promise<Response> {
     return handleAction(request, env, context);
   },
 } satisfies ExportedHandler<DuskGatewayEnv>;
