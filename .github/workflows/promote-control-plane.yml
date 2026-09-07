@@ -40,7 +40,7 @@ jobs:
       id-token: write
       attestations: read
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/dusk-control-plane
+      IMAGE: ghcr.io/shieldtech-ltd/dusk-control-plane
       VALUES_PATH: ${{ vars.CONTROL_PLANE_VALUES_PATH }}
       NAMESPACE: ${{ vars.CONTROL_PLANE_NAMESPACE }}
       PROMOTION_EVIDENCE_PATH: ${{ vars.CONTROL_PLANE_PROMOTION_EVIDENCE_PATH }}

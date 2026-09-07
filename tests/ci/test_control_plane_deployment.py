@@ -187,3 +187,19 @@ def test_workflow_enforces_promotion_validator() -> None:
     assert "validate_control_plane_deployment.py first-install" in (
         ROOT / ".github/workflows/dusk.yml"
     ).read_text(encoding="utf-8")
+
+
+def test_supply_chain_workflows_use_a_canonical_lowercase_ghcr_reference() -> None:
+    image_workflow = (ROOT / ".github/workflows/control-plane-image.yml").read_text(
+        encoding="utf-8"
+    )
+    promotion_workflow = (ROOT / ".github/workflows/promote-control-plane.yml").read_text(
+        encoding="utf-8"
+    )
+    canonical_image = "ghcr.io/shieldtech-ltd/dusk-control-plane"
+
+    assert image_workflow.count(canonical_image) == 6
+    assert canonical_image in promotion_workflow
+    assert "ghcr.io/${{ github.repository_owner }}/dusk-control-plane" not in (
+        image_workflow + promotion_workflow
+    )
