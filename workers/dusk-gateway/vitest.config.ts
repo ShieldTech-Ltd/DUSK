@@ -7,7 +7,6 @@ export default defineConfig({
 			wrangler: { configPath: "wrangler.jsonc" },
 			miniflare: {
 				vars: {
-					DUSK_ORIGIN: "https://dusk.example.com",
 					DUSK_GATEWAY_TOKEN: "expected-token",
 				},
 			},

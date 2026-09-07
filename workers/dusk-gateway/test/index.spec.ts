@@ -4,20 +4,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 
 const token = "expected-token";
+
+function makeRuntimeStub(response: Response): { fetch: ReturnType<typeof vi.fn> } {
+  return { fetch: vi.fn<typeof fetch>().mockResolvedValue(response) };
+}
+
+function makeRuntimeNamespace(runtimeStub: { fetch: ReturnType<typeof vi.fn> }) {
+  return {
+    idFromName: (_name: string) => "mock-id" as unknown as DurableObjectId,
+    get: (_id: DurableObjectId) => runtimeStub as unknown as DurableObjectStub,
+  } as unknown as DurableObjectNamespace;
+}
+
 const configuredEnv = {
   DUSK_GATEWAY_TOKEN: token,
-  DUSK_ORIGIN: "https://dusk.example.com/base/",
+  DUSK_RUNTIME: makeRuntimeNamespace(
+    makeRuntimeStub(Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 })),
+  ),
 };
 
 async function dispatch(
   request: Request,
-  env: Env = configuredEnv as Env,
-  fetcher: typeof fetch = fetch,
+  env: typeof configuredEnv = configuredEnv,
 ): Promise<Response> {
-  vi.stubGlobal("fetch", fetcher);
   const context = createExecutionContext();
-  // The test runtime's Request type is narrower than the generated Worker handler type.
-  const response = await worker.fetch(request as never, env, context);
+  const response = await worker.fetch(request as never, env as never, context);
   await waitOnExecutionContext(context);
   return response;
 }
@@ -38,124 +49,142 @@ describe("DUSK Cloudflare gateway", () => {
     vi.unstubAllGlobals();
   });
 
-  it("rejects unknown paths without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects unknown paths without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
     const response = await dispatch(
       new Request("https://worker.example/unexpected", { method: "POST" }),
-      configuredEnv as Env,
-      fetcher,
+      env,
     );
 
     expect(response.status).toBe(404);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-POST action request without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects a non-POST action request without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
     const response = await dispatch(
       new Request("https://worker.example/v1/actions/evaluate", {
         headers: { Authorization: `Bearer ${token}` },
       }),
-      configuredEnv as Env,
-      fetcher,
+      env,
     );
 
     expect(response.status).toBe(405);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects a missing bearer token without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects a missing bearer token without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+
     const request = new Request("https://worker.example/v1/actions/evaluate", {
       body: "{}",
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
 
-    const response = await dispatch(request, configuredEnv as Env, fetcher);
+    const response = await dispatch(request, env);
 
     expect(response.status).toBe(401);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects a request without JSON content type without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects a request without JSON content type without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+
     const request = new Request("https://worker.example/v1/actions/evaluate", {
       body: "{}",
       headers: { Authorization: `Bearer ${token}` },
       method: "POST",
     });
 
-    const response = await dispatch(request, configuredEnv as Env, fetcher);
+    const response = await dispatch(request, env);
 
     expect(response.status).toBe(400);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid JSON without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects invalid JSON without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
-    const response = await dispatch(validRequest("{"), configuredEnv as Env, fetcher);
+    const response = await dispatch(validRequest("{"), env);
 
     expect(response.status).toBe(400);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("rejects an oversized action request without contacting DUSK", async () => {
-    const fetcher = vi.fn<typeof fetch>();
+  it("rejects an oversized action request without contacting the runtime", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
-    const response = await dispatch(validRequest(`{"value":"${"x".repeat(65_537)}"}`), configuredEnv as Env, fetcher);
+    const response = await dispatch(validRequest(`{"value":"${"x".repeat(65_537)}"}`), env);
 
     expect(response.status).toBe(413);
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
-  it("fails closed when DUSK configuration is absent", async () => {
-    const fetcher = vi.fn<typeof fetch>();
-
-    const response = await dispatch(validRequest(), {} as Env, fetcher);
+  it("fails closed when DUSK_RUNTIME binding is absent", async () => {
+    const response = await dispatch(validRequest(), { DUSK_GATEWAY_TOKEN: token } as never);
 
     expect(response.status).toBe(503);
-    expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the configured DUSK origin is not HTTPS", async () => {
-    const fetcher = vi.fn<typeof fetch>();
-    const env = { ...configuredEnv, DUSK_ORIGIN: "http://dusk.example.com" } as Env;
-
-    const response = await dispatch(validRequest(), env, fetcher);
+  it("fails closed when DUSK_GATEWAY_TOKEN is absent", async () => {
+    const response = await dispatch(validRequest(), { DUSK_RUNTIME: configuredEnv.DUSK_RUNTIME } as never);
 
     expect(response.status).toBe(503);
-    expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("forwards a valid action only to the configured DUSK endpoint", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({ decision: "BLOCK" }, { status: 403 }),
+  it("fails closed when DUSK_GATEWAY_TOKEN is whitespace only", async () => {
+    const response = await dispatch(validRequest(), { DUSK_GATEWAY_TOKEN: "   ", DUSK_RUNTIME: configuredEnv.DUSK_RUNTIME } as never);
+
+    expect(response.status).toBe(503);
+  });
+
+  it("routes a valid authorized action to the internal runtime binding exactly once", async () => {
+    const runtimeStub = makeRuntimeStub(
+      Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 }),
     );
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
-    const response = await dispatch(validRequest(), configuredEnv as Env, fetcher);
+    const response = await dispatch(validRequest(), env);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-DUSK-Request-ID")).toMatch(/^[0-9a-f-]{36}$/);
+    expect(runtimeStub.fetch).toHaveBeenCalledTimes(1);
+    const [reqArg] = runtimeStub.fetch.mock.calls[0] ?? [];
+    const calledUrl = reqArg instanceof Request ? reqArg.url : String(reqArg);
+    const calledMethod = reqArg instanceof Request ? reqArg.method : "UNKNOWN";
+    expect(calledUrl).toContain("/v1/actions/evaluate");
+    expect(calledMethod).toBe("POST");
+  });
+
+  it("returns 503 when the internal runtime DO is unreachable", async () => {
+    const runtimeStub = { fetch: vi.fn<typeof fetch>().mockRejectedValue(new Error("DO unavailable")) };
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+
+    const response = await dispatch(validRequest(), env);
+
+    expect(response.status).toBe(503);
+    expect(runtimeStub.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards the runtime decision status code to the caller", async () => {
+    const runtimeStub = makeRuntimeStub(
+      Response.json({ decision: "BLOCK", reason_code: "POLICY_DENY" }, { status: 403 }),
+    );
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+
+    const response = await dispatch(validRequest(), env);
 
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ decision: "BLOCK" });
-    expect(response.headers.get("X-DUSK-Request-ID")).toMatch(/^[0-9a-f-]{36}$/);
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    const [url, init] = fetcher.mock.calls[0] ?? [];
-    expect(String(url)).toBe("https://dusk.example.com/v1/actions/evaluate");
-    expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("X-DUSK-Gateway")).toBe("cloudflare-worker");
-    expect(new Headers(init?.headers).get("X-DUSK-Gateway-Token")).toBe(token);
-    expect(new Headers(init?.headers).get("X-DUSK-Request-ID")).toBe(response.headers.get("X-DUSK-Request-ID"));
-  });
-
-  it("returns 502 when DUSK cannot be reached", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("connection refused"));
-
-    const response = await dispatch(validRequest(), configuredEnv as Env, fetcher);
-
-    expect(response.status).toBe(502);
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    const body = await response.json() as { decision: string };
+    expect(body.decision).toBe("BLOCK");
   });
 });

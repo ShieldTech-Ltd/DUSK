@@ -1,5 +1,7 @@
 # Local development variables for the dusk Worker.
 # Copy to .dev.vars (git-ignored) and fill in real values.
 # Never commit real secrets.
-DUSK_ORIGIN=
+#
+# DUSK_ORIGIN has been removed. The runtime is now a Cloudflare Durable Object
+# (DuskRuntimeDO) bound via the DUSK_RUNTIME binding in wrangler.jsonc.
 DUSK_GATEWAY_TOKEN=
