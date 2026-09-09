@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 
 const token = "expected-token";
+const sandboxTenantId = "sandbox-tenant";
+const sandboxAgentId = "sandbox-agent";
 
 function makeRuntimeStub(response: Response): { fetch: ReturnType<typeof vi.fn> } {
   return { fetch: vi.fn<typeof fetch>().mockResolvedValue(response) };
@@ -18,6 +20,8 @@ function makeRuntimeNamespace(runtimeStub: { fetch: ReturnType<typeof vi.fn> }) 
 
 const configuredEnv = {
   DUSK_GATEWAY_TOKEN: token,
+  DUSK_SANDBOX_TENANT_ID: sandboxTenantId,
+  DUSK_SANDBOX_AGENT_ID: sandboxAgentId,
   DUSK_RUNTIME: makeRuntimeNamespace(
     makeRuntimeStub(Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 })),
   ),
@@ -33,7 +37,11 @@ async function dispatch(
   return response;
 }
 
-function validRequest(body = '{"action_type":"read"}'): Request {
+function validRequest(body = JSON.stringify({
+  action_type: "read",
+  tenant_id: sandboxTenantId,
+  agent_id: sandboxAgentId,
+})): Request {
   return new Request("https://worker.example/v1/actions/evaluate", {
     body,
     headers: {
@@ -139,6 +147,37 @@ describe("DUSK Cloudflare gateway", () => {
     const response = await dispatch(validRequest(), { DUSK_RUNTIME: configuredEnv.DUSK_RUNTIME } as never);
 
     expect(response.status).toBe(503);
+  });
+
+  it("fails closed when the sandbox identity configuration is absent", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = {
+      DUSK_GATEWAY_TOKEN: token,
+      DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub),
+    } as never;
+
+    const response = await dispatch(validRequest(), env);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: "gateway_not_configured" });
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tenant or agent that differs from the configured sandbox identity", async () => {
+    const runtimeStub = makeRuntimeStub(Response.json({ decision: "ALLOW" }));
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+    const response = await dispatch(
+      validRequest(JSON.stringify({
+        action_type: "read",
+        tenant_id: "another-tenant",
+        agent_id: sandboxAgentId,
+      })),
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "sandbox_identity_mismatch" });
+    expect(runtimeStub.fetch).not.toHaveBeenCalled();
   });
 
   it("fails closed when DUSK_GATEWAY_TOKEN is whitespace only", async () => {

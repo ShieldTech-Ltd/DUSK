@@ -5,3 +5,7 @@
 # DUSK_ORIGIN has been removed. The runtime is now a Cloudflare Durable Object
 # (DuskRuntimeDO) bound via the DUSK_RUNTIME binding in wrangler.jsonc.
 DUSK_GATEWAY_TOKEN=
+# Fixed, non-secret identity for sandbox-only native-flow validation. Both
+# values are required locally and must match the submitted request identity.
+DUSK_SANDBOX_TENANT_ID=sandbox-tenant
+DUSK_SANDBOX_AGENT_ID=sandbox-agent
