@@ -11,7 +11,16 @@
 container-evidence
 deploy
 docs
+!docs/
+docs/*
+!docs/dusk-hero-banner.svg
+!docs/dusk-logo.svg
 dusk-agent-harness
 results
 tests
 services/control-plane/tests
+apps/console/node_modules
+apps/console/dist
+apps/console/coverage
+apps/console/playwright-report
+apps/console/test-results

@@ -7,6 +7,7 @@ surfaces listed here are the intentionally public data-access contract for the
 subsequent ordered API, audit, outbox, and aggregate issues.
 """
 
+from dusk_control_plane.audit_events import AuditEventPage, AuditEventView
 from dusk_control_plane.dashboard import (
     ActionBreakdown,
     AgentDetail,
@@ -199,3 +200,10 @@ FailingExporter.export
 PolicyPage.pack_name
 PolicySummary.pack_name
 PolicySummary.counts_by_status
+AuditEventView.signature_present
+AuditEventView.detail_retention_state
+AuditEventPage.snapshot_sequence
+invalid_audit_cursor
+audit_events_unavailable
+sign_local_evidence
+payload_digest

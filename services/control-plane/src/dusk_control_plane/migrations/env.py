@@ -88,7 +88,11 @@ async def _run_online() -> None:
         hide_parameters=True,
         connect_args=connect_args,
     )
-    async with engine.connect() as connection:
+    # The timeout verification query starts a SQLAlchemy transaction before
+    # Alembic enters its transaction context. Own that transaction explicitly
+    # so the migration is committed instead of rolled back when the connection
+    # closes.
+    async with engine.begin() as connection:
         await connection.run_sync(_run_migrations)
     await engine.dispose()
 

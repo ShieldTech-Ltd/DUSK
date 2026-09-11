@@ -41,6 +41,9 @@ dusk-agent-harness/tests/fixtures/*.json
 
 # Node / Wrangler
 node_modules/
+*.tsbuildinfo
+playwright-report/
+test-results/
 .wrangler/
 
 # Editors / OS

@@ -11,5 +11,6 @@ opentelemetry-exporter-otlp-proto-http>=1.36,<2
 opentelemetry-sdk>=1.36,<2
 PyJWT[crypto]>=2.13,<3
 pydantic-settings>=2.10,<3
+PyYAML>=6.0,<7
 SQLAlchemy[asyncio]>=2.0.52,<2.1
 uvicorn>=0.35,<1

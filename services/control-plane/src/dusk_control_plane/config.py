@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     port: int = Field(default=8080, ge=1, le=65535)
     log_level: str = Field(default="INFO", pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
     api_docs_enabled: bool = False
+    cors_allowed_origins: tuple[str, ...] = ()
+    local_stack_enabled: bool = False
+    local_tenant_id: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
+    local_evidence_signing_key: SecretStr | None = Field(
+        default=None, min_length=32, max_length=512
+    )
+    local_audit_signing_key: SecretStr | None = Field(default=None, min_length=32, max_length=512)
     v2_enabled: bool = False
     readiness_timeout_ms: int = Field(default=1000, ge=50, le=5000)
     evaluation_timeout_seconds: float = Field(default=10.0, ge=0.1, le=30.0)
@@ -123,8 +130,15 @@ class Settings(BaseSettings):
                 raise ValueError(f"v2_enabled requires {', '.join(missing)}")
         trusted_urls = (("oidc_issuer", self.oidc_issuer), ("oidc_jwks_uri", self.oidc_jwks_uri))
         for name, value in trusted_urls:
-            if value is not None and not _is_trusted_https_url(value, issuer=name == "oidc_issuer"):
+            if value is not None and not _is_trusted_oidc_url(
+                value,
+                issuer=name == "oidc_issuer",
+                allow_loopback_http=self.environment in {Environment.LOCAL, Environment.TEST},
+                allow_local_service_http=self.local_stack_enabled,
+            ):
                 raise ValueError(f"{name} must use https")
+        self._validate_cors()
+        self._validate_local_stack()
         if not self.oidc_algorithms or len(set(self.oidc_algorithms)) != len(self.oidc_algorithms):
             raise ValueError("oidc_algorithms must be non-empty and unique")
         claim_names = {
@@ -143,6 +157,48 @@ class Settings(BaseSettings):
         self._validate_privacy_lifecycle()
         self._validate_outbox()
         return self
+
+    def _validate_local_stack(self) -> None:
+        if not self.local_stack_enabled:
+            return
+        if self.environment not in {Environment.LOCAL, Environment.TEST}:
+            raise ValueError("local_stack_enabled is forbidden outside local and test")
+        if not self.v2_enabled or not self.storage_enabled:
+            raise ValueError("local_stack_enabled requires v2_enabled and storage_enabled")
+        missing = [
+            name
+            for name, value in (
+                ("local_tenant_id", self.local_tenant_id),
+                ("local_evidence_signing_key", self.local_evidence_signing_key),
+                ("local_audit_signing_key", self.local_audit_signing_key),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(f"local_stack_enabled requires {', '.join(missing)}")
+
+    def _validate_cors(self) -> None:
+        for origin in self.cors_allowed_origins:
+            try:
+                parsed = urlsplit(origin)
+                _ = parsed.port
+            except ValueError as exc:
+                raise ValueError("cors_allowed_origins contains an invalid origin") from exc
+            loopback_http = (
+                self.environment in {Environment.LOCAL, Environment.TEST}
+                and parsed.scheme == "http"
+                and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+            )
+            if (
+                (parsed.scheme != "https" and not loopback_http)
+                or not parsed.hostname
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                raise ValueError("cors_allowed_origins must contain secure origins")
 
     def _validate_decision_reads(self) -> None:
         if not self.decision_read_api_enabled:
@@ -226,14 +282,26 @@ class Settings(BaseSettings):
             raise ValueError("database_url must use postgresql+asyncpg")
 
 
-def _is_trusted_https_url(value: str, *, issuer: bool) -> bool:
+def _is_trusted_oidc_url(
+    value: str, *, issuer: bool, allow_loopback_http: bool, allow_local_service_http: bool
+) -> bool:
     try:
         parsed = urlsplit(value)
         _ = parsed.port
     except ValueError:
         return False
     if (
-        parsed.scheme != "https"
+        (
+            parsed.scheme != "https"
+            and not (
+                allow_loopback_http
+                and parsed.scheme == "http"
+                and (
+                    (not issuer and allow_local_service_http and parsed.hostname == "keycloak")
+                    or parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+                )
+            )
+        )
         or not parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
