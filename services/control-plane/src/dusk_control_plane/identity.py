@@ -259,8 +259,10 @@ class JwksCache:
         for raw_key in raw_keys:
             if not isinstance(raw_key, dict):
                 raise IdentityProviderUnavailableError
-            kid = raw_key.get("kid")
             use = raw_key.get("use")
+            if use == "enc":
+                continue
+            kid = raw_key.get("kid")
             key_type = raw_key.get("kty")
             if (
                 not isinstance(kid, str)
@@ -273,6 +275,8 @@ class JwksCache:
                 raise IdentityProviderUnavailableError
             algorithm = self._resolve_algorithm(raw_key.get("alg"), cast(str, key_type))
             parsed[kid] = jwt.PyJWK(raw_key, algorithm=algorithm)
+        if not parsed:
+            raise IdentityProviderUnavailableError
         return parsed
 
     def _resolve_algorithm(self, algorithm: object, key_type: str) -> str:
@@ -345,7 +349,7 @@ class OidcAuthenticator:
                 audience=self._settings.oidc_audience,
                 issuer=self._settings.oidc_issuer,
                 options={
-                    "require": ["iss", "aud", "sub", "iat", "nbf", "exp"],
+                    "require": ["iss", "aud", "sub", "iat", "exp"],
                     "verify_exp": False,
                     "verify_iat": False,
                     "verify_nbf": False,
@@ -366,7 +370,7 @@ class OidcAuthenticator:
         except (TypeError, ValueError) as exc:
             raise AuthenticationRejectedError("invalid_identity_kind") from exc
         issued_at = _numeric_date(claims.get("iat"))
-        not_before = _numeric_date(claims.get("nbf"))
+        not_before = _numeric_date(claims.get("nbf", claims.get("iat")))
         expires_at = _numeric_date(claims.get("exp"))
         now = self._wall_clock()
         skew = self._settings.oidc_clock_skew_seconds

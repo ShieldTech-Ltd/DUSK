@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from dusk_control_plane.audit_events import AuditEventsUnavailableError, InvalidAuditCursorError
 from dusk_control_plane.dashboard import (
     AgentNotFoundError,
     DashboardQueryUnavailableError,
@@ -159,6 +160,28 @@ def install_error_handlers(app: FastAPI) -> None:
 
 
 def _install_operations_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(InvalidAuditCursorError)
+    async def invalid_audit_cursor(
+        _request: Request, _exc: InvalidAuditCursorError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=422,
+            code="INVALID_CURSOR",
+            message="Pagination cursor is invalid for this query",
+            retryable=False,
+        )
+
+    @app.exception_handler(AuditEventsUnavailableError)
+    async def audit_events_unavailable(
+        _request: Request, _exc: AuditEventsUnavailableError
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="AUDIT_DATA_UNAVAILABLE",
+            message="Audit data is temporarily unavailable",
+            retryable=True,
+        )
+
     @app.exception_handler(InvalidOperationsCursorError)
     async def invalid_operations_cursor(
         _request: Request, _exc: InvalidOperationsCursorError

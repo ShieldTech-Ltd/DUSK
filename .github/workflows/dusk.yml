@@ -193,9 +193,51 @@ jobs:
           python scripts/validate_control_plane_deployment.py first-install \
             /tmp/dusk-control-plane-first-install.yaml
 
+  console:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24.8.0
+          cache: npm
+          cache-dependency-path: apps/console/package-lock.json
+      - working-directory: apps/console
+        run: npm ci --ignore-scripts
+      - name: Run console static, unit, contract, and dependency gates
+        working-directory: apps/console
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+          npm run check:api
+          npm audit --audit-level=moderate
+      - name: Install pinned Playwright browsers
+        working-directory: apps/console
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Start the real local stack
+        run: ./scripts/console-local.sh up
+      - name: Run real-stack cross-browser tests
+        working-directory: apps/console
+        run: npm run test:e2e
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: console-browser-results
+          path: |
+            apps/console/test-results/
+            apps/console/playwright-report/
+          if-no-files-found: warn
+          retention-days: 30
+      - if: always()
+        run: ./scripts/console-local.sh down
+
   security-gate:
     if: always()
-    needs: [correctness, compatibility, security-tools, codeql, containers, deployment-manifests]
+    needs: [correctness, compatibility, security-tools, codeql, containers, deployment-manifests, console]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

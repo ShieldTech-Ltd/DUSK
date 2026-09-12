@@ -1,0 +1,41 @@
+{
+  "realm": "dusk-local",
+  "enabled": true,
+  "displayName": "DUSK local development",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": false,
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "dusk-console",
+      "name": "DUSK local console",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/auth/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      },
+      "protocolMappers": [
+        {"name":"dusk tenant","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_tenant_id","claim.name":"dusk_tenant_id","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true"}},
+        {"name":"dusk identity kind","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_identity_kind","claim.name":"dusk_identity_kind","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true"}},
+        {"name":"dusk roles","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_roles","claim.name":"dusk_roles","jsonType.label":"String","multivalued":"true","id.token.claim":"true","access.token.claim":"true"}},
+        {"name":"dusk workload","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_workload_id","claim.name":"dusk_workload_id","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true"}},
+        {"name":"control plane audience","protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","consentRequired":false,"config":{"included.custom.audience":"dusk-control-plane","id.token.claim":"false","access.token.claim":"true"}}
+      ]
+    }
+  ],
+  "users": [
+    {"username":"viewer","enabled":true,"firstName":"Local","lastName":"Viewer","email":"viewer@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["human"],"dusk_roles":["viewer"]},"credentials":[{"type":"password","value":"Viewer-local-208!","temporary":false}]},
+    {"username":"analyst","enabled":true,"firstName":"Local","lastName":"Analyst","email":"analyst@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["human"],"dusk_roles":["analyst"]},"credentials":[{"type":"password","value":"Analyst-local-208!","temporary":false}]},
+    {"username":"operator","enabled":true,"firstName":"Local","lastName":"Operator","email":"operator@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["human"],"dusk_roles":["operator"]},"credentials":[{"type":"password","value":"Operator-local-208!","temporary":false}]},
+    {"username":"auditor","enabled":true,"firstName":"Local","lastName":"Auditor","email":"auditor@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["human"],"dusk_roles":["auditor"]},"credentials":[{"type":"password","value":"Auditor-local-208!","temporary":false}]},
+    {"username":"investigator","enabled":true,"firstName":"Local","lastName":"Investigator","email":"investigator@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["human"],"dusk_roles":["analyst","operator","auditor"]},"credentials":[{"type":"password","value":"Investigate-local-208!","temporary":false}]},
+    {"username":"scenario-loader","enabled":true,"firstName":"Local","lastName":"Loader","email":"loader@local.invalid","emailVerified":true,"attributes":{"dusk_tenant_id":["11111111-1111-4111-8111-111111111111"],"dusk_identity_kind":["workload"],"dusk_workload_id":["local-scenario-loader"]},"credentials":[{"type":"password","value":"Loader-local-208!","temporary":false}]}
+  ]
+}

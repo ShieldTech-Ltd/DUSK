@@ -58,6 +58,7 @@ settings fail startup.
 | `DUSK_CP_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
 | `DUSK_CP_API_DOCS_ENABLED` | `false` | Forbidden in staging and production |
 | `DUSK_CP_V2_ENABLED` | `false` | Registers authenticated v2 routing; evaluation requires an activated service |
+| `DUSK_CP_CORS_ALLOWED_ORIGINS` | `[]` | Exact HTTPS origins; loopback HTTP only in local/test |
 | `DUSK_CP_READINESS_TIMEOUT_MS` | `1000` | `50..5000` per probe |
 | `DUSK_CP_MAX_REQUEST_BODY_BYTES` | `1048576` | `1024..10485760` |
 
@@ -136,6 +137,13 @@ unless their code is explicitly allow-listed. Disabling the flag removes these
 routes without changing the schema or the `/v1/gate` compatibility boundary.
 The complete response, authorization, freshness, and rollback contract is in
 [`docs/control-plane-policy-operations-api.md`](../../docs/control-plane-policy-operations-api.md).
+
+The same flag exposes `GET /v2/audit-events` to Analyst, Operator, and Auditor
+roles. Results are tenant-scoped, newest-sequence first, and use an
+HMAC-authenticated opaque cursor bound to a fixed sequence snapshot and filter
+set. Only chain metadata and allow-listed integrity fields are returned;
+signatures, principals, subjects, sensitive detail, and raw payloads never cross
+the API.
 
 OpenTelemetry export and structured JSON logging are documented in
 [`docs/control-plane-observability.md`](../../docs/control-plane-observability.md),

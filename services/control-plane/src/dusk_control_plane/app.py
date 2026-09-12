@@ -11,9 +11,15 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Path, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from dusk_control_plane.audit import DurableEvaluationService
+from dusk_control_plane.audit_events import (
+    AuditEventPage,
+    AuditEventQuery,
+    AuditEventsUnavailableError,
+)
 from dusk_control_plane.dashboard import (
     ActionBreakdown,
     AgentDetail,
@@ -77,6 +83,7 @@ _policies_authorization = require_route_policy("GET", "/v2/policies")
 _policy_summary_authorization = require_route_policy("GET", "/v2/policies/summary")
 _integration_health_authorization = require_route_policy("GET", "/v2/integrations/health")
 _service_status_authorization = require_route_policy("GET", "/v2/service/status")
+_audit_events_authorization = require_route_policy("GET", "/v2/audit-events")
 
 
 async def _bounded_evaluate(
@@ -331,6 +338,21 @@ def _install_operations_routes(
     ) -> ServiceStatus:
         return await reader().service_status(principal)
 
+    @app.get(
+        "/v2/audit-events",
+        response_model=AuditEventPage,
+        tags=["audit"],
+        responses=standard_responses,
+    )
+    async def audit_events(
+        query: Annotated[AuditEventQuery, Query()],
+        principal: Annotated[Principal, Depends(_audit_events_authorization)],
+    ) -> AuditEventPage:
+        audit_reader = container.audit_event_reader
+        if audit_reader is None:
+            raise AuditEventsUnavailableError
+        return await audit_reader.list_events(query, principal)
+
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:
     try:
@@ -402,6 +424,16 @@ def create_app(  # noqa: C901
     app.state.container = resolved
     app.state.started = False
     install_error_handlers(app)
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_allowed_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID"],
+            max_age=600,
+        )
 
     @app.middleware("http")
     async def request_context(

@@ -86,6 +86,7 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
 "lab/*" = ["S", "ANN"]
+"services/control-plane/local/seed_scenarios.py" = ["S310"]
 # Bare-name statements are vulture's own documented whitelist syntax, not a
 # real code smell -- see scripts/vulture_whitelist.py's module docstring.
 "scripts/vulture_whitelist.py" = ["B018", "F401"]

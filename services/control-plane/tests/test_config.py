@@ -16,6 +16,7 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_PORT",
         "DUSK_CP_LOG_LEVEL",
         "DUSK_CP_API_DOCS_ENABLED",
+        "DUSK_CP_CORS_ALLOWED_ORIGINS",
         "DUSK_CP_V2_ENABLED",
         "DUSK_CP_READINESS_TIMEOUT_MS",
         "DUSK_CP_MAX_REQUEST_BODY_BYTES",
@@ -133,6 +134,26 @@ def test_oidc_issuer_rejects_query_parameters(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("DUSK_CP_OIDC_ISSUER", "https://identity.example.test/?tenant=a")
     with pytest.raises(ValidationError, match="must use https"):
         Settings()
+
+
+def test_local_loopback_http_oidc_and_cors_are_allowed_only_locally() -> None:
+    local = Settings(
+        environment=Environment.LOCAL,
+        oidc_issuer="http://localhost:8081/realms/dusk",
+        oidc_jwks_uri="http://127.0.0.1:8081/realms/dusk/protocol/openid-connect/certs",
+        cors_allowed_origins=("http://localhost:3000",),
+    )
+    assert local.cors_allowed_origins == ("http://localhost:3000",)
+    with pytest.raises(ValidationError, match="must use https"):
+        Settings(
+            environment=Environment.PRODUCTION,
+            oidc_issuer="http://localhost:8081/realms/dusk",
+        )
+    with pytest.raises(ValidationError, match="secure origins"):
+        Settings(
+            environment=Environment.PRODUCTION,
+            cors_allowed_origins=("http://localhost:3000",),
+        )
 
 
 def test_oidc_algorithms_and_custom_claim_names_must_be_unambiguous() -> None:

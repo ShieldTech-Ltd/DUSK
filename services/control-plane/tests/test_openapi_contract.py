@@ -101,3 +101,20 @@ def test_dashboard_and_agent_contract_is_authenticated_bounded_and_tenant_free()
     assert {"window_start", "window_end", "comparison_start", "timezone", "freshness"} <= set(
         fields
     )
+
+
+def test_audit_contract_is_safe_authenticated_and_tenant_free() -> None:
+    schema = json.loads(render_openapi())
+    operation = schema["paths"]["/v2/audit-events"]["get"]
+    assert operation["security"] == [{"HTTPBearer": []}]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    assert set(parameters) == {"from", "to", "event_type", "trace_id", "limit", "cursor"}
+    assert "tenant_id" not in parameters
+    response = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    page = schema["components"]["schemas"][response["$ref"].rsplit("/", 1)[1]]
+    event_ref = page["properties"]["items"]["items"]["$ref"]
+    fields = schema["components"]["schemas"][event_ref.rsplit("/", 1)[1]]["properties"]
+    assert {"digest", "previous_digest", "signature_present", "detail_retention_state"} <= set(
+        fields
+    )
+    assert {"signature", "sensitive_detail", "principal_id", "subject"}.isdisjoint(fields)
