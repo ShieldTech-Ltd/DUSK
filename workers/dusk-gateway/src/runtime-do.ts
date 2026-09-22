@@ -22,13 +22,17 @@ interface AuditReceipt {
   timestamp_ms: number;
 }
 
+function isActionDigest(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
 function isContainerDecision(v: unknown): v is ContainerDecision {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const d = v as Record<string, unknown>;
   return (
     (d.decision === "ALLOW" || d.decision === "BLOCK" || d.decision === "DENY") &&
     (d.permit_id === null || typeof d.permit_id === "string") &&
-    typeof d.action_digest === "string" &&
+    isActionDigest(d.action_digest) &&
     typeof d.policy_version === "string" &&
     Array.isArray(d.matched_rule_ids) &&
     (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string")

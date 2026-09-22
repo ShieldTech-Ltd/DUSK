@@ -197,6 +197,54 @@ describe("DuskRuntimeDO", () => {
     expect(eventJson).toContain("v1");
   });
 
+  it("keeps permit and action sentinels out of public decision evidence", async () => {
+    const safeRequestId = "req-sentinel-safe";
+    const invalidRequestId = "req-sentinel-invalid";
+    const permitId = "permit-must-remain-internal";
+    const sentinelAction = "SENTINEL_ACTION_VALUE_MUST_NOT_ESCAPE";
+    const stub = runtimeStub("runtime-sentinel-digest");
+    const capturedEvents: { blobs: string[]; doubles: number[]; indexes: string[] }[] = [];
+
+    await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
+      instance.containerFetch = async () =>
+        Response.json(allowDecision({ permit_id: permitId, action_digest: "d".repeat(64) }));
+      instance.onEvent = (payload) => capturedEvents.push(payload);
+    });
+
+    const safeResponse = await stub.fetch(makeActionRequest(
+      JSON.stringify({ action_type: sentinelAction }),
+      safeRequestId,
+    ));
+    expect(safeResponse.status).toBe(200);
+    const publicDecision = await safeResponse.text();
+    const storedReceipt = await env.AUDIT_RECEIPTS.get(`receipts/${safeRequestId}.json`);
+    expect(storedReceipt).not.toBeNull();
+    const receipt = await storedReceipt!.text();
+    const telemetry = JSON.stringify(capturedEvents);
+
+    for (const publishedEvidence of [publicDecision, receipt, telemetry]) {
+      expect(publishedEvidence).not.toContain(permitId);
+      expect(publishedEvidence).not.toContain(sentinelAction);
+    }
+
+    await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
+      instance.containerFetch = async () =>
+        Response.json(allowDecision({ permit_id: permitId, action_digest: sentinelAction }));
+    });
+
+    const invalidResponse = await stub.fetch(makeActionRequest(
+      JSON.stringify({ action_type: sentinelAction }),
+      invalidRequestId,
+    ));
+    expect(invalidResponse.status).toBe(500);
+    const invalidPublicDecision = await invalidResponse.text();
+    expect(invalidPublicDecision).not.toContain(permitId);
+    expect(invalidPublicDecision).not.toContain(sentinelAction);
+    expect(await env.AUDIT_RECEIPTS.get(`receipts/${invalidRequestId}.json`)).toBeNull();
+    expect(JSON.stringify(capturedEvents)).not.toContain(permitId);
+    expect(JSON.stringify(capturedEvents)).not.toContain(sentinelAction);
+  });
+
   it("returns 404 for unknown paths", async () => {
     const stub = runtimeStub("runtime-404");
     const response = await stub.fetch("https://dusk-runtime/unknown");
