@@ -61,16 +61,30 @@ describe("DuskRuntimeDO", () => {
   });
 
   it("returns 403 BLOCK decision when container blocks the action", async () => {
+    const requestId = "req-block-redaction";
+    const permitId = "block-permit-must-remain-internal";
     const stub = runtimeStub("runtime-block");
+    const capturedEvents: { blobs: string[]; doubles: number[]; indexes: string[] }[] = [];
     await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
-      instance.containerFetch = async () => Response.json(blockDecision(), { status: 200 });
+      instance.containerFetch = async () =>
+        Response.json(blockDecision({ permit_id: permitId }), { status: 200 });
+      instance.onEvent = (payload) => capturedEvents.push(payload);
     });
 
-    const response = await stub.fetch(makeActionRequest());
+    const response = await stub.fetch(makeActionRequest('{"action_type":"block-test"}', requestId));
     expect(response.status).toBe(403);
-    const body = await response.json() as { decision: string; reason_code: string };
+    const publicDecision = await response.text();
+    const body = JSON.parse(publicDecision) as { decision: string; reason_code: string };
     expect(body.decision).toBe("BLOCK");
     expect(body.reason_code).toBe("PROMPT_INJECTION_DETECTED");
+    const storedReceipt = await env.AUDIT_RECEIPTS.get(`receipts/${requestId}.json`);
+    expect(storedReceipt).not.toBeNull();
+    const receipt = await storedReceipt!.text();
+    const telemetry = JSON.stringify(capturedEvents);
+    for (const publishedEvidence of [publicDecision, receipt, telemetry]) {
+      expect(publishedEvidence).not.toContain("permit_id");
+      expect(publishedEvidence).not.toContain(permitId);
+    }
   });
 
   it("returns 403 DENY decision and skips replay guard", async () => {
@@ -226,6 +240,7 @@ describe("DuskRuntimeDO", () => {
       expect(publishedEvidence).not.toContain(permitId);
       expect(publishedEvidence).not.toContain(sentinelAction);
     }
+    const eventsBeforeInvalidDecision = capturedEvents.length;
 
     await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
       instance.containerFetch = async () =>
@@ -241,6 +256,7 @@ describe("DuskRuntimeDO", () => {
     expect(invalidPublicDecision).not.toContain(permitId);
     expect(invalidPublicDecision).not.toContain(sentinelAction);
     expect(await env.AUDIT_RECEIPTS.get(`receipts/${invalidRequestId}.json`)).toBeNull();
+    expect(capturedEvents).toHaveLength(eventsBeforeInvalidDecision);
     expect(JSON.stringify(capturedEvents)).not.toContain(permitId);
     expect(JSON.stringify(capturedEvents)).not.toContain(sentinelAction);
   });

@@ -75,6 +75,61 @@ function responseHeaders(upstream: Response, requestId: string): Headers {
   return headers;
 }
 
+interface PublicDecision {
+  decision: "ALLOW" | "BLOCK" | "DENY";
+  action_digest: string;
+  policy_version: string;
+  matched_rule_ids: string[];
+  reason_code: string | null;
+}
+
+function isPublicDecision(value: unknown): value is PublicDecision {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const decision = value as Record<string, unknown>;
+  return (
+    (decision.decision === "ALLOW" || decision.decision === "BLOCK" || decision.decision === "DENY") &&
+    typeof decision.action_digest === "string" && /^[a-f0-9]{64}$/.test(decision.action_digest) &&
+    typeof decision.policy_version === "string" &&
+    Array.isArray(decision.matched_rule_ids) &&
+    decision.matched_rule_ids.every((rule) => typeof rule === "string") &&
+    (decision.reason_code === null || typeof decision.reason_code === "string")
+  );
+}
+
+function isPublicRuntimeError(value: unknown): value is { error: string } {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).error === "string";
+}
+
+async function safeRuntimeResponse(upstream: Response, requestId: string): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await upstream.json();
+  } catch {
+    return errorResponse(503, "runtime_response_invalid", requestId);
+  }
+
+  if (isPublicDecision(body)) {
+    return Response.json(
+      {
+        decision: body.decision,
+        action_digest: body.action_digest,
+        policy_version: body.policy_version,
+        matched_rule_ids: body.matched_rule_ids,
+        reason_code: body.reason_code,
+      },
+      { headers: responseHeaders(upstream, requestId), status: upstream.status },
+    );
+  }
+  if (isPublicRuntimeError(body)) {
+    return Response.json(
+      { error: body.error, request_id: requestId },
+      { headers: responseHeaders(upstream, requestId), status: upstream.status },
+    );
+  }
+  return errorResponse(503, "runtime_response_invalid", requestId);
+}
+
 async function handleAction(
   request: Request,
   env: DuskGatewayEnv,
@@ -138,7 +193,7 @@ async function handleAction(
       request_id: requestId,
       status: upstream.status,
     });
-    return new Response(upstream.body, { headers: responseHeaders(upstream, requestId), status: upstream.status });
+    return safeRuntimeResponse(upstream, requestId);
   } catch {
     console.error(JSON.stringify({ event: "dusk_gateway_runtime_failure", path, request_id: requestId }));
     return errorResponse(503, "runtime_unavailable", requestId);

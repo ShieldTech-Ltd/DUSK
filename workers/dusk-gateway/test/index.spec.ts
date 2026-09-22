@@ -19,7 +19,7 @@ function makeRuntimeNamespace(runtimeStub: { fetch: ReturnType<typeof vi.fn> }) 
 const configuredEnv = {
   DUSK_GATEWAY_TOKEN: token,
   DUSK_RUNTIME: makeRuntimeNamespace(
-    makeRuntimeStub(Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 })),
+    makeRuntimeStub(Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [], reason_code: null }, { status: 200 })),
   ),
 };
 
@@ -149,7 +149,7 @@ describe("DUSK Cloudflare gateway", () => {
 
   it("routes a valid authorized action to the internal runtime binding exactly once", async () => {
     const runtimeStub = makeRuntimeStub(
-      Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [] }, { status: 200 }),
+      Response.json({ decision: "ALLOW", action_digest: "a".repeat(64), policy_version: "v1", matched_rule_ids: [], reason_code: null }, { status: 200 }),
     );
     const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
@@ -177,7 +177,13 @@ describe("DUSK Cloudflare gateway", () => {
 
   it("forwards the runtime decision status code to the caller", async () => {
     const runtimeStub = makeRuntimeStub(
-      Response.json({ decision: "BLOCK", reason_code: "POLICY_DENY" }, { status: 403 }),
+      Response.json({
+        decision: "BLOCK",
+        action_digest: "b".repeat(64),
+        policy_version: "v1",
+        matched_rule_ids: ["rule-deny"],
+        reason_code: "POLICY_DENY",
+      }, { status: 403 }),
     );
     const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
 
@@ -186,5 +192,36 @@ describe("DUSK Cloudflare gateway", () => {
     expect(response.status).toBe(403);
     const body = await response.json() as { decision: string };
     expect(body.decision).toBe("BLOCK");
+  });
+
+  it("returns only safe decision metadata from an authenticated runtime response", async () => {
+    const permitId = "gateway-permit-must-remain-internal";
+    const sentinelAction = "GATEWAY_SENTINEL_ACTION_MUST_NOT_ESCAPE";
+    const runtimeStub = makeRuntimeStub(
+      Response.json({
+        decision: "ALLOW",
+        action_digest: "e".repeat(64),
+        policy_version: "v1",
+        matched_rule_ids: ["rule-allow"],
+        reason_code: null,
+        permit_id: permitId,
+        action: sentinelAction,
+      }, { status: 200 }),
+    );
+    const env = { ...configuredEnv, DUSK_RUNTIME: makeRuntimeNamespace(runtimeStub) };
+
+    const response = await dispatch(validRequest(JSON.stringify({ action_type: sentinelAction })), env);
+
+    expect(response.status).toBe(200);
+    const publicDecision = await response.text();
+    expect(publicDecision).not.toContain(permitId);
+    expect(publicDecision).not.toContain(sentinelAction);
+    expect(Object.keys(JSON.parse(publicDecision)).sort()).toEqual([
+      "action_digest",
+      "decision",
+      "matched_rule_ids",
+      "policy_version",
+      "reason_code",
+    ]);
   });
 });
