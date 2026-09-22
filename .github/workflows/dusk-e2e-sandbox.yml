@@ -46,3 +46,12 @@ jobs:
           PYTHONPATH=src python -m pytest -q \
             tests/test_cloudflare_gateway.py \
             tests/test_secure_action_flow.py
+
+      - name: Test Container runtime contract
+        run: PYTHONPATH=src python -m pytest -q tests/test_cloudflare_runtime_server.py
+
+      - name: Test native Worker evidence path
+        run: |
+          npm ci
+          npm run typecheck:worker
+          npm run test:worker
