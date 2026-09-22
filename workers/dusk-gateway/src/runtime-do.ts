@@ -35,7 +35,8 @@ function isContainerDecision(v: unknown): v is ContainerDecision {
     isActionDigest(d.action_digest) &&
     typeof d.policy_version === "string" &&
     Array.isArray(d.matched_rule_ids) &&
-    (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string")
+    (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string") &&
+    (d.reason_code === null || typeof d.reason_code === "string")
   );
 }
 

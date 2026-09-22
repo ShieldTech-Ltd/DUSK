@@ -134,6 +134,27 @@ describe("DuskRuntimeDO", () => {
     expect(response.status).toBe(500);
   });
 
+  it("fails closed when container decision omits reason_code", async () => {
+    const requestId = "req-missing-reason-code";
+    const stub = runtimeStub("runtime-missing-reason-code");
+    const capturedEvents: { blobs: string[]; doubles: number[]; indexes: string[] }[] = [];
+    await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
+      instance.containerFetch = async () => {
+        const { reason_code: _reasonCode, ...decisionWithoutReasonCode } = allowDecision({
+          permit_id: "missing-reason-code-permit",
+        });
+        return Response.json(decisionWithoutReasonCode);
+      };
+      instance.onEvent = (payload) => capturedEvents.push(payload);
+    });
+
+    const response = await stub.fetch(makeActionRequest('{"action_type":"read"}', requestId));
+
+    expect(response.status).toBe(500);
+    expect(await env.AUDIT_RECEIPTS.get(`receipts/${requestId}.json`)).toBeNull();
+    expect(capturedEvents).toHaveLength(0);
+  });
+
   it("returns 409 when permit nonce is replayed", async () => {
     const stub = runtimeStub("runtime-replayed");
     await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
