@@ -2,6 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { DuskRuntimeDO } from "../src/runtime-do";
+import { ReplayGuardDO } from "../src/replay-guard-do";
 
 type RuntimeStub = DurableObjectStub<DuskRuntimeDO>;
 
@@ -170,18 +171,60 @@ describe("DuskRuntimeDO", () => {
     expect(body.error).toBe("permit_replayed");
   });
 
-  it("returns 503 when replay guard throws unexpectedly", async () => {
-    const stub = runtimeStub("runtime-guard-throws");
+  it.each([null, "", "   "])("rejects ALLOW with invalid permit_id %j before publishing evidence", async (permitId) => {
+    const requestId = `req-invalid-permit-${JSON.stringify(permitId)}`;
+    const stub = runtimeStub(`runtime-invalid-permit-${JSON.stringify(permitId)}`);
+    const capturedEvents: unknown[] = [];
     await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
-      instance.containerFetch = async () => Response.json(allowDecision({ permit_id: "guard-throw-permit" }));
+      instance.containerFetch = async () => Response.json(allowDecision({ permit_id: permitId }));
+      instance.onEvent = (payload) => capturedEvents.push(payload);
     });
 
-    // First call burns the permit; simulate guard unavailable on second call by
-    // using a fresh DO instance where guard is unreachable via stub error.
-    // We test guard-throws via a unique permit that has never been seen.
-    const response = await stub.fetch(makeActionRequest('{"action_type":"read"}', "req-guard-throw"));
-    // Guard is real miniflare DO -- first call should succeed (permit consumed)
-    expect(response.status).toBe(200);
+    const response = await stub.fetch(makeActionRequest(undefined, requestId));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "runtime_response_invalid", request_id: requestId });
+    expect(await env.AUDIT_RECEIPTS.get(`receipts/${requestId}.json`)).toBeNull();
+    expect(capturedEvents).toHaveLength(0);
+    const guard = env.REPLAY_GUARD.get(env.REPLAY_GUARD.idFromName("guard")) as DurableObjectStub<ReplayGuardDO>;
+    await runInDurableObject(guard, async (_instance: ReplayGuardDO, state) => {
+      const rows = state.storage.sql.exec<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM consumed_nonces WHERE nonce = ?", permitId,
+      ).one();
+      expect(rows.count).toBe(0);
+    });
+  });
+
+  it.each([
+    ["throws", async () => { throw new Error("injected guard failure"); }],
+    ["non-OK", async () => Response.json({ error: "storage_error" }, { status: 500 })],
+    ["malformed JSON", async () => new Response("not-json")],
+    ["missing result", async () => Response.json({})],
+    ["unknown result", async () => Response.json({ result: "unknown" })],
+  ] as const)("fails closed with 503 when replay guard returns %s", async (name, fault) => {
+    const requestId = `req-guard-failure-${name}`;
+    const stub = runtimeStub(`runtime-guard-failure-${name}`);
+    const guard = env.REPLAY_GUARD.get(env.REPLAY_GUARD.idFromName("guard")) as DurableObjectStub<ReplayGuardDO>;
+    const capturedEvents: unknown[] = [];
+    await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
+      instance.containerFetch = async () => Response.json(allowDecision({ permit_id: `guard-failure-${name}` }));
+      instance.onEvent = (payload) => capturedEvents.push(payload);
+    });
+    // Replace only the guard's fetch handler through the existing emulator seam.
+    // The runtime still calls its real binding, parses the response, and fails closed.
+    await runInDurableObject(guard, async (instance: ReplayGuardDO) => {
+      instance.fetch = fault;
+    });
+    try {
+      const response = await stub.fetch(makeActionRequest(undefined, requestId));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "replay_guard_unavailable", request_id: requestId });
+      expect(await env.AUDIT_RECEIPTS.get(`receipts/${requestId}.json`)).toBeNull();
+      expect(capturedEvents).toHaveLength(0);
+    } finally {
+      await runInDurableObject(guard, async (instance: ReplayGuardDO) => {
+        instance.fetch = ReplayGuardDO.prototype.fetch;
+      });
+    }
   });
 
   it("audit receipt written to R2 contains no action payload or secret material", async () => {

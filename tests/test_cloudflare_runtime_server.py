@@ -16,6 +16,8 @@ from unittest.mock import patch
 
 import pytest
 
+from dusk.policies import Decision, PolicyResult
+
 _RUNTIME_PATH = Path("workers/dusk-runtime/runtime_server.py")
 
 
@@ -81,3 +83,65 @@ def test_non_object_json_is_rejected(server: HTTPServer) -> None:
 
     assert status == 400
     assert body["error"] == "invalid_action"
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_decision"),
+    [
+        ({"type": "resource.read"}, "ALLOW"),
+        ({"type": "network.firewall.update", "cidrs": ["0.0.0.0/0"]}, "DENY"),
+    ],
+)
+def test_success_response_contains_only_internal_decision_fields(
+    server: HTTPServer, action: dict[str, object], expected_decision: str
+) -> None:
+    """The HTTP contract must not echo action or credentials, even on ALLOW."""
+    payload = {
+        "tenant_id": "fake-tenant",
+        "agent_id": "fake-agent",
+        "target": "DIRECT_RUNTIME_ACTION_SENTINEL",
+        "credential": "DIRECT_RUNTIME_CREDENTIAL_SENTINEL",
+        **action,
+    }
+    if expected_decision == "ALLOW":
+        # The current runtime context has degraded evidence and fails closed.
+        # A fake policy result exercises real permit issuance and HTTP redaction
+        # without changing the production policy or claiming real-policy ALLOW.
+        with patch.object(_rs, "_POLICY") as policy:
+            policy.evaluate.return_value = PolicyResult(Decision.ALLOW, "fake-policy-v1", ())
+            status, body = _post(server, json.dumps(payload).encode())
+    else:
+        # DENY exercises the real enterprise policy and the real HTTP server.
+        status, body = _post(server, json.dumps(payload).encode())
+
+    assert status == 200
+    assert set(body) == {
+        "decision",
+        "permit_id",
+        "action_digest",
+        "policy_version",
+        "matched_rule_ids",
+        "reason_code",
+    }
+    assert body["decision"] == expected_decision
+    assert isinstance(body["action_digest"], str)
+    assert len(body["action_digest"]) == 64
+    assert set(body["action_digest"]) <= set("0123456789abcdef")
+    assert isinstance(body["policy_version"], str)
+    assert isinstance(body["matched_rule_ids"], list)
+    if expected_decision == "ALLOW":
+        assert isinstance(body["permit_id"], str)
+        assert body["permit_id"]
+        assert body["reason_code"] is None
+    else:
+        assert body["permit_id"] is None
+        assert "DUSK-NET-001" in body["matched_rule_ids"]
+        assert body["reason_code"] == "DUSK-NET-001"
+    serialized = json.dumps(body)
+    for forbidden in (
+        "DIRECT_RUNTIME_ACTION_SENTINEL",
+        "DIRECT_RUNTIME_CREDENTIAL_SENTINEL",
+        "credential",
+        "target",
+    ):
+        assert forbidden not in serialized

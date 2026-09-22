@@ -32,6 +32,7 @@ function isContainerDecision(v: unknown): v is ContainerDecision {
   return (
     (d.decision === "ALLOW" || d.decision === "BLOCK" || d.decision === "DENY") &&
     (d.permit_id === null || typeof d.permit_id === "string") &&
+    (d.decision !== "ALLOW" || (typeof d.permit_id === "string" && d.permit_id.trim().length > 0)) &&
     isActionDigest(d.action_digest) &&
     typeof d.policy_version === "string" &&
     Array.isArray(d.matched_rule_ids) &&

@@ -1,7 +1,8 @@
-import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+import { createExecutionContext, env, runInDurableObject, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import worker from "../src/index";
+import type { DuskRuntimeDO } from "../src/runtime-do";
 
 const token = "expected-token";
 
@@ -223,5 +224,75 @@ describe("DUSK Cloudflare gateway", () => {
       "policy_version",
       "reason_code",
     ]);
+  });
+});
+
+describe("authenticated native enforcement path", () => {
+  it("allows once, rejects replay, blocks, and publishes only redacted evidence", async () => {
+    const permitId = "native-path-internal-permit";
+    const actionSentinel = "NATIVE_ACTION_SENTINEL";
+    const credentialSentinel = "NATIVE_CREDENTIAL_SENTINEL";
+    const runtime = env.DUSK_RUNTIME.get(env.DUSK_RUNTIME.idFromName("runtime")) as unknown as DurableObjectStub<DuskRuntimeDO>;
+    const capturedEvents: { blobs: string[]; doubles: number[]; indexes: string[] }[] = [];
+    await runInDurableObject(runtime, async (instance: DuskRuntimeDO) => {
+      // Only Container output is fake. Worker routing, replay storage, and R2 are real emulator bindings.
+      instance.containerFetch = async (body) => {
+        const action = JSON.parse(body) as { type: string };
+        const blocked = action.type === "fake.block";
+        return Response.json({
+          decision: blocked ? "BLOCK" : "ALLOW",
+          permit_id: blocked ? null : permitId,
+          action_digest: (blocked ? "b" : "a").repeat(64),
+          policy_version: "v1",
+          matched_rule_ids: [blocked ? "rule-block" : "rule-allow"],
+          reason_code: blocked ? "POLICY_BLOCK" : null,
+        });
+      };
+      instance.onEvent = (payload) => capturedEvents.push(payload);
+    });
+
+    for (const [type, expectedStatus, decision, replayStatus] of [
+      ["fake.read", 200, "ALLOW", "ok"],
+      ["fake.read", 409, "ALLOW", "replayed"],
+      ["fake.block", 403, "BLOCK", "skipped"],
+    ] as const) {
+      const response = await SELF.fetch(validRequest(JSON.stringify({
+        type,
+        tenant_id: "fake-tenant",
+        agent_id: "fake-agent",
+        target: actionSentinel,
+        credential: credentialSentinel,
+      })));
+      expect(response.status, await response.clone().text()).toBe(expectedStatus);
+      const requestId = response.headers.get("X-DUSK-Request-ID");
+      expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+      const publicText = await response.text();
+      const publicBody = JSON.parse(publicText);
+      if (expectedStatus === 409) {
+        expect(publicBody).toEqual({ error: "permit_replayed", request_id: requestId });
+      } else {
+        expect(publicBody.decision).toBe(decision);
+        expect(Object.keys(publicBody).sort()).toEqual([
+          "action_digest", "decision", "matched_rule_ids", "policy_version", "reason_code",
+        ]);
+      }
+      const stored = await env.AUDIT_RECEIPTS.get(`receipts/${requestId}.json`);
+      expect(stored).not.toBeNull();
+      const receiptText = await stored!.text();
+      expect(JSON.parse(receiptText)).toMatchObject({
+        trace_id: requestId, decision, replay_status: replayStatus,
+      });
+      const event = capturedEvents.find((item) => item.indexes[0] === requestId);
+      expect(event).toBeDefined();
+      expect(event!.blobs).toEqual([
+        decision, "v1", (decision === "BLOCK" ? "b" : "a").repeat(64), replayStatus,
+      ]);
+      for (const evidence of [publicText, receiptText, JSON.stringify(event)]) {
+        for (const forbidden of [permitId, "permit_id", actionSentinel, credentialSentinel, token, "credential"]) {
+          expect(evidence).not.toContain(forbidden);
+        }
+      }
+    }
+    expect(capturedEvents).toHaveLength(3);
   });
 });
