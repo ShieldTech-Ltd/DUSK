@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -46,11 +47,11 @@ def test_renderer_generates_valid_runtime_files(tmp_path: Path) -> None:
         cwd=ROOT,
         env=environment,
     )
-    config = (tmp_path / "console/config.json").read_text(encoding="utf-8")
+    config = json.loads((tmp_path / "console/config.json").read_text(encoding="utf-8"))
     nginx = (tmp_path / "console/nginx.conf").read_text(encoding="utf-8")
     realm = (tmp_path / "keycloak/dusk-demo-realm.json").read_text(encoding="utf-8")
     routes = (tmp_path / "traefik/routes.yml").read_text(encoding="utf-8")
-    assert "https://api.demo.example.com" in config
+    assert config["apiBaseUrl"] == "https://api.demo.example.com"
     assert "upgrade-insecure-requests" in nginx
     assert "@@" not in realm + routes
     assert "console-blue:8080" in routes
