@@ -52,6 +52,7 @@ RUN sed --in-place \
 COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
 COPY --from=builder /usr/local/bin/dusk-control-plane /usr/local/bin/dusk-control-plane
 COPY --from=builder /usr/local/bin/dusk-control-plane-migrate /usr/local/bin/dusk-control-plane-migrate
+COPY --from=builder /usr/local/bin/dusk-control-plane-demo-reset /usr/local/bin/dusk-control-plane-demo-reset
 COPY --from=builder /usr/local/bin/alembic /usr/local/bin/alembic
 COPY --chown=10001:10001 --chmod=0444 services/control-plane/alembic.ini /app/alembic.ini
 COPY --chown=10001:10001 --chmod=0444 services/control-plane/local/seed_scenarios.py /app/seed_scenarios.py

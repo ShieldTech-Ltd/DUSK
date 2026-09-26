@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly DUSK public demo reset
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=dusk-demo-reset.service
+
+[Install]
+WantedBy=timers.target

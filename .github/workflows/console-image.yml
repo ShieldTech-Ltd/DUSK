@@ -33,7 +33,7 @@ jobs:
           context: .
           file: apps/console/Dockerfile
           push: false
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false
 
@@ -69,7 +69,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           provenance: mode=max
           sbom: true
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3

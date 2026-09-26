@@ -1,0 +1,35 @@
+#cloud-config
+package_update: true
+packages:
+  - dnf-plugins-core
+  - git
+  - nodejs
+  - curl
+  - policycoreutils-python-utils
+write_files:
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {"live-restore":true,"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"}}
+runcmd:
+  - dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+  - rpm --import https://download.docker.com/linux/rhel/gpg
+  - dnf install -y docker-ce-3:29.8.1-1.el9 docker-ce-cli-3:29.8.1-1.el9 containerd.io docker-buildx-plugin docker-compose-plugin
+  - curl --fail --location --silent --show-error --output /tmp/cosign.rpm https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign-3.1.3-1.aarch64.rpm
+  - echo '17c9fc9d0cb7f54492dc297ea75f8ea992576071e933a859120a2647abbfa347  /tmp/cosign.rpm' | sha256sum --check --strict
+  - rpm --install /tmp/cosign.rpm
+  - [systemctl, enable, --now, docker]
+  - [mkdir, -p, /opt/dusk/config/console, /opt/dusk/config/keycloak, /opt/dusk/config/traefik, /opt/dusk/state, /etc/dusk-demo]
+  - [chmod, "0750", /opt/dusk, /opt/dusk/config, /opt/dusk/state, /etc/dusk-demo]
+  - [git, clone, --filter=blob:none, https://github.com/ShieldTech-Ltd/DUSK.git, /opt/dusk/repository]
+  - [chmod, +x, /opt/dusk/repository/deploy/public-demo/scripts/deploy.sh, /opt/dusk/repository/deploy/public-demo/scripts/reset-demo.sh]
+  - [cp, /opt/dusk/repository/deploy/public-demo/systemd/dusk-demo-reset.service, /etc/systemd/system/]
+  - [cp, /opt/dusk/repository/deploy/public-demo/systemd/dusk-demo-reset.timer, /etc/systemd/system/]
+  - [cp, /opt/dusk/repository/deploy/public-demo/systemd/dusk-demo-health.service, /etc/systemd/system/]
+  - [cp, /opt/dusk/repository/deploy/public-demo/systemd/dusk-demo-health.timer, /etc/systemd/system/]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, dusk-demo-reset.timer, dusk-demo-health.timer]
+  - [docker, version]
+  - [docker, compose, version]
+  - [cosign, version]
+final_message: DUSK public demo host bootstrap completed

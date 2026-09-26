@@ -1,0 +1,45 @@
+http:
+  routers:
+    console:
+      rule: Host(`@@CONSOLE_HOST@@`)
+      entryPoints: [websecure]
+      service: console
+      middlewares: [security-headers, public-rate-limit]
+      tls: {certResolver: letsencrypt}
+    api:
+      rule: Host(`@@API_HOST@@`) && (Method(`GET`) || Method(`OPTIONS`))
+      entryPoints: [websecure]
+      service: api
+      middlewares: [security-headers, api-rate-limit]
+      tls: {certResolver: letsencrypt}
+    identity:
+      rule: Host(`@@AUTH_HOST@@`) && (PathPrefix(`/realms/dusk-demo/`) || PathPrefix(`/resources/`))
+      entryPoints: [websecure]
+      service: identity
+      middlewares: [security-headers, identity-rate-limit]
+      tls: {certResolver: letsencrypt}
+  services:
+    console:
+      loadBalancer:
+        servers: [{url: http://console-@@SLOT@@:8080}]
+    api:
+      loadBalancer:
+        servers: [{url: http://control-plane-@@SLOT@@:8080}]
+    identity:
+      loadBalancer:
+        servers: [{url: http://keycloak:8080}]
+  middlewares:
+    public-rate-limit:
+      rateLimit: {average: 40, burst: 80, period: 1s}
+    api-rate-limit:
+      rateLimit: {average: 20, burst: 40, period: 1s}
+    identity-rate-limit:
+      rateLimit: {average: 10, burst: 20, period: 1s}
+    security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: no-referrer
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        permissionsPolicy: camera=(), geolocation=(), microphone=()

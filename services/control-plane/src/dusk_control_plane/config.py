@@ -42,12 +42,14 @@ class Settings(BaseSettings):
     api_docs_enabled: bool = False
     cors_allowed_origins: tuple[str, ...] = ()
     local_stack_enabled: bool = False
+    public_demo_mode: bool = False
     local_tenant_id: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
     local_evidence_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
     )
     local_audit_signing_key: SecretStr | None = Field(default=None, min_length=32, max_length=512)
     v2_enabled: bool = False
+    evaluation_api_enabled: bool = True
     readiness_timeout_ms: int = Field(default=1000, ge=50, le=5000)
     evaluation_timeout_seconds: float = Field(default=10.0, ge=0.1, le=30.0)
     max_request_body_bytes: int = Field(default=1024 * 1024, ge=1024, le=10 * 1024 * 1024)
@@ -139,6 +141,7 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} must use https")
         self._validate_cors()
         self._validate_local_stack()
+        self._validate_public_demo()
         if not self.oidc_algorithms or len(set(self.oidc_algorithms)) != len(self.oidc_algorithms):
             raise ValueError("oidc_algorithms must be non-empty and unique")
         claim_names = {
@@ -176,6 +179,27 @@ class Settings(BaseSettings):
         ]
         if missing:
             raise ValueError(f"local_stack_enabled requires {', '.join(missing)}")
+
+    def _validate_public_demo(self) -> None:
+        if not self.public_demo_mode:
+            return
+        if self.environment is not Environment.PRODUCTION:
+            raise ValueError("public_demo_mode requires the production environment")
+        if self.local_stack_enabled:
+            raise ValueError("public_demo_mode forbids local_stack_enabled")
+        required = (
+            self.v2_enabled,
+            self.storage_enabled,
+            self.decision_read_api_enabled,
+            self.dashboard_read_api_enabled,
+            self.operations_read_api_enabled,
+        )
+        if not all(required):
+            raise ValueError("public_demo_mode requires v2, storage, and all read APIs")
+        if self.evaluation_api_enabled:
+            raise ValueError("public_demo_mode requires evaluation_api_enabled=false")
+        if self.outbox_worker_enabled or self.enforcement_broker_enabled:
+            raise ValueError("public_demo_mode forbids external delivery")
 
     def _validate_cors(self) -> None:
         for origin in self.cors_allowed_origins:

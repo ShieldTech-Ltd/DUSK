@@ -1,0 +1,14 @@
+[Unit]
+Description=Reset DUSK public demo data
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/dusk/repository/deploy/public-demo/scripts/reset-demo.sh
+User=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/dusk /run/lock /var/run/docker.sock

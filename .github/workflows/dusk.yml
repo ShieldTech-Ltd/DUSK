@@ -252,3 +252,18 @@ jobs:
           failures=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<<"$NEEDS_JSON")
           test -z "$failures" || { echo "$failures"; exit 1; }
           python scripts/ci/control.py aggregate --lane pr --results all-results
+
+  public-demo:
+    name: Deploy public demo
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [security-gate]
+    permissions:
+      contents: read
+      # Forward only the release permissions declared by the reusable workflow.
+      id-token: write
+      packages: write
+      attestations: write
+    uses: ./.github/workflows/public-demo.yml
+    secrets:
+      OCI_WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+      OCI_WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}

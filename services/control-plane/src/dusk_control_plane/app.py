@@ -106,6 +106,26 @@ def _install_v2_routes(
     container: AppContainer,
     common_errors: dict[int | str, dict[str, Any]],
 ) -> None:
+    if container.settings.evaluation_api_enabled:
+        _install_evaluation_route(app, container, common_errors)
+
+    if container.settings.dashboard_read_api_enabled:
+        _install_dashboard_routes(app, container, common_errors)
+
+    if container.settings.operations_read_api_enabled:
+        _install_operations_routes(app, container, common_errors)
+
+    if not container.settings.decision_read_api_enabled:
+        return
+
+    _install_decision_routes(app, container, common_errors)
+
+
+def _install_evaluation_route(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
     @app.post(
         "/v2/evaluations",
         response_model=EvaluationResponse,
@@ -133,15 +153,12 @@ def _install_v2_routes(
         set_decision_trace_id(response.trace_id)
         return response
 
-    if container.settings.dashboard_read_api_enabled:
-        _install_dashboard_routes(app, container, common_errors)
 
-    if container.settings.operations_read_api_enabled:
-        _install_operations_routes(app, container, common_errors)
-
-    if not container.settings.decision_read_api_enabled:
-        return
-
+def _install_decision_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
     @app.get(
         "/v2/decisions",
         response_model=DecisionPage,

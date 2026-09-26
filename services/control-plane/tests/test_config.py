@@ -17,7 +17,9 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_LOG_LEVEL",
         "DUSK_CP_API_DOCS_ENABLED",
         "DUSK_CP_CORS_ALLOWED_ORIGINS",
+        "DUSK_CP_PUBLIC_DEMO_MODE",
         "DUSK_CP_V2_ENABLED",
+        "DUSK_CP_EVALUATION_API_ENABLED",
         "DUSK_CP_READINESS_TIMEOUT_MS",
         "DUSK_CP_MAX_REQUEST_BODY_BYTES",
         "DUSK_CP_OIDC_ISSUER",
@@ -43,6 +45,8 @@ def _clean_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "DUSK_CP_DATABASE_POOL_TIMEOUT_SECONDS",
         "DUSK_CP_DATABASE_STATEMENT_TIMEOUT_MS",
         "DUSK_CP_DECISION_READ_API_ENABLED",
+        "DUSK_CP_DASHBOARD_READ_API_ENABLED",
+        "DUSK_CP_OPERATIONS_READ_API_ENABLED",
         "DUSK_CP_DECISION_CURSOR_SIGNING_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -55,6 +59,8 @@ def test_defaults_are_local_and_feature_flags_are_disabled() -> None:
     assert settings.port == 8080
     assert settings.api_docs_enabled is False
     assert settings.v2_enabled is False
+    assert settings.evaluation_api_enabled is True
+    assert settings.public_demo_mode is False
     assert settings.storage_enabled is False
     assert settings.decision_read_api_enabled is False
     assert settings.enforcement_broker_enabled is False
@@ -271,3 +277,41 @@ def test_outbox_resource_and_retry_bounds_are_consistent() -> None:
             database_url=database_url,
             outbox_lease_seconds=5,
         )
+
+
+def _public_demo_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "environment": Environment.PRODUCTION,
+        "public_demo_mode": True,
+        "v2_enabled": True,
+        "evaluation_api_enabled": False,
+        "oidc_issuer": "https://auth.demo.example.test/realms/dusk-demo",
+        "oidc_audience": "dusk-control-plane",
+        "oidc_jwks_uri": (
+            "https://auth.demo.example.test/realms/dusk-demo/protocol/openid-connect/certs"
+        ),
+        "cors_allowed_origins": ("https://demo.example.test",),
+        "storage_enabled": True,
+        "database_url": "postgresql+asyncpg://dusk:secret@postgresql/dusk_public_demo",
+        "decision_read_api_enabled": True,
+        "dashboard_read_api_enabled": True,
+        "operations_read_api_enabled": True,
+        "decision_cursor_signing_key": "public-demo-cursor-key-that-is-long-enough",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_public_demo_requires_production_read_only_configuration() -> None:
+    configured = _public_demo_settings()
+    assert configured.public_demo_mode is True
+    assert configured.evaluation_api_enabled is False
+
+    with pytest.raises(ValidationError, match="requires the production environment"):
+        _public_demo_settings(environment=Environment.STAGING)
+    with pytest.raises(ValidationError, match="requires evaluation_api_enabled=false"):
+        _public_demo_settings(evaluation_api_enabled=True)
+    with pytest.raises(ValidationError, match="requires v2, storage, and all read APIs"):
+        _public_demo_settings(operations_read_api_enabled=False)
+    with pytest.raises(ValidationError, match="forbids external delivery"):
+        _public_demo_settings(outbox_worker_enabled=True)

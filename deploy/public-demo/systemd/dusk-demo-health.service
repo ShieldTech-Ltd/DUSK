@@ -1,0 +1,14 @@
+[Unit]
+Description=Check DUSK public demo endpoints
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/opt/dusk/config/health.env
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 15 ${CONSOLE_URL}/healthz
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 15 ${API_URL}/readyz
+ExecStart=/usr/bin/curl --fail --silent --show-error --max-time 15 ${AUTH_URL}/realms/dusk-demo/.well-known/openid-configuration
+User=nobody
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
