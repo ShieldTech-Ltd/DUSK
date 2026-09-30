@@ -22,7 +22,7 @@ The deployment is intentionally a public, synthetic, read-only showcase. It is n
 4. Create `/etc/dusk-demo/deployment.env` on the VM from `deployment.example.env`. Generate independent random values of at least 32 bytes for every password and signing key. Set mode `0600` and owner `root:root`.
 5. Confirm cloud-init installed the pinned Docker Engine and checksum-verified Cosign package successfully.
 6. Make the two GHCR packages publicly readable. Public images contain no secrets. If public packages are not acceptable, configure a read-only package token on the VM and accept the resulting long-lived secret.
-7. Configure the GitHub environment `public-demo-production` with required reviewers for infrastructure changes. Application deployments remain automatic after protected `main` passes CI.
+7. Configure the GitHub environment `public-demo-production` with required reviewers. Every application deployment pauses for an environment approval after protected `main` passes CI. The approval is a deliberate production release gate, not an infrastructure-only control.
 
 ## Workload identity federation
 
@@ -52,7 +52,7 @@ The OAuth client secret is a remaining bootstrap credential. It is not an OCI AP
 
 ## Release and reset lifecycle
 
-After a push to protected `main` passes the `CI` workflow, `public-demo.yml` builds multi-architecture images, publishes SBOM and provenance metadata, signs immutable digests, exchanges identity, and starts an OCI Run Command. The host deploys into the inactive blue or green slot, runs migrations, waits for container health, resets the synthetic corpus, switches the Traefik route, verifies all public endpoints, and then removes the previous slot. A failed public check restores the previous route.
+After a push to protected `main` passes the `CI` workflow, the `public-demo-production` environment requires a reviewer to approve the release job. Once approved, `public-demo.yml` builds multi-architecture images, publishes SBOM and provenance metadata, signs immutable digests, exchanges identity, and starts an OCI Run Command. The host deploys into the inactive blue or green slot, runs migrations, waits for container health, resets the synthetic corpus, switches the Traefik route, verifies all public endpoints, and then removes the previous slot. A failed public check restores the previous route.
 
 The `dusk-demo-reset.timer` recreates the synthetic corpus nightly. The `dusk-demo-health.timer` checks the three public endpoints every five minutes. Connect OCI Monitoring notifications to systemd or external uptime alerts during bootstrap because the unit alone records failures but does not page anyone.
 

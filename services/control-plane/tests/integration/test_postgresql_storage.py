@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import pytest
 from alembic import command
@@ -22,7 +22,7 @@ from opentelemetry import metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from sqlalchemy import inspect, select, text
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -55,6 +55,12 @@ from dusk_control_plane.decisions import (
     DecisionNotFoundError,
     InvalidDecisionCursorError,
     PostgresDecisionReader,
+)
+from dusk_control_plane.demo_seed import (
+    DEMO_POLICY_PACK_VERSION,
+    DEMO_TENANT_ID,
+    SCENARIOS,
+    _insert_scenarios,
 )
 from dusk_control_plane.dependencies import AppContainer
 from dusk_control_plane.evaluations import (
@@ -175,6 +181,87 @@ async def engine() -> AsyncIterator[AsyncEngine]:
         yield value
     finally:
         await value.dispose()
+
+
+@pytest.mark.anyio
+async def test_public_demo_seed_is_queryable_and_uses_verifiable_policy_evidence(
+    engine: AsyncEngine,
+) -> None:
+    async with engine.begin() as connection:
+        for model in (PolicyMatch, AuditEvent, Decision, CanonicalAction):
+            await connection.execute(delete(model).where(model.tenant_id == DEMO_TENANT_ID))
+        await connection.execute(delete(Tenant).where(Tenant.id == DEMO_TENANT_ID))
+        await connection.execute(
+            Tenant.__table__.insert().values(
+                id=DEMO_TENANT_ID,
+                slug="dusk-public-demo",
+                display_name="DUSK Public Demo",
+            )
+        )
+        await _insert_scenarios(connection)
+
+    database = Database(engine, async_sessionmaker(engine, expire_on_commit=False))
+    reader = PostgresDecisionReader(database, DecisionCursorCodec(b"d" * 32))
+    principal = Principal(
+        issuer="https://identity.example.test/",
+        subject="demo-auditor",
+        tenant_id=str(DEMO_TENANT_ID),
+        kind=IdentityKind.HUMAN,
+        roles=frozenset({Role.AUDITOR}),
+    )
+    trace_id = uuid5(DEMO_TENANT_ID, "trace-1")
+
+    try:
+        detail = await reader.get_decision(trace_id, principal)
+        assert detail.audit.event_type == "evaluation.decided"
+        assert detail.policy_pack_version == DEMO_POLICY_PACK_VERSION
+
+        pack = load_enterprise_pack()
+        rules = {rule.id: rule.version for rule in pack.rules}
+        assert pack.version == DEMO_POLICY_PACK_VERSION
+        assert detail.policy_matches
+
+        async with AsyncSession(engine) as session:
+            decisions = list(
+                (
+                    await session.scalars(
+                        select(Decision).where(Decision.tenant_id == DEMO_TENANT_ID)
+                    )
+                ).all()
+            )
+            matches = list(
+                (
+                    await session.scalars(
+                        select(PolicyMatch).where(PolicyMatch.tenant_id == DEMO_TENANT_ID)
+                    )
+                ).all()
+            )
+            events = list(
+                (
+                    await session.scalars(
+                        select(AuditEvent)
+                        .where(AuditEvent.tenant_id == DEMO_TENANT_ID)
+                        .order_by(AuditEvent.sequence)
+                    )
+                ).all()
+            )
+        assert {decision.policy_pack_version for decision in decisions} == {
+            DEMO_POLICY_PACK_VERSION
+        }
+        assert matches
+        assert all(rules[match.rule_id] == match.rule_version for match in matches)
+        assert len(events) == len(SCENARIOS)
+        assert all(event.signing_key_id is None and event.signature is None for event in events)
+        verify_audit_chain(
+            DEMO_TENANT_ID,
+            events,
+            AuditCheckpoint(DEMO_TENANT_ID, len(events), events[-1].digest),
+        )
+    finally:
+        async with engine.begin() as connection:
+            for model in (PolicyMatch, AuditEvent, Decision, CanonicalAction):
+                await connection.execute(delete(model).where(model.tenant_id == DEMO_TENANT_ID))
+            await connection.execute(delete(Tenant).where(Tenant.id == DEMO_TENANT_ID))
 
 
 def _decision(action_id: UUID, trace_id: UUID, key: str) -> DecisionWrite:

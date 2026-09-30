@@ -15,6 +15,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
+from dusk_control_plane.audit import AUDIT_EVENT_TYPE, AUDIT_FORMAT, audit_digest
 from dusk_control_plane.storage.models import (
     AuditEvent,
     CanonicalAction,
@@ -27,6 +28,12 @@ from dusk_control_plane.storage.models import (
 DEMO_TENANT_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 DEMO_DATABASE: Final = "dusk_public_demo"
 DEMO_HOST: Final = "postgresql"
+DEMO_POLICY_PACK_VERSION: Final = "1.0.0"
+DEMO_POLICY_RULES: Final = {
+    "firewall_rule_change": "DUSK-NET-001",
+    "role_assignment": "DUSK-IAM-001",
+    "unknown": "DUSK-IAM-002",
+}
 RESET_TABLES: Final = (
     "outbox_deliveries",
     "policy_matches",
@@ -196,7 +203,7 @@ async def _insert_scenarios(connection: AsyncConnection) -> None:
         action_id = uuid5(DEMO_TENANT_ID, f"action-{index}")
         decision_id = uuid5(DEMO_TENANT_ID, f"decision-{index}")
         trace_id = uuid5(DEMO_TENANT_ID, f"trace-{index}")
-        occurred_at = anchor - timedelta(minutes=index * 90)
+        occurred_at = anchor - timedelta(minutes=(len(SCENARIOS) - index - 1) * 90)
         action = {
             "agent_id": agent,
             "action_type": action_type,
@@ -243,8 +250,8 @@ async def _insert_scenarios(connection: AsyncConnection) -> None:
                     [{"framework": "ATT&CK", "technique_id": "T1098"}] if verdict != "ALLOW" else []
                 ),
                 predicted_next={"summary": "Synthetic demonstration prediction"},
-                policy_decision="DENY" if verdict == "BLOCK" else "ALLOW",
-                policy_pack_version="enterprise-v1-demo",
+                policy_decision="DENY" if verdict != "ALLOW" else "ALLOW",
+                policy_pack_version=DEMO_POLICY_PACK_VERSION,
                 evidence_state={"source": "synthetic-public-demo", "verified": True},
                 pipeline_timings={"total_ms": 12 + index},
                 response_status="EXECUTED" if verdict == "ALLOW" else "DELIVERED",
@@ -252,33 +259,42 @@ async def _insert_scenarios(connection: AsyncConnection) -> None:
             )
         )
         if verdict != "ALLOW":
+            rule_id = DEMO_POLICY_RULES[action_type]
             await connection.execute(
                 insert(PolicyMatch).values(
                     tenant_id=DEMO_TENANT_ID,
                     decision_id=decision_id,
-                    rule_id="DEMO-READ-ONLY-001",
-                    rule_version="1",
+                    rule_id=rule_id,
+                    rule_version=DEMO_POLICY_PACK_VERSION,
                     effect="DENY",
                     safe_metadata={"source": "synthetic-public-demo"},
                 )
             )
-        event_payload = {
-            "sequence": index + 1,
-            "trace_id": str(trace_id),
+        integrity_metadata = {
+            "format": AUDIT_FORMAT,
+            "source": "synthetic-public-demo",
             "verdict": verdict,
         }
-        digest = hashlib.sha256((previous_digest or b"") + _canonical(event_payload)).digest()
+        digest = audit_digest(
+            tenant_id=DEMO_TENANT_ID,
+            sequence=index + 1,
+            event_type=AUDIT_EVENT_TYPE,
+            decision_id=decision_id,
+            principal_id=None,
+            occurred_at=occurred_at,
+            previous_digest=previous_digest,
+            integrity_metadata=integrity_metadata,
+        )
         await connection.execute(
             insert(AuditEvent).values(
                 tenant_id=DEMO_TENANT_ID,
                 sequence=index + 1,
-                event_type="decision.recorded",
+                event_type=AUDIT_EVENT_TYPE,
                 decision_id=decision_id,
                 occurred_at=occurred_at,
                 previous_digest=previous_digest,
                 digest=digest,
-                signing_key_id="synthetic-demo-v1",
-                integrity_metadata={"source": "synthetic-public-demo"},
+                integrity_metadata=integrity_metadata,
                 sensitive_detail={"trace_id": str(trace_id)},
             )
         )
