@@ -28,7 +28,7 @@ FROM ${PYTHON_IMAGE} AS runtime
 ARG SOURCE_DATE_EPOCH=0
 ARG OCI_VERSION=0.0.0
 ARG OCI_REVISION=unknown
-ARG DEBIAN_SNAPSHOT=20260926T000000Z
+ARG DEBIAN_SNAPSHOT=20260930T120000Z
 
 LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.description="Multi-tenant security decision control plane" \
