@@ -34,6 +34,14 @@ DEMO_POLICY_RULES: Final = {
     "role_assignment": "DUSK-IAM-001",
     "unknown": "DUSK-IAM-002",
 }
+DEMO_ACTION_TYPES: Final = {
+    "firewall_rule_change": "network.firewall.update",
+    "port_change": "network.port.update",
+    "role_assignment": "iam.role.assign",
+    "route_change": "network.route.update",
+    "segment_change": "network.segment.update",
+    "unknown": "unknown",
+}
 RESET_TABLES: Final = (
     "outbox_deliveries",
     "policy_matches",
@@ -204,12 +212,19 @@ async def _insert_scenarios(connection: AsyncConnection) -> None:
         decision_id = uuid5(DEMO_TENANT_ID, f"decision-{index}")
         trace_id = uuid5(DEMO_TENANT_ID, f"trace-{index}")
         occurred_at = anchor - timedelta(minutes=(len(SCENARIOS) - index - 1) * 90)
+        policy_context = _demo_policy_context(agent, action_type, verdict)
+        policy_action = policy_context["action"]
+        if not isinstance(policy_action, dict):
+            raise ValueError("demo policy context action must be an object")
         action = {
             "agent_id": agent,
-            "action_type": action_type,
+            "action_type": policy_action["type"],
             "target": target,
             "consequential": verdict != "ALLOW",
-            "attributes": {"source": "synthetic-public-demo"},
+            "attributes": {
+                "source": "synthetic-public-demo",
+                "policy_context": policy_context,
+            },
         }
         input_digest = hashlib.sha256(_canonical(action)).digest()
         await connection.execute(
@@ -322,6 +337,30 @@ async def _insert_health(connection: AsyncConnection) -> None:
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _demo_policy_context(agent: str, action_type: str, verdict: str) -> dict[str, object]:
+    action: dict[str, object] = {
+        "type": DEMO_ACTION_TYPES[action_type],
+        "consequential": verdict != "ALLOW",
+        "_evidence": "CONFIRMED",
+    }
+    context: dict[str, object] = {
+        "action": action,
+        "permit": {"valid": True, "_evidence": "CONFIRMED"},
+    }
+    if action_type == "firewall_rule_change":
+        action["cidrs"] = ["0.0.0.0/0"] if verdict != "ALLOW" else ["10.0.0.0/8"]
+    elif action_type == "role_assignment":
+        action.update({"target_identity": agent, "role": "owner"})
+        context["identity"] = {"agent_id": agent, "_evidence": "CONFIRMED"}
+    elif action_type == "unknown":
+        action["tenant_id"] = "external-tenant"
+        context["identity"] = {
+            "tenant_id": str(DEMO_TENANT_ID),
+            "_evidence": "CONFIRMED",
+        }
+    return context
 
 
 def main() -> None:

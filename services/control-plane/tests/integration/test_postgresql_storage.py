@@ -229,6 +229,13 @@ async def test_public_demo_seed_is_queryable_and_uses_verifiable_policy_evidence
                     )
                 ).all()
             )
+            actions = list(
+                (
+                    await session.scalars(
+                        select(CanonicalAction).where(CanonicalAction.tenant_id == DEMO_TENANT_ID)
+                    )
+                ).all()
+            )
             matches = list(
                 (
                     await session.scalars(
@@ -250,6 +257,23 @@ async def test_public_demo_seed_is_queryable_and_uses_verifiable_policy_evidence
         }
         assert matches
         assert all(rules[match.rule_id] == match.rule_version for match in matches)
+        actions_by_id = {action.id: action for action in actions}
+        matches_by_decision: dict[UUID, set[str]] = {}
+        for match in matches:
+            matches_by_decision.setdefault(match.decision_id, set()).add(match.rule_id)
+        for decision in decisions:
+            action = actions_by_id[decision.action_id].redacted_action
+            assert action is not None
+            attributes = action["attributes"]
+            assert isinstance(attributes, dict)
+            context = attributes["policy_context"]
+            assert isinstance(context, dict)
+            result = pack.evaluate(context)
+            assert result.policy_version == decision.policy_pack_version
+            assert result.decision.name == decision.policy_decision
+            assert {rule.id for rule in result.matched_rules} == matches_by_decision.get(
+                decision.id, set()
+            )
         assert len(events) == len(SCENARIOS)
         assert all(event.signing_key_id is None and event.signature is None for event in events)
         verify_audit_chain(

@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import pytest
+from dusk.policies import Decision, load_enterprise_pack
 
-from dusk_control_plane.demo_seed import DEMO_TENANT_ID, validate_target
+from dusk_control_plane.demo_seed import (
+    DEMO_POLICY_RULES,
+    DEMO_TENANT_ID,
+    SCENARIOS,
+    _demo_policy_context,
+    validate_target,
+)
 
 
 def test_demo_reset_accepts_only_the_dedicated_database() -> None:
@@ -23,3 +30,25 @@ def test_demo_reset_accepts_only_the_dedicated_database() -> None:
     ):
         with pytest.raises(ValueError, match="dedicated container database"):
             validate_target(unsafe, str(DEMO_TENANT_ID), "true")
+
+
+@pytest.mark.parametrize(
+    ("agent", "action_type", "_target", "verdict", "_blast", "_score"), SCENARIOS
+)
+def test_demo_policy_evidence_is_produced_by_the_enterprise_evaluator(
+    agent: str,
+    action_type: str,
+    _target: str,
+    verdict: str,
+    _blast: str,
+    _score: object,
+) -> None:
+    result = load_enterprise_pack().evaluate(_demo_policy_context(agent, action_type, verdict))
+
+    assert result.evidence_degraded is False
+    if verdict == "ALLOW":
+        assert result.decision is Decision.ALLOW
+        assert result.matched_rules == ()
+    else:
+        assert result.decision is Decision.DENY
+        assert {rule.id for rule in result.matched_rules} == {DEMO_POLICY_RULES[action_type]}
