@@ -4,8 +4,9 @@ name: DUSK E2E Sandbox
 # Protected by the `sandbox` environment which requires a reviewer approval
 # and gates secrets. Real AWS/CF credentials are never available here.
 #
-# Worker unit tests and typecheck run locally (npm run test:worker / typecheck:worker).
-# This workflow verifies Python integration correctness in the sandbox environment.
+# GitHub Actions runs the direct Python runtime contract, Worker typecheck, and
+# local Miniflare emulator suites inside the protected sandbox environment.
+# These suites provide local/emulator evidence, not deployed binding validation.
 
 on:
   workflow_dispatch:
@@ -46,3 +47,12 @@ jobs:
           PYTHONPATH=src python -m pytest -q \
             tests/test_cloudflare_gateway.py \
             tests/test_secure_action_flow.py
+
+      - name: Test Container runtime contract
+        run: PYTHONPATH=src python -m pytest -q tests/test_cloudflare_runtime_server.py
+
+      - name: Test native Worker evidence path
+        run: |
+          npm ci
+          npm run typecheck:worker
+          npm run test:worker
