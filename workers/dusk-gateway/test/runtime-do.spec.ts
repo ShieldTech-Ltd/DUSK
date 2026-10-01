@@ -19,6 +19,8 @@ function makeActionRequest(body: string = '{"action_type":"read"}', requestId = 
       "Content-Type": "application/json",
       "X-DUSK-Request-ID": requestId,
       "X-DUSK-Gateway": "cloudflare-worker",
+      "X-DUSK-Sandbox-Tenant-ID": "sandbox-tenant",
+      "X-DUSK-Sandbox-Agent-ID": "sandbox-agent",
     },
   });
 }
@@ -48,6 +50,23 @@ function blockDecision(overrides: Record<string, unknown> = {}) {
 }
 
 describe("DuskRuntimeDO", () => {
+  it("fails closed when the internal sandbox identity is missing", async () => {
+    const stub = runtimeStub("runtime-missing-identity");
+    await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
+      instance.containerFetch = async () => Response.json(blockDecision());
+    });
+    const request = new Request(`https://dusk-runtime${ACTION_PATH}`, {
+      method: "POST",
+      body: '{"action_type":"read"}',
+      headers: { "Content-Type": "application/json", "X-DUSK-Request-ID": "req-missing-identity" },
+    });
+
+    const response = await stub.fetch(request);
+
+    expect(response.status).toBe(503);
+    expect((await response.json() as { error: string }).error).toBe("runtime_identity_missing");
+  });
+
   it("returns 200 and ALLOW decision when container approves", async () => {
     const stub = runtimeStub("runtime-allow");
     await runInDurableObject(stub, async (instance: DuskRuntimeDO) => {
