@@ -68,7 +68,8 @@ def test_renderer_generates_valid_runtime_files(tmp_path: Path, password: str) -
     assert "console-blue:8080" in routes
 
 
-def test_failed_health_check_restores_previous_release(tmp_path: Path) -> None:
+@pytest.mark.parametrize("deployment_outcome", ["renderer", "health", "success"])
+def test_deployment_is_atomic(tmp_path: Path, deployment_outcome: str) -> None:
     repository = ROOT
     state = tmp_path / "state"
     config = tmp_path / "config"
@@ -83,7 +84,20 @@ def test_failed_health_check_restores_previous_release(tmp_path: Path) -> None:
     (config / "traefik").mkdir(parents=True)
     fake_bin.mkdir()
     (state / "active-slot").write_text("blue\n", encoding="utf-8")
+    previous_release = f"{previous_revision} old-control-plane old-console\n"
+    (state / "current-release").write_text(previous_release, encoding="utf-8")
     (config / "traefik/routes.yml").write_text("route: previous\n", encoding="utf-8")
+    (config / "console").mkdir()
+    (config / "keycloak").mkdir()
+    previous_files = {
+        "health.env": "health: previous\n",
+        "console/config.json": "config: previous\n",
+        "console/nginx.conf": "nginx: previous\n",
+        "keycloak/dusk-demo-realm.json": "realm: previous\n",
+        "traefik/routes.yml": "route: previous\n",
+    }
+    for relative_path, content in previous_files.items():
+        (config / relative_path).write_text(content, encoding="utf-8")
     (tmp_path / "blue-running").touch()
     git_state.write_text(previous_revision, encoding="utf-8")
     environment_file.write_text(
@@ -98,7 +112,7 @@ def test_failed_health_check_restores_previous_release(tmp_path: Path) -> None:
         "stat": "#!/bin/sh\necho root:root:600\n",
         "flock": "#!/bin/sh\nexit 0\n",
         "cosign": "#!/bin/sh\nexit 0\n",
-        "curl": "#!/bin/sh\nexit 1\n",
+        "curl": '#!/bin/sh\n[ "$FAIL_STAGE" != health ]\n',
         "git": """#!/bin/sh
 set -eu
 echo "git $*" >>"$COMMAND_LOG"
@@ -111,6 +125,7 @@ esac
 """,
         "node": """#!/bin/sh
 set -eu
+[ "$FAIL_STAGE" != renderer ]
 output=$2
 mkdir -p "$output/console" "$output/keycloak" "$output/traefik"
 printf '{}' >"$output/console/config.json"
@@ -142,6 +157,7 @@ esac
         "COMMAND_LOG": str(command_log),
         "GIT_STATE": str(git_state),
         "TEST_ROOT": str(tmp_path),
+        "FAIL_STAGE": deployment_outcome,
     }
     result = subprocess.run(
         [
@@ -157,15 +173,29 @@ esac
     )
 
     log = command_log.read_text(encoding="utf-8")
-    assert result.returncode == 1
-    assert git_state.read_text(encoding="utf-8") == previous_revision
-    assert (config / "traefik/routes.yml").read_text(encoding="utf-8") == "route: previous\n"
-    assert (state / "active-slot").read_text(encoding="utf-8") == "blue\n"
-    assert (tmp_path / "blue-running").exists()
-    assert not (tmp_path / "green-running").exists()
+    if deployment_outcome == "success":
+        assert result.returncode == 0
+        assert git_state.read_text(encoding="utf-8") == candidate_revision
+        assert (state / "active-slot").read_text(encoding="utf-8") == "green\n"
+        assert (
+            (state / "current-release").read_text(encoding="utf-8").startswith(candidate_revision)
+        )
+        assert not (tmp_path / "blue-running").exists()
+        assert (tmp_path / "green-running").exists()
+        assert (config / "traefik/routes.yml").read_text(encoding="utf-8") == ("route: candidate\n")
+        assert "slot=blue" in log
+    else:
+        assert result.returncode == 1
+        assert git_state.read_text(encoding="utf-8") == previous_revision
+        for relative_path, content in previous_files.items():
+            assert (config / relative_path).read_text(encoding="utf-8") == content
+        assert (state / "active-slot").read_text(encoding="utf-8") == "blue\n"
+        assert (state / "current-release").read_text(encoding="utf-8") == previous_release
+        assert (tmp_path / "blue-running").exists()
+        assert not (tmp_path / "green-running").exists()
+        assert "slot=blue" not in log
     assert "slot=green docker compose" in log
     assert "down --remove-orphans" in log
-    assert "slot=blue" not in log
 
 
 def test_release_uses_protected_main_oidc_and_no_ssh() -> None:

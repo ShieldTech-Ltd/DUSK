@@ -30,7 +30,72 @@ mkdir -p "$state_directory"
 
 previous_revision=$(git -C "$repository" rev-parse --verify HEAD)
 [[ $previous_revision =~ ^[0-9a-f]{40}$ ]] || { echo "invalid current repository revision" >&2; exit 78; }
+staging=$(mktemp -d "${config_directory}-stage.XXXXXX")
+target=
+candidate_checked_out=false
+deployment_committed=false
+
+backup_file() {
+  local source=$1 name=$2
+  if [[ -f $source ]]; then
+    cp -p "$source" "$staging/$name"
+    : >"$staging/$name.present"
+  fi
+}
+
+restore_file() {
+  local destination=$1 name=$2 mode=$3
+  if [[ -f $staging/$name.present ]]; then
+    install -d -m 0750 "$(dirname "$destination")"
+    install -m "$mode" "$staging/$name" "$destination"
+  else
+    rm -f "$destination"
+  fi
+}
+
+finish_deployment() {
+  local status=$1 rollback_failed=false
+  trap - EXIT
+  set +e
+  if [[ $deployment_committed != true ]]; then
+    [[ $status -ne 0 ]] || status=1
+    restore_file "$config_directory/health.env" health.env 0644 || rollback_failed=true
+    restore_file "$config_directory/console/config.json" console-config.json 0640 || rollback_failed=true
+    restore_file "$config_directory/console/nginx.conf" console-nginx.conf 0640 || rollback_failed=true
+    restore_file "$config_directory/keycloak/dusk-demo-realm.json" keycloak-realm.json 0640 || rollback_failed=true
+    restore_file "$config_directory/traefik/routes.yml" traefik-routes.yml 0644 || rollback_failed=true
+    restore_file "$state_directory/active-slot" active-slot 0640 || rollback_failed=true
+    restore_file "$state_directory/current-release" current-release 0640 || rollback_failed=true
+    rm -f "$config_directory/health.env.new" \
+      "$state_directory/active-slot.new" "$state_directory/current-release.new"
+    if [[ -n $target ]]; then
+      DUSK_SLOT=$target CONTROL_PLANE_IMAGE=$control_plane_image CONSOLE_IMAGE=$console_image \
+        docker compose --env-file "$environment_file" \
+          -f "$repository/deploy/public-demo/compose.slot.yml" down --remove-orphans || rollback_failed=true
+    fi
+    if [[ $candidate_checked_out == true ]]; then
+      git -C "$repository" checkout --quiet --detach "$previous_revision" || rollback_failed=true
+    fi
+    if [[ $rollback_failed == true ]]; then
+      echo "deployment failed and rollback was incomplete" >&2
+      status=70
+    fi
+  fi
+  rm -rf "$staging"
+  exit "$status"
+}
+
+backup_file "$config_directory/health.env" health.env
+backup_file "$config_directory/console/config.json" console-config.json
+backup_file "$config_directory/console/nginx.conf" console-nginx.conf
+backup_file "$config_directory/keycloak/dusk-demo-realm.json" keycloak-realm.json
+backup_file "$config_directory/traefik/routes.yml" traefik-routes.yml
+backup_file "$state_directory/active-slot" active-slot
+backup_file "$state_directory/current-release" current-release
+trap 'finish_deployment $?' EXIT
+
 git -C "$repository" fetch --quiet --depth=1 origin "$commit_sha"
+candidate_checked_out=true
 git -C "$repository" checkout --quiet --detach "$commit_sha"
 [[ $(git -C "$repository" rev-parse HEAD) == "$commit_sha" ]]
 
@@ -60,8 +125,6 @@ printf 'CONSOLE_URL=%s\nAPI_URL=%s\nAUTH_URL=%s\n' "$CONSOLE_URL" "$API_URL" "$A
   >"$config_directory/health.env.new"
 chmod 0644 "$config_directory/health.env.new"
 mv "$config_directory/health.env.new" "$config_directory/health.env"
-staging=$(mktemp -d "${config_directory}-stage.XXXXXX")
-trap 'rm -rf "$staging"' EXIT
 node "$repository/deploy/public-demo/scripts/render-config.mjs" "$staging"
 install -d -m 0750 "$config_directory/console" "$config_directory/keycloak" "$config_directory/traefik"
 install -m 0640 "$staging/console/config.json" "$config_directory/console/config.json"
@@ -77,31 +140,20 @@ docker compose --env-file "$environment_file" \
 docker compose --env-file "$environment_file" \
   -f "$repository/deploy/public-demo/compose.slot.yml" --profile maintenance run --rm demo-reset
 
-route_backup=$staging/previous-routes.yml
-[[ -f $config_directory/traefik/routes.yml ]] && cp "$config_directory/traefik/routes.yml" "$route_backup"
 install -m 0644 "$staging/traefik/routes.yml" "$config_directory/traefik/routes.yml"
 
-if ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$CONSOLE_URL/healthz" >/dev/null ||
-   ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$API_URL/readyz" >/dev/null ||
-   ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$AUTH_URL/realms/dusk-demo/.well-known/openid-configuration" >/dev/null; then
-  if [[ -f $route_backup ]]; then
-    install -m 0644 "$route_backup" "$config_directory/traefik/routes.yml" || true
-  else
-    rm -f "$config_directory/traefik/routes.yml"
-  fi
-  DUSK_SLOT=$target CONTROL_PLANE_IMAGE=$control_plane_image CONSOLE_IMAGE=$console_image \
-    docker compose --env-file "$environment_file" \
-      -f "$repository/deploy/public-demo/compose.slot.yml" down --remove-orphans || true
-  git -C "$repository" checkout --quiet --detach "$previous_revision" || {
-    echo "failed to restore repository revision $previous_revision" >&2
-    exit 70
-  }
-  exit 1
-fi
+curl --fail --silent --show-error --retry 12 --retry-delay 5 "$CONSOLE_URL/healthz" >/dev/null
+curl --fail --silent --show-error --retry 12 --retry-delay 5 "$API_URL/readyz" >/dev/null
+curl --fail --silent --show-error --retry 12 --retry-delay 5 "$AUTH_URL/realms/dusk-demo/.well-known/openid-configuration" >/dev/null
 
 printf '%s\n' "$target" >"$state_directory/active-slot.new"
+chmod 0640 "$state_directory/active-slot.new"
 mv "$state_directory/active-slot.new" "$state_directory/active-slot"
-printf '%s %s %s\n' "$commit_sha" "$control_plane_image" "$console_image" >"$state_directory/current-release"
+printf '%s %s %s\n' "$commit_sha" "$control_plane_image" "$console_image" \
+  >"$state_directory/current-release.new"
+chmod 0640 "$state_directory/current-release.new"
+mv "$state_directory/current-release.new" "$state_directory/current-release"
+deployment_committed=true
 
 if [[ $active == blue || $active == green ]]; then
   DUSK_SLOT=$active CONTROL_PLANE_IMAGE=$control_plane_image CONSOLE_IMAGE=$console_image \
