@@ -9,9 +9,11 @@ fi
 commit_sha=$1
 control_plane_image=$2
 console_image=$3
-repository=/opt/dusk/repository
-state_directory=/opt/dusk/state
-environment_file=/etc/dusk-demo/deployment.env
+repository=${DUSK_REPOSITORY:-/opt/dusk/repository}
+state_directory=${DUSK_STATE_DIRECTORY:-/opt/dusk/state}
+environment_file=${DUSK_ENVIRONMENT_FILE:-/etc/dusk-demo/deployment.env}
+config_directory=${DUSK_CONFIG_DIRECTORY:-/opt/dusk/config}
+lock_file=${DUSK_LOCK_FILE:-/run/lock/dusk-public-demo.lock}
 
 [[ $commit_sha =~ ^[0-9a-f]{40}$ ]] || { echo "invalid commit SHA" >&2; exit 64; }
 [[ $control_plane_image =~ ^ghcr\.io/shieldtech-ltd/dusk-control-plane@sha256:[0-9a-f]{64}$ ]] || { echo "invalid control-plane image" >&2; exit 64; }
@@ -22,10 +24,12 @@ environment_file=/etc/dusk-demo/deployment.env
   exit 78
 }
 
-exec 9>/run/lock/dusk-public-demo.lock
+exec 9>"$lock_file"
 flock -n 9 || { echo "another deployment is active" >&2; exit 75; }
 mkdir -p "$state_directory"
 
+previous_revision=$(git -C "$repository" rev-parse --verify HEAD)
+[[ $previous_revision =~ ^[0-9a-f]{40}$ ]] || { echo "invalid current repository revision" >&2; exit 78; }
 git -C "$repository" fetch --quiet --depth=1 origin "$commit_sha"
 git -C "$repository" checkout --quiet --detach "$commit_sha"
 [[ $(git -C "$repository" rev-parse HEAD) == "$commit_sha" ]]
@@ -53,16 +57,16 @@ source "$environment_file"
 set +a
 export DUSK_SLOT=$target CONTROL_PLANE_IMAGE=$control_plane_image CONSOLE_IMAGE=$console_image
 printf 'CONSOLE_URL=%s\nAPI_URL=%s\nAUTH_URL=%s\n' "$CONSOLE_URL" "$API_URL" "$AUTH_URL" \
-  >/opt/dusk/config/health.env.new
-chmod 0644 /opt/dusk/config/health.env.new
-mv /opt/dusk/config/health.env.new /opt/dusk/config/health.env
-staging=$(mktemp -d /opt/dusk/config-stage.XXXXXX)
+  >"$config_directory/health.env.new"
+chmod 0644 "$config_directory/health.env.new"
+mv "$config_directory/health.env.new" "$config_directory/health.env"
+staging=$(mktemp -d "${config_directory}-stage.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 node "$repository/deploy/public-demo/scripts/render-config.mjs" "$staging"
-install -d -m 0750 /opt/dusk/config/console /opt/dusk/config/keycloak /opt/dusk/config/traefik
-install -m 0640 "$staging/console/config.json" /opt/dusk/config/console/config.json
-install -m 0640 "$staging/console/nginx.conf" /opt/dusk/config/console/nginx.conf
-install -m 0640 "$staging/keycloak/dusk-demo-realm.json" /opt/dusk/config/keycloak/dusk-demo-realm.json
+install -d -m 0750 "$config_directory/console" "$config_directory/keycloak" "$config_directory/traefik"
+install -m 0640 "$staging/console/config.json" "$config_directory/console/config.json"
+install -m 0640 "$staging/console/nginx.conf" "$config_directory/console/nginx.conf"
+install -m 0640 "$staging/keycloak/dusk-demo-realm.json" "$config_directory/keycloak/dusk-demo-realm.json"
 
 docker compose --env-file "$environment_file" \
   -f "$repository/deploy/public-demo/compose.core.yml" up -d --wait
@@ -74,13 +78,24 @@ docker compose --env-file "$environment_file" \
   -f "$repository/deploy/public-demo/compose.slot.yml" --profile maintenance run --rm demo-reset
 
 route_backup=$staging/previous-routes.yml
-[[ -f /opt/dusk/config/traefik/routes.yml ]] && cp /opt/dusk/config/traefik/routes.yml "$route_backup"
-install -m 0644 "$staging/traefik/routes.yml" /opt/dusk/config/traefik/routes.yml
+[[ -f $config_directory/traefik/routes.yml ]] && cp "$config_directory/traefik/routes.yml" "$route_backup"
+install -m 0644 "$staging/traefik/routes.yml" "$config_directory/traefik/routes.yml"
 
 if ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$CONSOLE_URL/healthz" >/dev/null ||
    ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$API_URL/readyz" >/dev/null ||
    ! curl --fail --silent --show-error --retry 12 --retry-delay 5 "$AUTH_URL/realms/dusk-demo/.well-known/openid-configuration" >/dev/null; then
-  [[ -f $route_backup ]] && install -m 0644 "$route_backup" /opt/dusk/config/traefik/routes.yml
+  if [[ -f $route_backup ]]; then
+    install -m 0644 "$route_backup" "$config_directory/traefik/routes.yml" || true
+  else
+    rm -f "$config_directory/traefik/routes.yml"
+  fi
+  DUSK_SLOT=$target CONTROL_PLANE_IMAGE=$control_plane_image CONSOLE_IMAGE=$console_image \
+    docker compose --env-file "$environment_file" \
+      -f "$repository/deploy/public-demo/compose.slot.yml" down --remove-orphans || true
+  git -C "$repository" checkout --quiet --detach "$previous_revision" || {
+    echo "failed to restore repository revision $previous_revision" >&2
+    exit 70
+  }
   exit 1
 fi
 

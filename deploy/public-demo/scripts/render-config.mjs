@@ -70,11 +70,21 @@ const generated = deploymentConfig(
 await atomicWrite(resolve(output, "console/config.json"), generated.config);
 await atomicWrite(resolve(output, "console/nginx.conf"), generated.nginx);
 
-const realm = replaceAll(
+const realmTemplate = replaceAll(
   await readFile(resolve(root, "deploy/public-demo/keycloak/dusk-demo-realm.template.json"), "utf8"),
-  { CONSOLE_URL: consoleUrl.origin, DEMO_VIEWER_PASSWORD: password },
+  {
+    CONSOLE_URL: consoleUrl.origin,
+    DEMO_VIEWER_PASSWORD: "__DUSK_PASSWORD_PLACEHOLDER__",
+  },
 );
-JSON.parse(realm);
+const realmObject = JSON.parse(realmTemplate);
+const demoViewer = realmObject.users?.find((user) => user.username === "demo-viewer");
+const passwordCredential = demoViewer?.credentials?.find(
+  (credential) => credential.type === "password",
+);
+if (!passwordCredential) throw new Error("Missing demo-viewer password credential");
+passwordCredential.value = password;
+const realm = `${JSON.stringify(realmObject, null, 2)}\n`;
 await atomicWrite(resolve(output, "keycloak/dusk-demo-realm.json"), realm);
 
 const route = replaceAll(
