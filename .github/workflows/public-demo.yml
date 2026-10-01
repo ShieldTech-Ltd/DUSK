@@ -1,0 +1,151 @@
+name: Public demo deployment
+
+on:
+  workflow_call:
+    secrets:
+      OCI_WIF_CLIENT_ID: {required: true}
+      OCI_WIF_CLIENT_SECRET: {required: true}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-demo-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, attest, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: public-demo-production
+    permissions:
+      contents: read
+      # OIDC is exchanged for a short-lived OCI resource principal.
+      id-token: write
+      # Images and their attestations are published to GHCR.
+      packages: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Confirm immutable main source
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$GITHUB_REF" = refs/heads/main
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: control-plane
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: services/control-plane/Dockerfile
+          push: true
+          tags: ghcr.io/shieldtech-ltd/dusk-control-plane:public-demo-${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            OCI_REVISION=${{ github.sha }}
+            OCI_VERSION=public-demo
+            SOURCE_DATE_EPOCH=0
+      - id: console
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: apps/console/Dockerfile
+          push: true
+          tags: ghcr.io/shieldtech-ltd/dusk-console:public-demo-${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          provenance: mode=max
+          sbom: true
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign immutable images
+        env:
+          CONTROL_PLANE_DIGEST: ${{ steps.control-plane.outputs.digest }}
+          CONSOLE_DIGEST: ${{ steps.console.outputs.digest }}
+        run: |
+          cosign sign --yes "ghcr.io/shieldtech-ltd/dusk-control-plane@$CONTROL_PLANE_DIGEST"
+          cosign sign --yes "ghcr.io/shieldtech-ltd/dusk-console@$CONSOLE_DIGEST"
+      - name: Attest control-plane provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/shieldtech-ltd/dusk-control-plane
+          subject-digest: ${{ steps.control-plane.outputs.digest }}
+          push-to-registry: true
+      - name: Attest console provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/shieldtech-ltd/dusk-console
+          subject-digest: ${{ steps.console.outputs.digest }}
+          push-to-registry: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install OCI CLI
+        run: pip install --require-hashes -r deploy/public-demo/oci-cli.lock
+      - name: Exchange GitHub identity and deploy with OCI Run Command
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          CONTROL_PLANE_DIGEST: ${{ steps.control-plane.outputs.digest }}
+          CONSOLE_DIGEST: ${{ steps.console.outputs.digest }}
+          OCI_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+          OCI_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
+          OCI_DOMAIN_URL: ${{ vars.OCI_IDENTITY_DOMAIN_URL }}
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_COMPARTMENT_ID: ${{ vars.OCI_COMPARTMENT_ID }}
+          OCI_INSTANCE_ID: ${{ vars.OCI_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          openssl genrsa -out "$work/private.pem" 2048
+          openssl rsa -in "$work/private.pem" -pubout -out "$work/public.pem"
+          oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=oci-public-demo"
+          subject_token=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "$oidc_url" | jq -r .value)
+          curl --fail --silent --show-error \
+            --user "$OCI_CLIENT_ID:$OCI_CLIENT_SECRET" \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+            --data-urlencode 'requested_token_type=urn:oci:token-type:oci-rpst' \
+            --data-urlencode "public_key@${work}/public.pem" \
+            --data-urlencode "subject_token=$subject_token" \
+            --data-urlencode 'subject_token_type=jwt' \
+            --data-urlencode 'res_type=githubactions' \
+            --data-urlencode 'rpst_exp=60' \
+            "$OCI_DOMAIN_URL/oauth2/v1/token" | jq -er .token >"$work/rpst.token"
+          export OCI_CLI_AUTH=resource_principal
+          export OCI_RESOURCE_PRINCIPAL_VERSION=2.2
+          export OCI_RESOURCE_PRINCIPAL_REGION=$OCI_REGION
+          export OCI_RESOURCE_PRINCIPAL_PRIVATE_PEM=$work/private.pem
+          export OCI_RESOURCE_PRINCIPAL_RPST=$work/rpst.token
+          command_text="sudo /opt/dusk/repository/deploy/public-demo/scripts/deploy.sh '$COMMIT_SHA' 'ghcr.io/shieldtech-ltd/dusk-control-plane@$CONTROL_PLANE_DIGEST' 'ghcr.io/shieldtech-ltd/dusk-console@$CONSOLE_DIGEST'"
+          command_sha=$(printf '%s' "$command_text" | sha256sum | cut -d ' ' -f1)
+          jq -n --arg text "$command_text" --arg digest "$command_sha" \
+            '{source:{sourceType:"TEXT",text:$text,textSha256:$digest},output:{outputType:"TEXT"}}' >"$work/content.json"
+          jq -n --arg instance "$OCI_INSTANCE_ID" '{instanceId:$instance}' >"$work/target.json"
+          command_id=$(oci instance-agent command create \
+            --compartment-id "$OCI_COMPARTMENT_ID" \
+            --content "file://$work/content.json" \
+            --target "file://$work/target.json" \
+            --timeout-in-seconds 1800 --query data.id --raw-output)
+          for _ in $(seq 1 180); do
+            state=$(oci instance-agent command-execution get --command-id "$command_id" \
+              --instance-id "$OCI_INSTANCE_ID" --query 'data."lifecycle-state"' --raw-output)
+            case "$state" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|CANCELED|TIMED_OUT) oci instance-agent command-execution get --command-id "$command_id" --instance-id "$OCI_INSTANCE_ID"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "OCI Run Command did not finish before the workflow timeout" >&2
+          exit 1

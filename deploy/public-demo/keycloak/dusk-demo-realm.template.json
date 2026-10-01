@@ -1,0 +1,45 @@
+{
+  "realm": "dusk-demo",
+  "enabled": true,
+  "displayName": "DUSK public demo",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "clients": [{
+    "clientId": "dusk-console",
+    "name": "DUSK public demo console",
+    "enabled": true,
+    "publicClient": true,
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": false,
+    "redirectUris": ["@@CONSOLE_URL@@/auth/callback"],
+    "webOrigins": ["@@CONSOLE_URL@@"],
+    "attributes": {
+      "pkce.code.challenge.method": "S256",
+      "post.logout.redirect.uris": "@@CONSOLE_URL@@/*"
+    },
+    "protocolMappers": [
+      {"name":"dusk tenant","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_tenant_id","claim.name":"dusk_tenant_id","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true"}},
+      {"name":"dusk identity kind","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_identity_kind","claim.name":"dusk_identity_kind","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true"}},
+      {"name":"dusk roles","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","consentRequired":false,"config":{"user.attribute":"dusk_roles","claim.name":"dusk_roles","jsonType.label":"String","multivalued":"true","id.token.claim":"true","access.token.claim":"true"}},
+      {"name":"control plane audience","protocol":"openid-connect","protocolMapper":"oidc-audience-mapper","consentRequired":false,"config":{"included.custom.audience":"dusk-control-plane","id.token.claim":"false","access.token.claim":"true"}}
+    ]
+  }],
+  "users": [{
+    "username": "demo-viewer",
+    "enabled": true,
+    "firstName": "Public",
+    "lastName": "Demo",
+    "email": "demo@dusk.invalid",
+    "emailVerified": true,
+    "attributes": {
+      "dusk_tenant_id": ["11111111-1111-4111-8111-111111111111"],
+      "dusk_identity_kind": ["human"],
+      "dusk_roles": ["analyst", "operator", "auditor"]
+    },
+    "credentials": [{"type":"password","value":"@@DEMO_VIEWER_PASSWORD@@","temporary":false}]
+  }]
+}

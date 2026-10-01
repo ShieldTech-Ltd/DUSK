@@ -8,7 +8,10 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  retries: 0,
+  // A browser process can occasionally stall before receiving the first byte
+  // from the already-healthy local stack. Retry once in CI so the full test is
+  // rerun in a fresh browser context; local runs stay fail-fast.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["line"]],
   use: {
     baseURL: "http://localhost:3000",

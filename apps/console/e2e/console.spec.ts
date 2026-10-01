@@ -8,7 +8,8 @@ const credentials = {
 } as const;
 
 async function login(page: Page, username: keyof typeof credentials) {
-  await page.goto("/login");
+  const response = await page.goto("/login", { waitUntil: "domcontentloaded" });
+  expect(response?.ok()).toBe(true);
   await expect(
     page.getByText("Security Operations", { exact: true }),
   ).toHaveCount(1);
