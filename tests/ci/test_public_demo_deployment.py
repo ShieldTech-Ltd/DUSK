@@ -209,7 +209,9 @@ def test_release_uses_protected_main_oidc_and_no_ssh() -> None:
     assert "root:root:600" in deploy
     assert "cosign verify-attestation" in deploy
     terraform = (DEMO / "terraform/main.tf").read_text(encoding="utf-8")
+    terraform_versions = (DEMO / "terraform/versions.tf").read_text(encoding="utf-8")
     cloud_init = (DEMO / "cloud-init.yaml").read_text(encoding="utf-8")
+    assert 'backend "oci" {}' in terraform_versions
     assert "Compute Instance Run Command" in terraform
     assert "for_each = toset([80, 443])" in terraform
     assert 'var.ssh_authorized_keys == ""' in terraform

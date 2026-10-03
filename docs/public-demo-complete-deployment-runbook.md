@@ -191,7 +191,32 @@ Do not set `TF_VAR_ssh_authorized_keys`. The Terraform module deliberately rejec
 
 ### 2.2 Configure Terraform state before applying
 
-The current Terraform directory does not define a remote backend. A local state file is acceptable only for an initial controlled bootstrap if it is encrypted, backed up securely, and never committed. The better production choice is an encrypted remote OCI Object Storage backend with state locking appropriate to the selected workflow.
+The Terraform module requires the native OCI Object Storage backend. This provides state locking, and bucket versioning provides recovery from accidental overwrites or deletion. Backend account values are supplied during `terraform init`; credentials and account identifiers are not committed to the repository.
+
+Create a private, versioned state bucket before initializing Terraform:
+
+```bash
+export OCI_NAMESPACE="$(oci os ns get --query data --raw-output)"
+
+oci os bucket create \
+  --namespace-name "$OCI_NAMESPACE" \
+  --compartment-id "$TF_VAR_compartment_id" \
+  --name dusk-public-demo-terraform-state \
+  --public-access-type NoPublicAccess \
+  --storage-tier Standard \
+  --versioning Enabled
+```
+
+Initialize the partial backend using only non-secret settings. The OCI backend reads API-key authentication from the local `DEFAULT` profile:
+
+```bash
+terraform init \
+  -backend-config="bucket=dusk-public-demo-terraform-state" \
+  -backend-config="namespace=$OCI_NAMESPACE" \
+  -backend-config="region=$TF_VAR_region" \
+  -backend-config="key=public-demo/terraform.tfstate" \
+  -backend-config="config_file_profile=DEFAULT"
+```
 
 Terraform state contains infrastructure identifiers and can contain sensitive material. Confirm `.tfstate` files are ignored before proceeding:
 
@@ -205,7 +230,6 @@ If the command produces no matching ignore rule, stop and add a repository ignor
 
 ```bash
 cd deploy/public-demo/terraform
-terraform init
 terraform fmt -check
 terraform validate
 terraform plan -out=tfplan
