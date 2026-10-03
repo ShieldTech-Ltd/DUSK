@@ -52,14 +52,22 @@ export default function SettingsPage() {
           <span className="mono wrap">
             {config?.apiBaseUrl ?? "Unavailable"}
           </span>
-          <small>Authenticated read API</small>
+          <small>
+            {config?.accessMode === "anonymous-demo"
+              ? "Anonymous synthetic read API"
+              : "Authenticated read API"}
+          </small>
         </div>
         <div>
           <strong>Identity provider</strong>
           <span className="mono wrap">
             {config?.oidcAuthority ?? "Unavailable"}
           </span>
-          <small>Authorization Code with PKCE</small>
+          <small>
+            {config?.accessMode === "anonymous-demo"
+              ? "Not used by public demo visitors"
+              : "Authorization Code with PKCE"}
+          </small>
         </div>
       </div>
       <div className="settings-grid">
@@ -104,6 +112,8 @@ export default function SettingsPage() {
             </dd>
             <dt>OIDC client</dt>
             <dd className="mono">{config?.oidcClientId ?? "Unavailable"}</dd>
+            <dt>Access mode</dt>
+            <dd>{config?.accessMode ?? "Unavailable"}</dd>
             <dt>Console version</dt>
             <dd className="mono">v{__APP_VERSION__}</dd>
           </dl>
@@ -125,6 +135,7 @@ export default function SettingsPage() {
                       oidcAuthority: config?.oidcAuthority,
                       oidcClientId: config?.oidcClientId,
                       environmentLabel: config?.environmentLabel,
+                      accessMode: config?.accessMode,
                     },
                     null,
                     2,
@@ -152,7 +163,11 @@ export default function SettingsPage() {
             <dt>Validated roles</dt>
             <dd>{auth.roles.join(", ") || "None"}</dd>
             <dt>Access token storage</dt>
-            <dd>In memory only</dd>
+            <dd>
+              {auth.accessMode === "anonymous-demo"
+                ? "No visitor access token"
+                : "In memory only"}
+            </dd>
             <dt>Token expires at</dt>
             <dd>
               {auth.user?.expires_at
@@ -162,21 +177,27 @@ export default function SettingsPage() {
                 : "Unavailable"}
             </dd>
             <dt>Session renewal</dt>
-            <dd>Sign in again after expiration</dd>
+            <dd>
+              {auth.accessMode === "anonymous-demo"
+                ? "Not applicable to public demo"
+                : "Sign in again after expiration"}
+            </dd>
           </dl>
-          <button
-            onClick={() => {
-              void auth
-                .signOut()
-                .catch(() =>
-                  setFeedback(
-                    "Sign-out could not reach the identity provider. Try again.",
-                  ),
-                );
-            }}
-          >
-            Sign out
-          </button>
+          {auth.accessMode === "oidc" && (
+            <button
+              onClick={() => {
+                void auth
+                  .signOut()
+                  .catch(() =>
+                    setFeedback(
+                      "Sign-out could not reach the identity provider. Try again.",
+                    ),
+                  );
+              }}
+            >
+              Sign out
+            </button>
+          )}
         </Panel>
         <Panel
           title="Your access"

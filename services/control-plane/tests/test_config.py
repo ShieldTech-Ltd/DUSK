@@ -315,3 +315,25 @@ def test_public_demo_requires_production_read_only_configuration() -> None:
         _public_demo_settings(operations_read_api_enabled=False)
     with pytest.raises(ValidationError, match="forbids external delivery"):
         _public_demo_settings(outbox_worker_enabled=True)
+
+
+def test_anonymous_public_demo_requires_explicit_mode_and_fixed_tenant() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="public_demo_anonymous_access_enabled requires public_demo_mode",
+    ):
+        Settings(public_demo_anonymous_access_enabled=True)
+    with pytest.raises(ValidationError, match="requires the synthetic demo tenant"):
+        _public_demo_settings(public_demo_anonymous_access_enabled=True)
+    with pytest.raises(ValidationError, match="requires the synthetic demo tenant"):
+        _public_demo_settings(
+            public_demo_anonymous_access_enabled=True,
+            public_demo_tenant_id="22222222-2222-4222-8222-222222222222",
+        )
+
+    configured = _public_demo_settings(
+        public_demo_anonymous_access_enabled=True,
+        public_demo_tenant_id="11111111-1111-4111-8111-111111111111",
+    )
+    assert configured.public_demo_anonymous_access_enabled is True
+    assert configured.public_demo_tenant_id == "11111111-1111-4111-8111-111111111111"

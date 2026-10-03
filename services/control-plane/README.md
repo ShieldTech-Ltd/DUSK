@@ -59,6 +59,9 @@ settings fail startup.
 | `DUSK_CP_API_DOCS_ENABLED` | `false` | Forbidden in staging and production |
 | `DUSK_CP_V2_ENABLED` | `false` | Registers authenticated v2 routing; evaluation requires an activated service |
 | `DUSK_CP_CORS_ALLOWED_ORIGINS` | `[]` | Exact HTTPS origins; loopback HTTP only in local/test |
+| `DUSK_CP_PUBLIC_DEMO_MODE` | `false` | Production-only read-only deployment boundary; requires all read APIs and forbids evaluation and external delivery |
+| `DUSK_CP_PUBLIC_DEMO_ANONYMOUS_ACCESS_ENABLED` | `false` | Requires public-demo mode and maps missing credentials to the fixed synthetic viewer only |
+| `DUSK_CP_PUBLIC_DEMO_TENANT_ID` | unset | Must equal the canonical synthetic tenant when anonymous public-demo access is enabled |
 | `DUSK_CP_READINESS_TIMEOUT_MS` | `1000` | `50..5000` per probe |
 | `DUSK_CP_MAX_REQUEST_BODY_BYTES` | `1048576` | `1024..10485760` |
 

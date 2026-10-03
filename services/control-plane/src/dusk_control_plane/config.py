@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from dusk_control_plane import __version__
 
+PUBLIC_DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111"
+
 
 class Environment(StrEnum):
     """Supported deployment classes."""
@@ -43,6 +45,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: tuple[str, ...] = ()
     local_stack_enabled: bool = False
     public_demo_mode: bool = False
+    public_demo_anonymous_access_enabled: bool = False
+    public_demo_tenant_id: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
     local_tenant_id: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
     local_evidence_signing_key: SecretStr | None = Field(
         default=None, min_length=32, max_length=512
@@ -181,6 +185,8 @@ class Settings(BaseSettings):
             raise ValueError(f"local_stack_enabled requires {', '.join(missing)}")
 
     def _validate_public_demo(self) -> None:
+        if self.public_demo_anonymous_access_enabled and not self.public_demo_mode:
+            raise ValueError("public_demo_anonymous_access_enabled requires public_demo_mode")
         if not self.public_demo_mode:
             return
         if self.environment is not Environment.PRODUCTION:
@@ -200,6 +206,11 @@ class Settings(BaseSettings):
             raise ValueError("public_demo_mode requires evaluation_api_enabled=false")
         if self.outbox_worker_enabled or self.enforcement_broker_enabled:
             raise ValueError("public_demo_mode forbids external delivery")
+        if (
+            self.public_demo_anonymous_access_enabled
+            and self.public_demo_tenant_id != PUBLIC_DEMO_TENANT_ID
+        ):
+            raise ValueError("anonymous public demo access requires the synthetic demo tenant")
 
     def _validate_cors(self) -> None:
         for origin in self.cors_allowed_origins:

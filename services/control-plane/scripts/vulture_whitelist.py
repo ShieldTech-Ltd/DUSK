@@ -207,3 +207,8 @@ invalid_audit_cursor
 audit_events_unavailable
 sign_local_evidence
 payload_digest
+
+# FastAPI test handlers registered and invoked through APIRouter decorators.
+# Vulture cannot follow the framework registration from nested test functions.
+public_demo
+mutate_public_demo

@@ -88,6 +88,50 @@ def client() -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def anonymous_demo_client() -> TestClient:
+    settings = Settings(
+        environment=Environment.PRODUCTION,
+        public_demo_mode=True,
+        public_demo_anonymous_access_enabled=True,
+        public_demo_tenant_id="11111111-1111-4111-8111-111111111111",
+        v2_enabled=True,
+        evaluation_api_enabled=False,
+        oidc_issuer="https://auth.demo.example.test/realms/dusk-demo",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri=(
+            "https://auth.demo.example.test/realms/dusk-demo/protocol/openid-connect/certs"
+        ),
+        storage_enabled=True,
+        database_url="postgresql+asyncpg://dusk:secret@postgresql/dusk_public_demo",
+        decision_read_api_enabled=True,
+        dashboard_read_api_enabled=True,
+        operations_read_api_enabled=True,
+        decision_cursor_signing_key="public-demo-cursor-key-that-is-long-enough",
+    )
+    app = create_app(container=AppContainer(settings=settings))
+    router = APIRouter()
+
+    @router.get("/__test/public-demo")
+    async def public_demo(
+        identity: Annotated[
+            Principal,
+            Depends(require_identity(IdentityKind.HUMAN, Capability.DASHBOARD_READ)),
+        ],
+    ) -> dict[str, object]:
+        return {
+            "subject": identity.subject,
+            "tenant_id": identity.tenant_id,
+            "roles": sorted(identity.roles),
+        }
+
+    @router.post("/__test/public-demo")
+    async def mutate_public_demo() -> dict[str, bool]:
+        return {"mutated": True}
+
+    app.include_router(router, include_in_schema=False)
+    return TestClient(app, raise_server_exceptions=False)
+
+
 def test_workload_route_uses_claim_tenant_and_ignores_request_tenant() -> None:
     with client() as test_client:
         response = test_client.post(
@@ -124,6 +168,36 @@ def test_capability_denial_and_missing_authentication_are_standardized() -> None
     assert missing.json()["error"]["code"] == "AUTHENTICATION_REQUIRED"
     assert missing.headers["WWW-Authenticate"] == "Bearer"
     assert allowed.status_code == 200
+
+
+def test_anonymous_public_demo_is_fixed_viewer_and_rejects_credentials() -> None:
+    with anonymous_demo_client() as test_client:
+        anonymous = test_client.get(
+            "/__test/public-demo?tenant_id=attacker",
+            headers={"X-Tenant-ID": "attacker"},
+        )
+        credential = test_client.get(
+            "/__test/public-demo",
+            headers={"Authorization": "Bearer attempted-elevation"},
+        )
+
+    assert anonymous.status_code == 200
+    assert anonymous.json() == {
+        "subject": "anonymous-demo-viewer",
+        "tenant_id": "11111111-1111-4111-8111-111111111111",
+        "roles": ["viewer"],
+    }
+    assert credential.status_code == 401
+
+
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_anonymous_public_demo_rejects_all_unsafe_methods(method: str) -> None:
+    with anonymous_demo_client() as test_client:
+        response = getattr(test_client, method)("/__test/public-demo")
+
+    assert response.status_code == 405
+    assert response.headers["Allow"] == "GET, HEAD, OPTIONS"
+    assert response.json()["error"]["code"] == "PUBLIC_DEMO_READ_ONLY"
 
 
 def test_every_planned_and_operational_route_has_an_explicit_policy() -> None:

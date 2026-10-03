@@ -7,7 +7,16 @@ import {
   useState,
 } from "react";
 import { User, UserManager, WebStorageStateStore } from "oidc-client-ts";
-import { loadConfig } from "./config";
+import { loadConfig, type PublicConfig } from "./config";
+
+const PUBLIC_DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+
+interface SessionUser {
+  profile: Record<string, unknown>;
+  expired?: boolean;
+  access_token?: string;
+  expires_at?: number;
+}
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -32,46 +41,65 @@ class MemoryStorage implements Storage {
 }
 
 let managerPromise: Promise<UserManager> | undefined;
-const manager = () => {
-  managerPromise ??= loadConfig().then(
-    (config) =>
-      new UserManager({
-        authority: config.oidcAuthority,
-        client_id: config.oidcClientId,
-        redirect_uri: `${window.location.origin}/auth/callback`,
-        post_logout_redirect_uri: `${window.location.origin}/login`,
-        response_type: "code",
-        scope: "openid profile",
-        monitorSession: false,
-        automaticSilentRenew: false,
-        stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
-        userStore: new WebStorageStateStore({ store: new MemoryStorage() }),
-      }),
-  );
+const manager = (knownConfig?: PublicConfig) => {
+  managerPromise ??= (
+    knownConfig ? Promise.resolve(knownConfig) : loadConfig()
+  ).then((config) => {
+    if (config.accessMode !== "oidc")
+      throw new Error("OIDC is disabled for this deployment");
+    return new UserManager({
+      authority: config.oidcAuthority,
+      client_id: config.oidcClientId,
+      redirect_uri: `${window.location.origin}/auth/callback`,
+      post_logout_redirect_uri: `${window.location.origin}/login`,
+      response_type: "code",
+      scope: "openid profile",
+      monitorSession: false,
+      automaticSilentRenew: false,
+      stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
+      userStore: new WebStorageStateStore({ store: new MemoryStorage() }),
+    });
+  });
   return managerPromise;
 };
 
 export interface Session {
-  user: User | null;
+  user: SessionUser | null;
   loading: boolean;
   roles: string[];
   tenant: string | null;
   token: string | null;
+  accessMode: "oidc" | "anonymous-demo" | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  completeSignIn: () => Promise<User>;
+  completeSignIn: () => Promise<SessionUser>;
 }
 
 const AuthContext = createContext<Session | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [accessMode, setAccessMode] = useState<Session["accessMode"]>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let disposed = false;
     let cleanup = () => undefined;
-    void manager()
-      .then(async (value) => {
+    void loadConfig()
+      .then(async (config) => {
+        if (disposed) return;
+        setAccessMode(config.accessMode);
+        if (config.accessMode === "anonymous-demo") {
+          setUser({
+            profile: {
+              preferred_username: "Public demo viewer",
+              dusk_tenant_id: PUBLIC_DEMO_TENANT_ID,
+              dusk_roles: ["viewer"],
+            },
+          });
+          setLoading(false);
+          return;
+        }
+        const value = await manager(config);
         const current = await value.getUser();
         if (disposed) return;
         setUser(current?.expired ? null : current);
@@ -130,11 +158,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ? user.profile.dusk_tenant_id
           : null,
       token: user?.expired ? null : (user?.access_token ?? null),
+      accessMode,
       signIn,
       signOut,
       completeSignIn,
     }),
-    [user, loading, roles, signIn, signOut, completeSignIn],
+    [user, loading, roles, accessMode, signIn, signOut, completeSignIn],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

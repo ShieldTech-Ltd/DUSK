@@ -25,6 +25,8 @@ def test_public_ingress_exposes_only_http_and_https() -> None:
 def test_public_api_is_read_only_and_fail_closed() -> None:
     slot = (DEMO / "compose.slot.yml").read_text(encoding="utf-8")
     assert 'DUSK_CP_PUBLIC_DEMO_MODE: "true"' in slot
+    assert 'DUSK_CP_PUBLIC_DEMO_ANONYMOUS_ACCESS_ENABLED: "true"' in slot
+    assert "DUSK_CP_PUBLIC_DEMO_TENANT_ID: 11111111-1111-4111-8111-111111111111" in slot
     assert 'DUSK_CP_EVALUATION_API_ENABLED: "false"' in slot
     assert 'DUSK_CP_OUTBOX_WORKER_ENABLED: "false"' in slot
     assert 'DUSK_CP_ENFORCEMENT_BROKER_ENABLED: "false"' in slot
@@ -34,20 +36,12 @@ def test_public_api_is_read_only_and_fail_closed() -> None:
     assert "Method(`GET`) || Method(`OPTIONS`)" in route
 
 
-@pytest.mark.parametrize(
-    "password",
-    [
-        'test-password-with-a-quote-"-inside',
-        "test-password-with-a-backslash-\\-inside",
-    ],
-)
-def test_renderer_generates_valid_runtime_files(tmp_path: Path, password: str) -> None:
+def test_renderer_generates_valid_runtime_files(tmp_path: Path) -> None:
     environment = os.environ | {
         "DUSK_SLOT": "blue",
         "CONSOLE_URL": "https://demo.example.com",
         "API_URL": "https://api.demo.example.com",
         "AUTH_URL": "https://auth.demo.example.com",
-        "DEMO_VIEWER_PASSWORD": password,
     }
     subprocess.run(
         ["node", str(DEMO / "scripts/render-config.mjs"), str(tmp_path)],
@@ -61,9 +55,9 @@ def test_renderer_generates_valid_runtime_files(tmp_path: Path, password: str) -
     realm = json.loads(realm_text)
     routes = (tmp_path / "traefik/routes.yml").read_text(encoding="utf-8")
     assert config["apiBaseUrl"] == "https://api.demo.example.com"
+    assert config["accessMode"] == "anonymous-demo"
     assert "upgrade-insecure-requests" in nginx
-    credential = realm["users"][0]["credentials"][0]
-    assert credential["value"] == password
+    assert realm["users"] == []
     assert "@@" not in realm_text + routes
     assert "console-blue:8080" in routes
 
@@ -103,8 +97,7 @@ def test_deployment_is_atomic(tmp_path: Path, deployment_outcome: str) -> None:
     environment_file.write_text(
         "CONSOLE_URL=https://demo.example.com\n"
         "API_URL=https://api.demo.example.com\n"
-        "AUTH_URL=https://auth.demo.example.com\n"
-        "DEMO_VIEWER_PASSWORD=test-password-with-24-characters\n",
+        "AUTH_URL=https://auth.demo.example.com\n",
         encoding="utf-8",
     )
 

@@ -315,19 +315,27 @@ function ShellInner() {
               <strong>{username}</strong>
               <small>Tenant {auth.tenant?.slice(-8) ?? "unavailable"}</small>
             </div>
-            <button
-              aria-label="Sign out"
-              onClick={() => void auth.signOut()}
-              style={{
-                background: "transparent",
-                border: 0,
-                color: "var(--faint)",
-              }}
-            >
-              <LogOut />
-            </button>
+            {auth.accessMode === "oidc" && (
+              <button
+                aria-label="Sign out"
+                onClick={() => void auth.signOut()}
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  color: "var(--faint)",
+                }}
+              >
+                <LogOut />
+              </button>
+            )}
           </div>
         </header>
+        {auth.accessMode === "anonymous-demo" && (
+          <div className="demo-banner" role="status">
+            Public demonstration with synthetic, read-only data. No customer
+            information is present.
+          </div>
+        )}
         <main id="content" tabIndex={-1}>
           {routeCapability ? (
             <Outlet />

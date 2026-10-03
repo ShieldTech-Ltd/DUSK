@@ -71,6 +71,7 @@ from dusk_control_plane.request_context import (
 
 REQUEST_ID_HEADER = "X-Request-ID"
 logger = logging.getLogger(__name__)
+SAFE_PUBLIC_DEMO_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _evaluation_authorization = require_route_policy("POST", "/v2/evaluations")
 _decision_list_authorization = require_route_policy("GET", "/v2/decisions")
 _decision_detail_authorization = require_route_policy("GET", "/v2/decisions/{trace_id}")
@@ -84,6 +85,27 @@ _policy_summary_authorization = require_route_policy("GET", "/v2/policies/summar
 _integration_health_authorization = require_route_policy("GET", "/v2/integrations/health")
 _service_status_authorization = require_route_policy("GET", "/v2/service/status")
 _audit_events_authorization = require_route_policy("GET", "/v2/audit-events")
+
+
+def _install_public_demo_method_guard(app: FastAPI, container: AppContainer) -> None:
+    if not container.settings.public_demo_anonymous_access_enabled:
+        return
+
+    @app.middleware("http")
+    async def reject_public_demo_mutations(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if request.method not in SAFE_PUBLIC_DEMO_METHODS:
+            response = error_response(
+                status_code=405,
+                code="PUBLIC_DEMO_READ_ONLY",
+                message="The public demo permits read-only requests",
+                retryable=False,
+            )
+            response.headers["Allow"] = "GET, HEAD, OPTIONS"
+            return response
+        return await call_next(request)
 
 
 async def _bounded_evaluate(
@@ -451,6 +473,8 @@ def create_app(  # noqa: C901
             expose_headers=["X-Request-ID"],
             max_age=600,
         )
+
+    _install_public_demo_method_guard(app, resolved)
 
     @app.middleware("http")
     async def request_context(

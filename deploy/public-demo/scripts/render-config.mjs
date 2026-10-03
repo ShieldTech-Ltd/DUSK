@@ -53,10 +53,6 @@ if (!new Set(["blue", "green"]).has(slot)) throw new Error("DUSK_SLOT must be bl
 const consoleUrl = endpoint("CONSOLE_URL");
 const apiUrl = endpoint("API_URL");
 const authUrl = endpoint("AUTH_URL");
-const password = required("DEMO_VIEWER_PASSWORD");
-if (password.length < 20 || password.length > 256)
-  throw new Error("DEMO_VIEWER_PASSWORD must contain 20 to 256 characters");
-
 const generated = deploymentConfig(
   {
     consoleUrl: consoleUrl.origin,
@@ -64,6 +60,7 @@ const generated = deploymentConfig(
     oidcAuthority: `${authUrl.origin}/realms/dusk-demo`,
     oidcClientId: "dusk-console",
     environmentLabel: "Public Demo",
+    accessMode: "anonymous-demo",
   },
   await readFile(resolve(root, "apps/console/nginx.conf"), "utf8"),
 );
@@ -74,17 +71,9 @@ const realmTemplate = replaceAll(
   await readFile(resolve(root, "deploy/public-demo/keycloak/dusk-demo-realm.template.json"), "utf8"),
   {
     CONSOLE_URL: consoleUrl.origin,
-    DEMO_VIEWER_PASSWORD: "__DUSK_PASSWORD_PLACEHOLDER__",
   },
 );
-const realmObject = JSON.parse(realmTemplate);
-const demoViewer = realmObject.users?.find((user) => user.username === "demo-viewer");
-const passwordCredential = demoViewer?.credentials?.find(
-  (credential) => credential.type === "password",
-);
-if (!passwordCredential) throw new Error("Missing demo-viewer password credential");
-passwordCredential.value = password;
-const realm = `${JSON.stringify(realmObject, null, 2)}\n`;
+const realm = `${JSON.stringify(JSON.parse(realmTemplate), null, 2)}\n`;
 await atomicWrite(resolve(output, "keycloak/dusk-demo-realm.json"), realm);
 
 const route = replaceAll(

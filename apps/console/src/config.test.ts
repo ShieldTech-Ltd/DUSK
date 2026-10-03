@@ -6,6 +6,7 @@ const config = {
   oidcAuthority: "https://identity.example.com/realms/company",
   oidcClientId: "dusk-console",
   environmentLabel: "Company sandbox",
+  accessMode: "oidc" as const,
 };
 
 describe("deployment configuration", () => {
@@ -40,6 +41,7 @@ describe("deployment configuration", () => {
     { ...config, oidcClientId: "" },
     { ...config, environmentLabel: "\n" },
     { ...config, environmentLabel: "x".repeat(129) },
+    { ...config, accessMode: "disabled" },
     { ...config, clientSecret: "must-never-be-public" },
   ])("rejects malformed configuration", (value) => {
     expect(() =>

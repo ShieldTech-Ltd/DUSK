@@ -10,6 +10,7 @@ const config = {
   oidcAuthority: "https://identity.example.com/realms/company",
   oidcClientId: "dusk-console",
   environmentLabel: "Company sandbox",
+  accessMode: "oidc",
 };
 
 test("generates a matching exact-origin CSP without localhost or wildcards", () => {
@@ -46,6 +47,7 @@ test("rejects malformed or unsafe deployment settings before producing files", (
     { oidcClientSecret: "must-not-be-public" },
     { oidcClientId: "" },
     { environmentLabel: "x".repeat(129) },
+    { accessMode: "disabled" },
   ])
     assert.throws(() => deploymentConfig({ ...config, ...extra }, nginx));
 });
