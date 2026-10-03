@@ -11,6 +11,7 @@ export function deploymentConfig(input, nginx) {
     "oidcAuthority",
     "oidcClientId",
     "environmentLabel",
+    "accessMode",
   ];
   if (
     !input ||
@@ -27,6 +28,7 @@ export function deploymentConfig(input, nginx) {
             oidcAuthority: 2048,
             oidcClientId: 256,
             environmentLabel: 128,
+            accessMode: 32,
           }[key] ||
         [...input[key]].some(
           (character) =>
@@ -36,9 +38,11 @@ export function deploymentConfig(input, nginx) {
     Object.keys(input).some((key) => !names.includes(key))
   ) {
     throw new Error(
-      "Supply only consoleUrl, apiBaseUrl, oidcAuthority, oidcClientId and environmentLabel",
+      "Supply only consoleUrl, apiBaseUrl, oidcAuthority, oidcClientId, environmentLabel and accessMode",
     );
   }
+  if (!new Set(["oidc", "anonymous-demo"]).has(input.accessMode))
+    throw new Error("accessMode must be oidc or anonymous-demo");
   const consoleUrl = new URL(input.consoleUrl);
   const local = loopback(consoleUrl.hostname);
   const urls = [

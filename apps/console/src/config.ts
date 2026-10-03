@@ -3,6 +3,7 @@ export interface PublicConfig {
   oidcAuthority: string;
   oidcClientId: string;
   environmentLabel: string;
+  accessMode: "oidc" | "anonymous-demo";
 }
 
 let configPromise: Promise<PublicConfig> | undefined;
@@ -12,6 +13,7 @@ const fields = [
   "oidcAuthority",
   "oidcClientId",
   "environmentLabel",
+  "accessMode",
 ] as const;
 
 const maximumLength: Record<(typeof fields)[number], number> = {
@@ -19,6 +21,7 @@ const maximumLength: Record<(typeof fields)[number], number> = {
   oidcAuthority: 2048,
   oidcClientId: 256,
   environmentLabel: 128,
+  accessMode: 32,
 };
 
 export function validateConfig(
@@ -45,6 +48,8 @@ export function validateConfig(
     )
       throw new Error("Console configuration is invalid");
   }
+  if (!new Set(["oidc", "anonymous-demo"]).has(config.accessMode as string))
+    throw new Error("Console access mode is invalid");
   for (const field of ["apiBaseUrl", "oidcAuthority"] as const) {
     const url = new URL(config[field] as string);
     if (

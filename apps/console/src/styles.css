@@ -2282,3 +2282,12 @@ pre {
     animation: none;
   }
 }
+
+.demo-banner {
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+}

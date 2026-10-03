@@ -9,7 +9,8 @@ The deployment is intentionally a public, synthetic, read-only showcase. It is n
 - OCI permits inbound TCP 80 and 443 only. SSH is not exposed.
 - GitHub Actions obtains an OIDC token, exchanges it for a short-lived OCI resource principal session token, and invokes OCI Run Command.
 - The VM verifies each image's keyless Cosign signature before starting it.
-- The API omits its evaluation endpoint, and Traefik also allows only GET and OPTIONS requests to the API host.
+- Anonymous access is mapped server-side to the fixed synthetic tenant with the viewer role. Supplied bearer credentials are rejected so visitors cannot elevate the public-demo principal.
+- The API omits its evaluation endpoint, rejects unsafe methods in the application, and Traefik also allows only GET and OPTIONS requests to the API host.
 - PostgreSQL is attached only to an internal Docker network.
 - The database reset command accepts only the fixed synthetic tenant, database, host, and public-demo mode.
 - Runtime containers use read-only filesystems, dropped capabilities, bounded logs, health checks, and resource limits where their upstream image permits them.
@@ -61,7 +62,7 @@ The `dusk-demo-reset.timer` recreates the synthetic corpus nightly. The `dusk-de
 Before the first public announcement:
 
 1. Confirm HTTPS certificates and HSTS on all three hosts.
-2. Sign in as `demo-viewer` and verify that real API data is displayed.
+2. Open the console without credentials and verify that only synthetic summary data is displayed.
 3. Confirm POST, PUT, PATCH, and DELETE requests to the API host are rejected by Traefik.
 4. Run the nightly reset and confirm only the dedicated demo database changes.
 5. Exercise a failed deployment and confirm the previous slot remains reachable.

@@ -450,7 +450,21 @@ async def authenticated_principal(
     request: Request,
     credential: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Principal:
-    authenticator: Authenticator | None = request.app.state.container.authenticator
+    container = request.app.state.container
+    settings: Settings = container.settings
+    if settings.public_demo_anonymous_access_enabled:
+        if credential is not None:
+            raise AuthenticationRejectedError("credential_not_allowed")
+        if settings.public_demo_tenant_id is None:  # protected by settings validation
+            raise IdentityProviderUnavailableError
+        return Principal(
+            issuer="urn:dusk:public-demo",
+            subject="anonymous-demo-viewer",
+            tenant_id=settings.public_demo_tenant_id,
+            kind=IdentityKind.HUMAN,
+            roles=frozenset({Role.VIEWER}),
+        )
+    authenticator: Authenticator | None = container.authenticator
     if credential is None or credential.scheme.lower() != "bearer":
         raise AuthenticationRejectedError("missing_credential")
     if authenticator is None:
