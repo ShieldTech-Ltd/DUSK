@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_IMAGE=node:24.8.0-alpine3.22@sha256:3e843c608bb5232f39ecb2b25e41214b958b0795914707374c8acc28487dea17
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:7d289d4f8935051d213bc3ecee3b4fc2d52f97ea5a954273e031054b633e7934
+ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:736aa11ab9f9c320825722e411661c64559881e15e77f37137eef168ebe9515c
 
 # hadolint ignore=DL3006
 FROM ${NODE_IMAGE} AS build
