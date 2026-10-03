@@ -17,7 +17,8 @@ FROM ${NGINX_IMAGE} AS runtime
 USER root
 COPY apps/console/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build --chown=101:101 /build/dist /usr/share/nginx/html
-RUN chmod -R a-w /usr/share/nginx/html /etc/nginx/conf.d/default.conf
+RUN apk add --no-cache --upgrade 'pcre2=10.49-r0' \
+    && chmod -R a-w /usr/share/nginx/html /etc/nginx/conf.d/default.conf
 USER 101:101
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
