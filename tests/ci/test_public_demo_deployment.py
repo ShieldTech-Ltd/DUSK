@@ -213,7 +213,12 @@ def test_release_uses_protected_main_oidc_and_no_ssh() -> None:
     cloud_init = (DEMO / "cloud-init.yaml").read_text(encoding="utf-8")
     assert 'backend "oci" {}' in terraform_versions
     assert "Compute Instance Run Command" in terraform
+    assert 'resource "oci_identity_dynamic_group" "demo_run_command"' in terraform
+    assert "instance-agent-command-execution-family" in terraform
+    assert "instance.id = '${oci_core_instance.demo.id}'" in terraform
     assert "for_each = toset([80, 443])" in terraform
     assert 'var.ssh_authorized_keys == ""' in terraform
     assert "docker-ce-3:29.8.1-1.el9" in cloud_init
+    assert "ocarun ALL=(ALL) NOPASSWD:ALL" in cloud_init
+    assert "/etc/sudoers.d/101-oracle-cloud-agent-run-command" in cloud_init
     assert "17c9fc9d0cb7f54492dc297ea75f8ea992576071e933a859120a2647abbfa347" in cloud_init

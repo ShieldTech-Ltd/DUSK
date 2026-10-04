@@ -235,6 +235,13 @@ terraform validate
 terraform plan -out=tfplan
 ```
 
+Export the tenancy OCID before planning so Terraform can create the
+instance-specific Run Command dynamic group:
+
+```bash
+export TF_VAR_tenancy_id="$OCI_TENANCY_OCID"
+```
+
 Review the plan. It should create one A1 instance plus the documented network resources. It should not create SSH access, unrelated resources, or paid shapes.
 
 After manual approval:
@@ -273,6 +280,11 @@ sudo systemctl list-timers 'dusk-demo-*' --all
 ```
 
 Cloud-init is complete only when its status is `done` and every check succeeds.
+The Terraform stack also creates the instance-specific dynamic group and policy
+required for the agent to poll commands. Cloud-init grants the `ocarun` agent
+administrator execution because the reviewed deployment command must manage
+root-owned configuration and Docker. Treat permission to create Run Commands
+for this instance as root access and keep it instance-scoped.
 
 ## Phase 3: add the domain to Cloudflare
 

@@ -3,6 +3,11 @@ variable "region" {
   type        = string
 }
 
+variable "tenancy_id" {
+  description = "Tenancy OCID used to create the instance Run Command dynamic group"
+  type        = string
+}
+
 variable "compartment_id" {
   description = "Compartment OCID for the demo resources"
   type        = string
