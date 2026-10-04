@@ -147,7 +147,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if not isinstance(payload, dict):
-            self._send_json(400, {"error": "invalid_payload"})
+            self._send_json(400, {"error": "invalid_action"})
             return
 
         # tenant_id and agent_id are required identity fields. Missing or
