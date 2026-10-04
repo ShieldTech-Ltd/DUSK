@@ -109,3 +109,19 @@ resource "oci_core_instance" "demo" {
     }
   }
 }
+
+resource "oci_identity_dynamic_group" "demo_run_command" {
+  compartment_id = var.tenancy_id
+  name           = "dusk-public-demo-run-command"
+  description    = "Only the DUSK public demo instance may execute OCI Run Commands"
+  matching_rule  = "ALL {instance.id = '${oci_core_instance.demo.id}'}"
+}
+
+resource "oci_identity_policy" "demo_run_command" {
+  compartment_id = var.compartment_id
+  name           = "dusk-public-demo-run-command-agent"
+  description    = "Allow the DUSK demo agent to poll and report its Run Commands"
+  statements = [
+    "Allow dynamic-group ${oci_identity_dynamic_group.demo_run_command.name} to use instance-agent-command-execution-family in compartment id ${var.compartment_id}",
+  ]
+}
