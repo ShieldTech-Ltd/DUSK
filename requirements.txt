@@ -2,6 +2,8 @@ scapy>=2.5.0
 click>=8.1.0
 rich>=13.0.0
 PyYAML>=6.0
+cryptography>=42.0.0
+mcp>=2.3.0,<3
 
 # Dev / CI tooling
 pytest>=7.4.0

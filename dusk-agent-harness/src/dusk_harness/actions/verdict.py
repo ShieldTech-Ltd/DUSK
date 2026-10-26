@@ -8,16 +8,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from dusk.actions.analyse import AnalysisResult, analyse
-from dusk.actions.baseline import Baseline, action_features
-from dusk.actions.event import AgentAction
-from dusk.config import Config, get_config
+from dusk_harness.actions.analyse import AnalysisResult, analyse
+from dusk_harness.actions.baseline import Baseline, action_features
+from dusk_harness.actions.event import AgentAction
+from dusk_harness.config import Config, get_config
 
 if TYPE_CHECKING:
-    from dusk.actions.offense_memory import OffenseMemory, OffenseRecord
-    from dusk.application.evaluator import SemanticEnrichmentPort
+    from dusk_harness.actions.offense_memory import OffenseMemory, OffenseRecord
+    from dusk_harness.application.evaluator import SemanticEnrichmentPort
 
-logger = logging.getLogger("dusk.actions.verdict")
+logger = logging.getLogger("dusk_harness.actions.verdict")
 
 #: Verdict strings.
 ALLOW = "ALLOW"

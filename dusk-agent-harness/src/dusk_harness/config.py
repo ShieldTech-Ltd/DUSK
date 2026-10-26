@@ -22,7 +22,7 @@ from typing import Any, get_type_hints
 
 import yaml
 
-logger = logging.getLogger("dusk.config")
+logger = logging.getLogger("dusk_harness.config")
 
 #: Prefix for environment-variable overrides.
 ENV_PREFIX = "DUSK_"

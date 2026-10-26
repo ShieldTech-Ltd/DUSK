@@ -1,7 +1,7 @@
 """Base contract for source adapters.
 
 A :class:`SourceAdapter` maps one source's raw record into the canonical
-:class:`~dusk.actions.event.AgentAction`. The contract is deliberate:
+:class:`~dusk_harness.actions.event.AgentAction`. The contract is deliberate:
 
 - Map source-specific operation names onto the canonical fields. Where a
   field is optional and absent, apply a sensible default (an empty
@@ -20,7 +20,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.event import AgentAction
 
 
 class AdapterError(ValueError):

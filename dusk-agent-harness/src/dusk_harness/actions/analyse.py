@@ -8,16 +8,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from dusk.actions.baseline import Baseline, action_features
-from dusk.actions.event import AgentAction
-from dusk.trace.vector import embed_text, sie_extract, sie_score
+from dusk_harness.actions.baseline import Baseline, action_features
+from dusk_harness.actions.event import AgentAction
+from dusk_harness.trace.vector import embed_text, sie_extract, sie_score
 
 if TYPE_CHECKING:
-    from dusk.actions.offense_memory import OffenseRecord
-    from dusk.application.evaluator import SemanticEnrichmentPort
-    from dusk.config import Config
+    from dusk_harness.actions.offense_memory import OffenseRecord
+    from dusk_harness.application.evaluator import SemanticEnrichmentPort
+    from dusk_harness.config import Config
 
-logger = logging.getLogger("dusk.actions.analyse")
+logger = logging.getLogger("dusk_harness.actions.analyse")
 
 
 class _LegacySemanticEnrichment:
@@ -287,7 +287,7 @@ def _repeat_offense_signal(
     if not offenses:
         return 0.0, None
 
-    from dusk.config import get_config
+    from dusk_harness.config import get_config
 
     cfg = config or get_config()
     best_offense: OffenseRecord | None = None

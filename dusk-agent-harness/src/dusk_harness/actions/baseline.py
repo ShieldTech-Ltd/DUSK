@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.event import AgentAction
 
 #: Split a target identifier into lowercase word tokens.
 _TOKEN_RE = re.compile(r"[a-z0-9]+")

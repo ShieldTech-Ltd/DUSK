@@ -9,16 +9,16 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from dusk.auth import gate_request_is_authorized
+from dusk_harness.auth import gate_request_is_authorized
 
 if TYPE_CHECKING:
-    from dusk.actions.verdict import ActionGate
-    from dusk.application.evaluator import (
+    from dusk_harness.actions.verdict import ActionGate
+    from dusk_harness.application.evaluator import (
         CanonicalEvaluator,
         DecisionWrite,
         SemanticEnrichmentPort,
     )
-    from dusk.trace.models import TraceDecision
+    from dusk_harness.trace.models import TraceDecision
 
 load_dotenv()
 
@@ -49,10 +49,10 @@ _baseline_load_error: str | None = None
 
 
 def _load_gate_engine() -> ActionGate:
-    from dusk.actions.ingest import ingest_file
-    from dusk.actions.offense_memory import OffenseMemory
-    from dusk.actions.verdict import ActionGate
-    from dusk.config import get_config
+    from dusk_harness.actions.ingest import ingest_file
+    from dusk_harness.actions.offense_memory import OffenseMemory
+    from dusk_harness.actions.verdict import ActionGate
+    from dusk_harness.config import get_config
 
     global _baseline_load_error
     _baseline_load_error = None
@@ -119,7 +119,7 @@ def _find_similar_decisions(
     action_text: str,
     semantic: SemanticEnrichmentPort | None = None,
 ) -> list[str]:
-    from dusk.trace.vector import find_similar_cached
+    from dusk_harness.trace.vector import find_similar_cached
 
     with _decision_history_lock:
         history_snapshot = list(_decision_history)
@@ -139,7 +139,7 @@ def _find_similar_decisions(
 
 
 def _record_decision(decision: DecisionWrite, embedding: list[float]) -> None:
-    from dusk.trace.models import TraceDecision
+    from dusk_harness.trace.models import TraceDecision
 
     trace = TraceDecision(
         id=decision.trace_id,
@@ -166,8 +166,8 @@ def _record_decision(decision: DecisionWrite, embedding: list[float]) -> None:
 
 
 def _build_canonical_evaluator() -> CanonicalEvaluator:
-    from dusk.application.evaluator import CanonicalEvaluator, EvaluatorPorts
-    from dusk.application.legacy import (
+    from dusk_harness.application.evaluator import CanonicalEvaluator, EvaluatorPorts
+    from dusk_harness.application.legacy import (
         AuthenticatedV1Identity,
         BehavioralPassthroughPolicy,
         LegacyBehavioralAnalysis,
@@ -178,7 +178,7 @@ def _build_canonical_evaluator() -> CanonicalEvaluator:
         LegacyWebhookDelivery,
         SieSemanticEnrichment,
     )
-    from dusk.trace.n8n_client import fire_alert, fire_decision, fire_report
+    from dusk_harness.trace.n8n_client import fire_alert, fire_decision, fire_report
 
     gate = _get_gate_engine()
     if gate.offense_memory is None:
@@ -212,7 +212,7 @@ def evaluate_gate_action() -> object:
 
     Contract: contracts/gate.openapi.yaml.
     """
-    from dusk.actions.event import AgentAction
+    from dusk_harness.actions.event import AgentAction
 
     if not gate_request_is_authorized(request.headers.get("Authorization", "")):
         auth_response = jsonify({"error": "authentication required"})
@@ -228,7 +228,7 @@ def evaluate_gate_action() -> object:
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    from dusk.application.evaluator import EvaluationPrincipal
+    from dusk_harness.application.evaluator import EvaluationPrincipal
 
     output = _build_canonical_evaluator().evaluate(
         action,

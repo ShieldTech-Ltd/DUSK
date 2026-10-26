@@ -4,7 +4,7 @@ The generic record already uses the canonical field names (``agent_id``,
 ``timestamp``, ``action_type``, ``target``, ``change``, ``source``, optional
 ``raw_ref``). This is the path for any source we have not written a dedicated
 adapter for yet, and the path the synthetic generator uses. The adapter
-validates and builds an :class:`~dusk.actions.event.AgentAction`, surfacing
+validates and builds an :class:`~dusk_harness.actions.event.AgentAction`, surfacing
 any problem as an :class:`AdapterError`.
 """
 
@@ -13,8 +13,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from dusk.actions.adapters.base import AdapterError, SourceAdapter
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.adapters.base import AdapterError, SourceAdapter
+from dusk_harness.actions.event import AgentAction
 
 
 class GenericAdapter(SourceAdapter):

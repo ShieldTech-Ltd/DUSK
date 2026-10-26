@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from dusk.config import Config, get_config
+from dusk_harness.config import Config, get_config
 
 logger = logging.getLogger(__name__)
 

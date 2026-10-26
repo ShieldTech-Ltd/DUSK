@@ -6,9 +6,9 @@ import json
 from datetime import datetime
 from typing import Any
 
-from dusk.actions.adapters.base import AdapterError, SourceAdapter
-from dusk.actions.adapters.bedrock import _action_type
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.adapters.base import AdapterError, SourceAdapter
+from dusk_harness.actions.adapters.bedrock import _action_type
+from dusk_harness.actions.event import AgentAction
 
 _ALLOWED_TOOLS = frozenset(
     {

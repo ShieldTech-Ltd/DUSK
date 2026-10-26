@@ -1,4 +1,4 @@
-"""Tests for the n8n webhook client (dusk.trace.n8n_client)."""
+"""Tests for the n8n webhook client (dusk_harness.trace.n8n_client)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dusk.config import Config
-from dusk.trace import n8n_client
+from dusk_harness.config import Config
+from dusk_harness.trace import n8n_client
 
 _real_get_executor = n8n_client._get_executor
 

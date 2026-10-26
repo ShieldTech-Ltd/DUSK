@@ -1,6 +1,6 @@
 """Application-layer orchestration contracts."""
 
-from dusk.application.evaluator import (
+from dusk_harness.application.evaluator import (
     ActionView,
     BehavioralAnalysisPort,
     BehavioralDecision,

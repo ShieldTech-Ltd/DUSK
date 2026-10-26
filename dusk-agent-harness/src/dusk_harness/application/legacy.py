@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from dusk.application.evaluator import (
+from dusk_harness.application.evaluator import (
     ActionView,
     BehavioralDecision,
     DecisionPersistencePort,
@@ -26,7 +26,7 @@ class LegacyClock:
     """UTC clock routed through the legacy offense module for test compatibility."""
 
     def now(self) -> datetime:
-        from dusk.actions.offense_memory import utc_now
+        from dusk_harness.actions.offense_memory import utc_now
 
         return utc_now()
 
@@ -35,7 +35,7 @@ class LegacyTraceIds:
     """Generate trace IDs through the historical monkeypatch boundary."""
 
     def new(self) -> str:
-        from dusk.actions.verdict import new_trace_id
+        from dusk_harness.actions.verdict import new_trace_id
 
         return new_trace_id()
 
@@ -52,7 +52,7 @@ class SieSemanticEnrichment(SemanticEnrichmentPort):
     """Expose SIE and its deterministic fallback through an explicit port."""
 
     def extract(self, text: str) -> list[ExtractedEntity]:
-        from dusk.trace.vector import sie_extract
+        from dusk_harness.trace.vector import sie_extract
 
         return [
             ExtractedEntity(text=value.text, label=value.label, score=value.score)
@@ -60,12 +60,12 @@ class SieSemanticEnrichment(SemanticEnrichmentPort):
         ]
 
     def score(self, query: str, candidates: list[str]) -> list[float] | None:
-        from dusk.trace.vector import sie_score
+        from dusk_harness.trace.vector import sie_score
 
         return sie_score(query, candidates)
 
     def embed(self, text: str) -> list[float]:
-        from dusk.trace.vector import embed_text
+        from dusk_harness.trace.vector import embed_text
 
         return embed_text(text)
 
@@ -85,9 +85,9 @@ class LegacyBehavioralAnalysis:
         observed_at: datetime,
         trace_id: str,
     ) -> BehavioralDecision:
-        from dusk.actions.baseline import action_features
-        from dusk.actions.event import AgentAction
-        from dusk.actions.verdict import ActionGate
+        from dusk_harness.actions.baseline import action_features
+        from dusk_harness.actions.event import AgentAction
+        from dusk_harness.actions.verdict import ActionGate
 
         if not isinstance(self._gate, ActionGate) or not isinstance(action, AgentAction):
             raise TypeError("legacy behavioral adapter requires ActionGate and AgentAction")
@@ -121,14 +121,14 @@ class LegacyOffenseMemory(OffenseMemoryPort):
         self._memory = memory
 
     def offenses_for(self, agent_id: str) -> list[object]:
-        from dusk.actions.offense_memory import OffenseMemory
+        from dusk_harness.actions.offense_memory import OffenseMemory
 
         if not isinstance(self._memory, OffenseMemory):
             raise TypeError("legacy offense adapter requires OffenseMemory")
         return list(self._memory.offenses_for(agent_id))
 
     def record(self, offense: OffenseWrite) -> None:
-        from dusk.actions.offense_memory import OffenseMemory
+        from dusk_harness.actions.offense_memory import OffenseMemory
 
         if not isinstance(self._memory, OffenseMemory):
             raise TypeError("legacy offense adapter requires OffenseMemory")

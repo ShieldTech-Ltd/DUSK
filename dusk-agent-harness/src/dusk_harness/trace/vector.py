@@ -10,8 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from dusk.config import Config, get_config
-from dusk.trace.models import TraceDecision
+from dusk_harness.config import Config, get_config
+from dusk_harness.trace.models import TraceDecision
 
 logger = logging.getLogger(__name__)
 

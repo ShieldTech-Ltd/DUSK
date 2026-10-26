@@ -1,7 +1,7 @@
 """SIE failure-mode tests: gate falls back gracefully when SIE is unavailable.
 
 These tests use StubSIEClient (see stub_sie.py) to inject specific failure
-modes into dusk.trace.vector._sie_client.  Each test verifies that the gate
+modes into dusk_harness.trace.vector._sie_client.  Each test verifies that the gate
 handles the failure silently and returns a usable result instead of raising.
 
 Coverage gaps filled vs test_trace_vector.py:
@@ -20,9 +20,9 @@ from pathlib import Path
 import pytest
 from stub_sie import StubSIEClient
 
-from dusk import api
-from dusk.config import reset_config
-from dusk.trace import vector
+from dusk_harness import api
+from dusk_harness.config import reset_config
+from dusk_harness.trace import vector
 
 
 def _inject_fake_sie_types(monkeypatch: pytest.MonkeyPatch) -> None:

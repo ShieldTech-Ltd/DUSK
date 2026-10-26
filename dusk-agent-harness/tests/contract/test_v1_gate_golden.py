@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from flask.testing import FlaskClient
 
-from dusk import api
-from dusk.config import reset_config
+from dusk_harness import api
+from dusk_harness.config import reset_config
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = EXAMPLE_ROOT / "tests" / "fixtures" / "actions_normal.json"
@@ -169,7 +169,7 @@ def test_verdict_responses_match_golden(
     if enforce:
         monkeypatch.setenv("DUSK_ENFORCE", "true")
         _reset_runtime()
-    with patch("dusk.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
+    with patch("dusk_harness.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
         response = client.post("/v1/gate", json=payload)
     _assert_golden(response, case, golden)
 
@@ -191,7 +191,7 @@ def test_authentication_paths_match_golden(
             case,
             golden,
         )
-    with patch("dusk.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
+    with patch("dusk_harness.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
         accepted = client.post(
             "/v1/gate",
             json=_action_payload(),
@@ -227,7 +227,7 @@ def test_health_paths_match_golden(
     monkeypatch.setenv("DUSK_GATE_BASELINE_PATH", str(BASELINE_PATH))
     monkeypatch.setenv("DUSK_OFFENSE_MEMORY_PATH", str(blocker / "offenses.json"))
     _reset_runtime()
-    with patch("dusk.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
+    with patch("dusk_harness.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])):
         client.post("/v1/gate", json=_refused_payload())
     api._get_gate_engine().offense_memory.flush()
     _assert_golden(client.get("/health"), "health_offense_memory_degraded", golden)
@@ -253,10 +253,10 @@ def test_public_side_effects_match_golden(
         monkeypatch.setenv("DUSK_ENFORCE", "true")
         _reset_runtime()
     with (
-        patch("dusk.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])),
-        patch("dusk.trace.n8n_client.fire_decision") as decision,
-        patch("dusk.trace.n8n_client.fire_report") as report,
-        patch("dusk.trace.n8n_client.fire_alert") as alert,
+        patch("dusk_harness.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])),
+        patch("dusk_harness.trace.n8n_client.fire_decision") as decision,
+        patch("dusk_harness.trace.n8n_client.fire_report") as report,
+        patch("dusk_harness.trace.n8n_client.fire_alert") as alert,
     ):
         response = client.post("/v1/gate", json=payload)
 
@@ -302,9 +302,9 @@ def test_rejected_requests_have_no_side_effects(
         monkeypatch.delenv("DUSK_GATE_ALLOW_ANONYMOUS")
     payload = _action_payload() if unauthorized else {"agent_id": "netops-agent"}
     with (
-        patch("dusk.trace.n8n_client.fire_decision") as decision,
-        patch("dusk.trace.n8n_client.fire_report") as report,
-        patch("dusk.trace.n8n_client.fire_alert") as alert,
+        patch("dusk_harness.trace.n8n_client.fire_decision") as decision,
+        patch("dusk_harness.trace.n8n_client.fire_report") as report,
+        patch("dusk_harness.trace.n8n_client.fire_alert") as alert,
     ):
         client.post("/v1/gate", json=payload)
     engine = api._gate_engine
@@ -325,7 +325,7 @@ def test_similar_decision_references_match_golden(
     client: FlaskClient, golden: dict[str, Any]
 ) -> None:
     values = iter(_UUIDValue(value) for value in TRACE_IDS)
-    with patch("dusk.actions.verdict.uuid.uuid4", side_effect=lambda: next(values)):
+    with patch("dusk_harness.actions.verdict.uuid.uuid4", side_effect=lambda: next(values)):
         client.post("/v1/gate", json=_action_payload())
         client.post("/v1/gate", json=_action_payload())
         third = client.post("/v1/gate", json=_action_payload())
@@ -337,9 +337,9 @@ def test_repeat_offense_persistence_and_scoring_match_golden(
 ) -> None:
     values = iter(_UUIDValue(value) for value in TRACE_IDS)
     with (
-        patch("dusk.actions.verdict.uuid.uuid4", side_effect=lambda: next(values)),
-        patch("dusk.actions.offense_memory.datetime", _FrozenDateTime),
-        patch("dusk.actions.analyse.datetime", _FrozenDateTime),
+        patch("dusk_harness.actions.verdict.uuid.uuid4", side_effect=lambda: next(values)),
+        patch("dusk_harness.actions.offense_memory.datetime", _FrozenDateTime),
+        patch("dusk_harness.actions.analyse.datetime", _FrozenDateTime),
     ):
         first = client.post("/v1/gate", json=_refused_payload())
         _assert_golden(first, "watch_refusal", golden)
@@ -355,8 +355,8 @@ def test_sie_unavailability_preserves_deterministic_golden(
     monkeypatch.setenv("DUSK_SIE_ENDPOINT", "https://unavailable.invalid")
     _reset_runtime()
     with (
-        patch("dusk.trace.vector._sie_client", return_value=None),
-        patch("dusk.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])),
+        patch("dusk_harness.trace.vector._sie_client", return_value=None),
+        patch("dusk_harness.actions.verdict.uuid.uuid4", return_value=_UUIDValue(TRACE_IDS[0])),
     ):
         response = client.post("/v1/gate", json=_action_payload())
     _assert_golden(response, "allow", golden)

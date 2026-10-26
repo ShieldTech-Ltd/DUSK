@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dusk.actions.offense_memory import OffenseMemory, OffenseRecord
+from dusk_harness.actions.offense_memory import OffenseMemory, OffenseRecord
 
 
 def _record(memory: OffenseMemory, agent_id: str = "netops-agent", **overrides: object) -> None:

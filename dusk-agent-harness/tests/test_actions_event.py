@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.event import AgentAction
 
 _TS = datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
 

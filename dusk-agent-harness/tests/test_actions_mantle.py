@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from dusk.actions.adapters.base import AdapterError
-from dusk.actions.adapters.mantle import MantleAdapter
+from dusk_harness.actions.adapters.base import AdapterError
+from dusk_harness.actions.adapters.mantle import MantleAdapter
 
 
 def _function_call(**overrides: object) -> dict[str, object]:

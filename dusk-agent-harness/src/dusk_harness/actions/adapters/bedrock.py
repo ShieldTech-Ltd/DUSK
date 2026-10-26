@@ -9,8 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from dusk.actions.adapters.base import AdapterError, SourceAdapter
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.adapters.base import AdapterError, SourceAdapter
+from dusk_harness.actions.event import AgentAction
 
 #: Substrings of the tool name mapped to a canonical action_type.
 _ACTION_TYPE_RULES: tuple[tuple[tuple[str, ...], str], ...] = (

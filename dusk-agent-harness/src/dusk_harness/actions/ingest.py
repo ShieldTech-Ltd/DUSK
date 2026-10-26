@@ -6,9 +6,9 @@ import json
 import logging
 import os
 
-from dusk.actions.event import AgentAction
+from dusk_harness.actions.event import AgentAction
 
-logger = logging.getLogger("dusk.actions.ingest")
+logger = logging.getLogger("dusk_harness.actions.ingest")
 
 
 def ingest_file(path: str, source: str) -> list[AgentAction]:
@@ -29,8 +29,8 @@ def ingest_file(path: str, source: str) -> list[AgentAction]:
     """
     # Imported here so the adapter registry loads lazily and ingest stays free
     # of an import cycle (ingest -> normaliser -> adapters).
-    from dusk.actions.adapters.base import AdapterError
-    from dusk.actions.normaliser import normalise_record
+    from dusk_harness.actions.adapters.base import AdapterError
+    from dusk_harness.actions.normaliser import normalise_record
 
     if not os.path.exists(path):
         logger.critical("Action file not found: %s", path)

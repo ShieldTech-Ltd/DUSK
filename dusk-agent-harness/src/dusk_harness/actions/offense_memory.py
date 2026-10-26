@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("dusk.actions.offense_memory")
+logger = logging.getLogger("dusk_harness.actions.offense_memory")
 
 #: Retention limits bound both memory use and the persisted file.
 _MAX_OFFENSES_PER_AGENT = 50
@@ -34,7 +34,7 @@ class OffenseRecord:
         agent_id: The agent this offense belongs to.
         action_type: The refused action's normalised verb.
         target_class: The refused action's coarse target class (see
-            :func:`dusk.actions.baseline.target_class`).
+            :func:`dusk_harness.actions.baseline.target_class`).
         tokens: The refused action's target tokens, for similarity matching
             against a new action.
         verdict: The verdict rendered, ``WOULD-BLOCK`` or ``BLOCK``.

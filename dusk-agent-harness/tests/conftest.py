@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from dusk.config import reset_config
+from dusk_harness.config import reset_config
 
 
 @pytest.fixture(autouse=True)

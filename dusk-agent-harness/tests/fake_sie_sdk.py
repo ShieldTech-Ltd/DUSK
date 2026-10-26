@@ -1,6 +1,6 @@
 """Minimal HTTP-speaking fake SIE SDK for transport-level fallback tests.
 
-Inject into sys.modules["sie_sdk"] so that dusk.trace.vector._sie_client()
+Inject into sys.modules["sie_sdk"] so that dusk_harness.trace.vector._sie_client()
 picks it up without the real sie_sdk package installed.  The client makes
 actual HTTP POST requests to a thread-based stub server so tests exercise
 real socket-level transport (timeout, refused connection, malformed response)
@@ -53,7 +53,7 @@ class Item:
 class SIEClient:
     """HTTP-speaking SIEClient that honours provision_timeout_s as the socket timeout.
 
-    Mirrors the constructor signature expected by dusk.trace.vector._sie_client:
+    Mirrors the constructor signature expected by dusk_harness.trace.vector._sie_client:
         SIEClient(base_url, api_key=None, timeout_s=10.0)
     """
 

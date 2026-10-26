@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dusk.auth import gate_request_is_authorized
+from dusk_harness.auth import gate_request_is_authorized
 
 
 @pytest.mark.parametrize("value", [None, "", "false", "1", "yes", " truex "])
