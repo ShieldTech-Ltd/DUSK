@@ -22,16 +22,22 @@ interface AuditReceipt {
   timestamp_ms: number;
 }
 
+function isActionDigest(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
 function isContainerDecision(v: unknown): v is ContainerDecision {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const d = v as Record<string, unknown>;
   return (
     (d.decision === "ALLOW" || d.decision === "BLOCK" || d.decision === "DENY") &&
     (d.permit_id === null || typeof d.permit_id === "string") &&
-    typeof d.action_digest === "string" &&
+    (d.decision !== "ALLOW" || (typeof d.permit_id === "string" && d.permit_id.trim().length > 0)) &&
+    isActionDigest(d.action_digest) &&
     typeof d.policy_version === "string" &&
     Array.isArray(d.matched_rule_ids) &&
-    (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string")
+    (d.matched_rule_ids as unknown[]).every((r) => typeof r === "string") &&
+    (d.reason_code === null || typeof d.reason_code === "string")
   );
 }
 
@@ -50,7 +56,7 @@ const CONTAINER_PORT = 8080;
 
 export class DuskRuntimeDO extends DurableObject<Env> {
   // Public so tests can replace it via runInDurableObject without subclassing.
-  containerFetch: (body: string, tenantId: string, agentId: string) => Promise<Response>;
+  containerFetch: (body: string) => Promise<Response>;
 
   // Optional test hook: called with each Analytics Engine event payload.
   // Undefined in production. Set via runInDurableObject in tests.
@@ -67,7 +73,7 @@ export class DuskRuntimeDO extends DurableObject<Env> {
       ctx.container.start();
     }
 
-    this.containerFetch = (body: string, tenantId: string, agentId: string) => {
+    this.containerFetch = (body: string) => {
       if (!this.ctx.container) {
         throw new Error("container binding not configured");
       }
@@ -76,11 +82,7 @@ export class DuskRuntimeDO extends DurableObject<Env> {
         .fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
           method: "POST",
           body,
-          headers: {
-            "Content-Type": "application/json",
-            "X-DUSK-Sandbox-Tenant-ID": tenantId,
-            "X-DUSK-Sandbox-Agent-ID": agentId,
-          },
+          headers: { "Content-Type": "application/json" },
         });
     };
   }
@@ -88,14 +90,9 @@ export class DuskRuntimeDO extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const requestId = request.headers.get("X-DUSK-Request-ID") ?? crypto.randomUUID();
     const path = new URL(request.url).pathname;
-    const tenantId = request.headers.get("X-DUSK-Sandbox-Tenant-ID")?.trim();
-    const agentId = request.headers.get("X-DUSK-Sandbox-Agent-ID")?.trim();
 
     if (path !== EVALUATE_PATH || request.method !== "POST") {
       return errorResponse(404, "not_found", requestId);
-    }
-    if (!tenantId || !agentId) {
-      return errorResponse(503, "runtime_identity_missing", requestId);
     }
 
     const body = await request.text();
@@ -103,7 +100,7 @@ export class DuskRuntimeDO extends DurableObject<Env> {
     // Call the Python DUSK policy container.
     let containerResponse: Response;
     try {
-      containerResponse = await this.containerFetch(body, tenantId, agentId);
+      containerResponse = await this.containerFetch(body);
     } catch {
       console.error(JSON.stringify({ event: "container_unavailable", request_id: requestId }));
       return errorResponse(503, "runtime_unavailable", requestId);

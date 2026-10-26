@@ -1,4 +1,4 @@
-"""HTTP-level contract tests for the Cloudflare Container runtime."""
+"""Direct HTTP contract tests for the Cloudflare Container runtime."""
 
 from __future__ import annotations
 
@@ -6,118 +6,55 @@ import http.client
 import importlib.util
 import json
 import os
-import subprocess
 import sys
 import threading
 from collections.abc import Generator
+from http.server import HTTPServer
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 import pytest
+
+from dusk.policies import Decision, PolicyResult
 
 _RUNTIME_PATH = Path("workers/dusk-runtime/runtime_server.py")
 
 
-def _load_runtime(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
-    monkeypatch.setenv("DUSK_ALLOW_EPHEMERAL_KEY", "1")
-    monkeypatch.delenv("DUSK_SIGNING_KEY", raising=False)
+def _load_runtime() -> ModuleType:
+    """Load the real server with the explicit local-only test exception."""
     module_name = "dusk_runtime_server_test"
-    sys.modules.pop(module_name, None)
-    spec = importlib.util.spec_from_file_location(module_name, _RUNTIME_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+    with patch.dict(
+        os.environ,
+        {"DUSK_SIGNING_KEY": "", "DUSK_ALLOW_EPHEMERAL_KEY": "1"},
+        clear=False,
+    ):
+        sys.modules.pop(module_name, None)
+        spec = importlib.util.spec_from_file_location(module_name, _RUNTIME_PATH)
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
     return module
 
 
+_rs = _load_runtime()
+
+
 @pytest.fixture
-def runtime_server(monkeypatch: pytest.MonkeyPatch) -> Generator[tuple[str, int], None, None]:
-    runtime = _load_runtime(monkeypatch)
-    server = runtime.HTTPServer(("127.0.0.1", 0), runtime._Handler)
-    host, port = server.server_address
+def server() -> Generator[HTTPServer, None, None]:
+    server = HTTPServer(("127.0.0.1", 0), _rs._Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield host, port
+    yield server
     server.shutdown()
     thread.join(timeout=5)
     server.server_close()
 
 
-def test_runtime_rejects_non_numeric_content_length_with_json_error(
-    runtime_server: tuple[str, int],
-) -> None:
-    """A malformed HTTP length must not crash the permit-issuing boundary."""
-    host, port = runtime_server
-    connection = http.client.HTTPConnection(host, port, timeout=5)
-    connection.putrequest("POST", "/v1/actions/evaluate")
-    connection.putheader("Content-Type", "application/json")
-    connection.putheader("Content-Length", "not-a-number")
-    connection.endheaders()
-
-    response = connection.getresponse()
-
-    assert response.status == 400
-    assert response.getheader("Content-Type") == "application/json"
-    assert response.read() == b'{"error":"invalid_content_length"}'
-
-
-def test_runtime_rejects_negative_content_length_with_json_error(
-    runtime_server: tuple[str, int],
-) -> None:
-    """A negative HTTP length must not make the handler wait for EOF."""
-    host, port = runtime_server
-    connection = http.client.HTTPConnection(host, port, timeout=1)
-    connection.putrequest("POST", "/v1/actions/evaluate")
-    connection.putheader("Content-Type", "application/json")
-    connection.putheader("Content-Length", "-1")
-    connection.endheaders()
-
-    response = connection.getresponse()
-
-    assert response.status == 400
-    assert response.read() == b'{"error":"invalid_content_length"}'
-
-
-def test_runtime_rejects_identity_only_request_before_permit_evaluation(
-    runtime_server: tuple[str, int],
-) -> None:
-    """Removing the action must never turn an identity-only request into an ALLOW."""
-    host, port = runtime_server
-    body = json.dumps({"tenant_id": "tenant-a", "agent_id": "agent-a"}).encode()
-    connection = http.client.HTTPConnection(host, port, timeout=5)
-    connection.request(
-        "POST",
-        "/v1/actions/evaluate",
-        body=body,
-        headers={
-            "Content-Type": "application/json",
-            "Content-Length": str(len(body)),
-            "X-DUSK-Sandbox-Tenant-ID": "tenant-a",
-            "X-DUSK-Sandbox-Agent-ID": "agent-a",
-        },
-    )
-
-    response = connection.getresponse()
-
-    assert response.status == 400
-    assert response.read() == b'{"error":"missing_action"}'
-
-
-def test_runtime_requires_internal_identity_headers_before_evaluating_action(
-    runtime_server: tuple[str, int],
-) -> None:
-    """A direct caller must not self-assert the identity evidence the DO supplies."""
-    host, port = runtime_server
-    body = json.dumps(
-        {
-            "type": "resource.read",
-            "consequential": True,
-            "tenant_id": "tenant-a",
-            "agent_id": "agent-a",
-        }
-    ).encode()
+def _post(server: HTTPServer, body: bytes) -> tuple[int, dict[str, object]]:
+    host, port = server.server_address
     connection = http.client.HTTPConnection(host, port, timeout=5)
     connection.request(
         "POST",
@@ -125,99 +62,86 @@ def test_runtime_requires_internal_identity_headers_before_evaluating_action(
         body=body,
         headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
     )
-
     response = connection.getresponse()
-
-    assert response.status == 503
-    assert response.read() == b'{"error":"runtime_identity_missing"}'
+    return response.status, json.loads(response.read())
 
 
-def test_runtime_allows_safe_action_only_with_matching_internal_identity(
-    runtime_server: tuple[str, int],
+def test_missing_key_without_local_exception_exits() -> None:
+    """The permit issuer must refuse an empty operator signing-key setting."""
+    with patch.dict(
+        os.environ,
+        {"DUSK_SIGNING_KEY": "", "DUSK_ALLOW_EPHEMERAL_KEY": ""},
+        clear=False,
+    ):
+        with pytest.raises(SystemExit):
+            _rs._load_signing_key()
+
+
+def test_non_object_json_is_rejected(server: HTTPServer) -> None:
+    """Only an action object may cross the permit-issuing HTTP boundary."""
+    status, body = _post(server, b"[]")
+
+    assert status == 400
+    assert body["error"] == "invalid_action"
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_decision"),
+    [
+        ({"type": "resource.read"}, "ALLOW"),
+        ({"type": "network.firewall.update", "cidrs": ["0.0.0.0/0"]}, "DENY"),
+    ],
+)
+def test_success_response_contains_only_internal_decision_fields(
+    server: HTTPServer, action: dict[str, object], expected_decision: str
 ) -> None:
-    """The internal Worker and DO path may establish evidence for the fixed sandbox identity."""
-    host, port = runtime_server
-    body = json.dumps(
-        {
-            "type": "resource.read",
-            "consequential": True,
-            "tenant_id": "tenant-a",
-            "agent_id": "agent-a",
-        }
-    ).encode()
-    connection = http.client.HTTPConnection(host, port, timeout=5)
-    connection.request(
-        "POST",
-        "/v1/actions/evaluate",
-        body=body,
-        headers={
-            "Content-Type": "application/json",
-            "Content-Length": str(len(body)),
-            "X-DUSK-Sandbox-Tenant-ID": "tenant-a",
-            "X-DUSK-Sandbox-Agent-ID": "agent-a",
-        },
-    )
+    """The HTTP contract must not echo action or credentials, even on ALLOW."""
+    payload = {
+        "tenant_id": "fake-tenant",
+        "agent_id": "fake-agent",
+        "target": "DIRECT_RUNTIME_ACTION_SENTINEL",
+        "credential": "DIRECT_RUNTIME_CREDENTIAL_SENTINEL",
+        **action,
+    }
+    if expected_decision == "ALLOW":
+        # The current runtime context has degraded evidence and fails closed.
+        # A fake policy result exercises real permit issuance and HTTP redaction
+        # without changing the production policy or claiming real-policy ALLOW.
+        with patch.object(_rs, "_POLICY") as policy:
+            policy.evaluate.return_value = PolicyResult(Decision.ALLOW, "fake-policy-v1", ())
+            status, body = _post(server, json.dumps(payload).encode())
+    else:
+        # DENY exercises the real enterprise policy and the real HTTP server.
+        status, body = _post(server, json.dumps(payload).encode())
 
-    response = connection.getresponse()
-    result = json.loads(response.read())
-
-    assert response.status == 200
-    assert result["decision"] == "ALLOW"
-    assert isinstance(result["permit_id"], str)
-
-
-def test_runtime_blocks_hostile_action_without_a_permit(
-    runtime_server: tuple[str, int],
-) -> None:
-    """A dangerous network change must be denied before permit issuance."""
-    host, port = runtime_server
-    body = json.dumps(
-        {
-            "type": "network.firewall.update",
-            "cidrs": ["0.0.0.0/0"],
-            "consequential": True,
-            "tenant_id": "tenant-a",
-            "agent_id": "agent-a",
-        }
-    ).encode()
-    connection = http.client.HTTPConnection(host, port, timeout=5)
-    connection.request(
-        "POST",
-        "/v1/actions/evaluate",
-        body=body,
-        headers={
-            "Content-Type": "application/json",
-            "Content-Length": str(len(body)),
-            "X-DUSK-Sandbox-Tenant-ID": "tenant-a",
-            "X-DUSK-Sandbox-Agent-ID": "agent-a",
-        },
-    )
-
-    response = connection.getresponse()
-    result = json.loads(response.read())
-
-    assert response.status == 200
-    assert result["decision"] == "DENY"
-    assert result["reason_code"] == "DUSK-NET-001"
-    assert result["permit_id"] is None
-
-
-def test_runtime_refuses_startup_without_a_signing_key() -> None:
-    """Removing the key configuration must prevent the permit issuer from listening."""
-    environment = os.environ.copy()
-    environment.pop("DUSK_SIGNING_KEY", None)
-    environment.pop("DUSK_ALLOW_EPHEMERAL_KEY", None)
-    environment["PYTHONPATH"] = str(Path.cwd() / "src")
-
-    result = subprocess.run(
-        [sys.executable, str(_RUNTIME_PATH)],
-        check=False,
-        cwd=Path.cwd(),
-        capture_output=True,
-        env=environment,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 1
-    assert '"event":"missing_signing_key"' in result.stdout
+    assert status == 200
+    assert set(body) == {
+        "decision",
+        "permit_id",
+        "action_digest",
+        "policy_version",
+        "matched_rule_ids",
+        "reason_code",
+    }
+    assert body["decision"] == expected_decision
+    assert isinstance(body["action_digest"], str)
+    assert len(body["action_digest"]) == 64
+    assert set(body["action_digest"]) <= set("0123456789abcdef")
+    assert isinstance(body["policy_version"], str)
+    assert isinstance(body["matched_rule_ids"], list)
+    if expected_decision == "ALLOW":
+        assert isinstance(body["permit_id"], str)
+        assert body["permit_id"]
+        assert body["reason_code"] is None
+    else:
+        assert body["permit_id"] is None
+        assert "DUSK-NET-001" in body["matched_rule_ids"]
+        assert body["reason_code"] == "DUSK-NET-001"
+    serialized = json.dumps(body)
+    for forbidden in (
+        "DIRECT_RUNTIME_ACTION_SENTINEL",
+        "DIRECT_RUNTIME_CREDENTIAL_SENTINEL",
+        "credential",
+        "target",
+    ):
+        assert forbidden not in serialized

@@ -6,8 +6,6 @@ const MAX_BODY_BYTES = 65_536;
 
 export interface DuskGatewayEnv {
   DUSK_GATEWAY_TOKEN?: string;
-  DUSK_SANDBOX_TENANT_ID?: string;
-  DUSK_SANDBOX_AGENT_ID?: string;
   DUSK_RUNTIME?: DurableObjectNamespace;
 }
 
@@ -77,6 +75,61 @@ function responseHeaders(upstream: Response, requestId: string): Headers {
   return headers;
 }
 
+interface PublicDecision {
+  decision: "ALLOW" | "BLOCK" | "DENY";
+  action_digest: string;
+  policy_version: string;
+  matched_rule_ids: string[];
+  reason_code: string | null;
+}
+
+function isPublicDecision(value: unknown): value is PublicDecision {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const decision = value as Record<string, unknown>;
+  return (
+    (decision.decision === "ALLOW" || decision.decision === "BLOCK" || decision.decision === "DENY") &&
+    typeof decision.action_digest === "string" && /^[a-f0-9]{64}$/.test(decision.action_digest) &&
+    typeof decision.policy_version === "string" &&
+    Array.isArray(decision.matched_rule_ids) &&
+    decision.matched_rule_ids.every((rule) => typeof rule === "string") &&
+    (decision.reason_code === null || typeof decision.reason_code === "string")
+  );
+}
+
+function isPublicRuntimeError(value: unknown): value is { error: string } {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).error === "string";
+}
+
+async function safeRuntimeResponse(upstream: Response, requestId: string): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await upstream.json();
+  } catch {
+    return errorResponse(503, "runtime_response_invalid", requestId);
+  }
+
+  if (isPublicDecision(body)) {
+    return Response.json(
+      {
+        decision: body.decision,
+        action_digest: body.action_digest,
+        policy_version: body.policy_version,
+        matched_rule_ids: body.matched_rule_ids,
+        reason_code: body.reason_code,
+      },
+      { headers: responseHeaders(upstream, requestId), status: upstream.status },
+    );
+  }
+  if (isPublicRuntimeError(body)) {
+    return Response.json(
+      { error: body.error, request_id: requestId },
+      { headers: responseHeaders(upstream, requestId), status: upstream.status },
+    );
+  }
+  return errorResponse(503, "runtime_response_invalid", requestId);
+}
+
 async function handleAction(
   request: Request,
   env: DuskGatewayEnv,
@@ -100,12 +153,7 @@ async function handleAction(
     return errorResponse(413, "payload_too_large", requestId);
   }
 
-  if (
-    !env.DUSK_RUNTIME ||
-    !env.DUSK_GATEWAY_TOKEN?.trim() ||
-    !env.DUSK_SANDBOX_TENANT_ID?.trim() ||
-    !env.DUSK_SANDBOX_AGENT_ID?.trim()
-  ) {
+  if (!env.DUSK_RUNTIME || !env.DUSK_GATEWAY_TOKEN?.trim()) {
     return errorResponse(503, "gateway_not_configured", requestId);
   }
   if (!(await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN))) {
@@ -120,13 +168,6 @@ async function handleAction(
     const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
     if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
       return errorResponse(400, "json_object_required", requestId);
-    }
-    const payload = parsed as Record<string, unknown>;
-    if (
-      payload.tenant_id !== env.DUSK_SANDBOX_TENANT_ID ||
-      payload.agent_id !== env.DUSK_SANDBOX_AGENT_ID
-    ) {
-      return errorResponse(403, "sandbox_identity_mismatch", requestId);
     }
   } catch {
     return errorResponse(400, "invalid_json", requestId);
@@ -143,8 +184,6 @@ async function handleAction(
           "Content-Type": "application/json",
           "X-DUSK-Gateway": "cloudflare-worker",
           "X-DUSK-Request-ID": requestId,
-          "X-DUSK-Sandbox-Tenant-ID": env.DUSK_SANDBOX_TENANT_ID,
-          "X-DUSK-Sandbox-Agent-ID": env.DUSK_SANDBOX_AGENT_ID,
         },
       }),
     );
@@ -154,7 +193,7 @@ async function handleAction(
       request_id: requestId,
       status: upstream.status,
     });
-    return new Response(upstream.body, { headers: responseHeaders(upstream, requestId), status: upstream.status });
+    return safeRuntimeResponse(upstream, requestId);
   } catch {
     console.error(JSON.stringify({ event: "dusk_gateway_runtime_failure", path, request_id: requestId }));
     return errorResponse(503, "runtime_unavailable", requestId);
