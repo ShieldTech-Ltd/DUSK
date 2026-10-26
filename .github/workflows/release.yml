@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      publish_pypi:
+        description: Also publish verified Python distributions through the PyPI trusted publisher
+        required: true
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -26,7 +31,9 @@ jobs:
     permissions: {contents: read, id-token: write, attestations: write}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {fetch-depth: 0}
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_ref || github.ref }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: {python-version: "3.12"}
       - run: pip install build twine pip-audit PyYAML
@@ -72,6 +79,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: {python-version: "3.12"}
       - run: pip install PyYAML
@@ -80,6 +89,8 @@ jobs:
       - env: {UPSTREAM: "${{ needs.release-controls.result }}"}
         run: |
           test "$UPSTREAM" = success
+          python scripts/validate_provider_certification.py \
+            docs/evidence/provider-certification.json
           python scripts/ci/control.py aggregate --lane release --results results
 
   publish:
@@ -95,3 +106,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
         run: gh release create "$RELEASE_REF" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "DUSK $RELEASE_REF"
+
+  publish-pypi:
+    needs: [release-gate]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dusk-security/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: {name: release-artifacts, path: verified}
+      - name: Select and verify Python distributions
+        run: |
+          cd verified
+          sha256sum --check SHA256SUMS
+          mkdir ../dist
+          cp ./*.whl ./*.tar.gz ../dist/
+      - name: Publish verified distributions using PyPI OIDC
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,11 +13,23 @@ import yaml
 _DEV_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox-dev.yml")
 _PROD_WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _DEV_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-dev/template.yaml")
+_MAIN_TEMPLATE_PATH = Path("infra/aws/bedrock-mantle-main/template.yaml")
 _PROD_TEMPLATE_PATH = Path("infra/aws/bedrock-real-agent/template.yaml")
 _DEV_SETUP_PATH = Path("scripts/setup-bedrock-mantle-dev.ps1")
-_LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
+_MAIN_SETUP_PATH = Path("scripts/setup-bedrock-mantle-main.ps1")
+_HARNESS_ROOT = Path("dusk-agent-harness")
+_LOCK_FILE_PATH = _HARNESS_ROOT / "requirements-real-agent.txt"
+_EVIDENCE_VALIDATOR_PATH = _HARNESS_ROOT / "scripts/validate_real_agent_evidence.py"
+_CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
 
 _DEV_JOB = "real-agent-dev-validation"
+_MATRIX_GATE_JOB = "real-agent-dev-matrix-gate"
+EXPECTED_MODELS = [
+    {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
+    {"slug": "glm-5", "id": "zai.glm-5"},
+    {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
+    {"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"},
+]
 
 
 def _dev_workflow() -> dict:
@@ -36,8 +49,102 @@ def _dev_role() -> dict:
     return t["Resources"]["DuskMantleDevRole"]
 
 
+def _main_template() -> dict:
+    return yaml.safe_load(_MAIN_TEMPLATE_PATH.read_text(encoding="utf-8"))
+
+
+def _main_role() -> dict:
+    return _main_template()["Resources"]["DuskMantleMainRole"]
+
+
+def _main_actions() -> set[str]:
+    statements = _main_role()["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+    return {
+        action
+        for statement in statements
+        for action in (
+            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
+        )
+    }
+
+
 def _dev_steps() -> list[dict]:
     return _dev_workflow()["jobs"][_DEV_JOB]["steps"]
+
+
+def _registered_model_pairs() -> list[tuple[str, str]]:
+    harness_path = str(_HARNESS_ROOT.resolve())
+    sys.path.insert(0, harness_path)
+    try:
+        from models.registry import MODEL_PROFILES
+    finally:
+        sys.path.pop(0)
+
+    return [(profile.slug, profile.model_id) for profile in MODEL_PROFILES]
+
+
+def _dev_workflow_matrix_branches() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    model_expression = _dev_workflow()["jobs"][_DEV_JOB]["strategy"]["matrix"]["model"]
+    qualification_json, full_matrix_json = model_expression.split("&& '", 1)[1].split("' || '", 1)
+    return json.loads(qualification_json), json.loads(full_matrix_json.removesuffix("') }}"))
+
+
+def test_gpt_oss_qualification_is_integrated_into_the_registered_dev_workflow() -> None:
+    assert not Path(".github/workflows/real-agent-gpt-oss-qualification-dev.yml").exists()
+    workflow = _dev_workflow()
+    on = workflow[True] if True in workflow else workflow["on"]
+    inputs = on["workflow_dispatch"]["inputs"]
+    target = inputs["run_target"]
+
+    assert target["type"] == "choice"
+    assert target["options"] == ["gpt-oss-qualification", "full-matrix"]
+    assert target["default"] == "gpt-oss-qualification"
+
+
+def test_dev_workflow_contains_the_complete_four_model_set() -> None:
+    qualification, full_matrix = _dev_workflow_matrix_branches()
+    registered_pairs = _registered_model_pairs()
+
+    assert qualification == [{"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"}]
+    assert full_matrix == [
+        {"slug": "kimi-k2-5", "id": "moonshotai.kimi-k2.5"},
+        {"slug": "glm-5", "id": "zai.glm-5"},
+        {"slug": "qwen3-32b", "id": "qwen.qwen3-32b"},
+        {"slug": "gpt-oss-120b", "id": "openai.gpt-oss-120b"},
+    ]
+    assert [(model["slug"], model["id"]) for model in qualification] == [registered_pairs[-1]]
+    assert [(model["slug"], model["id"]) for model in full_matrix] == registered_pairs
+
+
+def test_dev_workflow_uses_production_harness_paths() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    setup_python = next(
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    upload = next(
+        step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@")
+    )
+
+    assert job["defaults"]["run"]["working-directory"] == "dusk-agent-harness"
+    assert setup_python["with"]["cache-dependency-path"].strip() == (
+        "dusk-agent-harness/requirements-real-agent.txt"
+    )
+    assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/${{ matrix.model.slug }}/"
+    legacy_root = "/".join(("examples", "agent-action-monitor"))
+    assert legacy_root not in _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+
+def test_gpt_oss_qualification_forces_enforce_mode() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["env"]["EFFECTIVE_GATE_MODE"] == (
+        "${{ github.event.inputs.run_target == 'gpt-oss-qualification' "
+        "&& 'enforce' || github.event.inputs.gate_mode }}"
+    )
+    for step in job["steps"]:
+        if "DUSK_ENFORCE" in step.get("env", {}):
+            assert step["env"]["DUSK_ENFORCE"] == (
+                "${{ env.EFFECTIVE_GATE_MODE == 'enforce' && 'true' || 'false' }}"
+            )
 
 
 # --- Dev workflow structure ------------------------------------------------
@@ -61,7 +168,7 @@ def test_dev_workflow_uses_separate_environment() -> None:
 
 def test_dev_workflow_names_the_job_and_does_not_persist_checkout_credentials() -> None:
     job = _dev_workflow()["jobs"][_DEV_JOB]
-    assert job["name"] == "Real-agent Mantle dev validation"
+    assert "${{ matrix.model.slug }}" in job["name"]
     checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
     assert checkout["with"]["persist-credentials"] is False
 
@@ -94,16 +201,86 @@ def test_dev_workflow_requires_bedrock_provider_env_var() -> None:
         "AWS_ROLE_ARN",
         "AWS_REGION",
         "BEDROCK_PROVIDER",
-        "BEDROCK_MODEL_ID",
         "DUSK_GATE_API_KEY",
     ):
         assert var in run_script, f"Preflight must check {var}"
+    assert "BEDROCK_MODEL_ID" not in run_script
     assert "exit 1" in run_script
+
+
+def test_dev_workflow_runs_the_exact_approved_model_matrix() -> None:
+    job = _dev_workflow()["jobs"][_DEV_JOB]
+    assert job["strategy"]["fail-fast"] is False
+    model_expression = job["strategy"]["matrix"]["model"]
+    qualification_json = json.dumps([EXPECTED_MODELS[-1]], separators=(",", ":"))
+    full_matrix_json = json.dumps(EXPECTED_MODELS, separators=(",", ":"))
+    assert model_expression == (
+        "${{ fromJSON(github.event.inputs.run_target == 'gpt-oss-qualification' "
+        + f"&& '{qualification_json}' || '{full_matrix_json}') "
+        + "}}"
+    )
+    assert job["env"]["BEDROCK_MODEL_ID"] == "${{ matrix.model.id }}"
+
+
+def test_dev_workflow_has_strict_aggregate_gate() -> None:
+    gate = _dev_workflow()["jobs"][_MATRIX_GATE_JOB]
+    assert gate["needs"] == _DEV_JOB
+    assert gate["if"] == "always()"
+    script = gate["steps"][0]["run"]
+    assert "needs.real-agent-dev-validation.result" in script
+    assert "exit 1" in script
+
+
+def test_dev_workflow_matrix_gate_has_bounded_runtime() -> None:
+    gate = _dev_workflow()["jobs"][_MATRIX_GATE_JOB]
+    assert gate["timeout-minutes"] == 5
+
+
+def test_dev_workflow_uses_real_inference_to_qualify_each_matrix_model() -> None:
+    steps = _dev_steps()
+    assert not any(step.get("name") == "Verify Mantle model availability" for step in steps)
+
+    test_step = next(step for step in steps if step.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
+    assert _dev_workflow()["jobs"][_DEV_JOB]["env"]["BEDROCK_MODEL_ID"] == (
+        "${{ matrix.model.id }}"
+    )
+
+
+def test_dev_workflow_writes_isolated_per_model_evidence() -> None:
+    steps = _dev_steps()
+    upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact@"))
+    assert "${{ matrix.model.slug }}" in upload["with"]["name"]
+    assert "${{ github.run_id }}" in upload["with"]["name"]
+    assert "${{ matrix.model.slug }}" in upload["with"]["path"]
+
+    validate = next(s for s in steps if s.get("name") == "Validate model evidence")
+    assert validate["env"]["MATRIX_MODEL_ID"] == "${{ matrix.model.id }}"
+    assert validate["env"]["MATRIX_MODEL_SLUG"] == "${{ matrix.model.slug }}"
+    assert '--model-id "$MATRIX_MODEL_ID"' in validate["run"]
+    assert '--model-slug "$MATRIX_MODEL_SLUG"' in validate["run"]
+
+
+def test_dev_workflow_has_no_model_fallback_or_dispatch_override() -> None:
+    workflow = _dev_workflow()
+    on = workflow[True] if True in workflow else workflow["on"]
+    inputs = on["workflow_dispatch"].get("inputs", {})
+    assert "model" not in inputs
+    assert "model_id" not in inputs
+
+    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8").lower()
+    assert "fallback" not in text
+    assert "continue-on-error" not in text
 
 
 def test_dev_workflow_explicitly_enables_protected_real_model_tests() -> None:
     test_step = next(s for s in _dev_steps() if s.get("name") == "Run real-LLM gate tests")
     assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
+
+
+def test_dev_workflow_exposes_the_harness_root_to_real_model_tests() -> None:
+    test_step = next(s for s in _dev_steps() if s.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["PYTHONPATH"] == ".:src:runtime"
 
 
 def test_dev_workflow_starts_only_persistent_compose_services() -> None:
@@ -120,7 +297,7 @@ def test_dev_workflow_starts_only_persistent_compose_services() -> None:
         "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
     ], (
         "The real-agent workflow must start only persistent services. Starting the one-shot "
-        "agent-demo service makes `docker compose up --wait` return exit code 1 after the "
+        "runtime service makes `docker compose up --wait` return exit code 1 after the "
         "container exits successfully."
     )
 
@@ -130,6 +307,104 @@ def test_prod_workflow_remains_main_only() -> None:
     text = _PROD_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "refs/heads/main" in text
     assert "refs/heads/dev" not in text
+
+
+# --- Main Mantle IAM -------------------------------------------------------
+
+
+def test_main_template_defaults_are_main_only() -> None:
+    params = _main_template()["Parameters"]
+    assert params["GitHubEnvironment"]["Default"] == "real-agent"
+    assert params["RoleName"]["Default"] == "DuskRealAgentMainMantleRole"
+    assert params["RoleName"]["Default"] != _dev_template()["Parameters"]["RoleName"]["Default"]
+
+
+def test_main_template_uses_exact_immutable_oidc_subject() -> None:
+    statement = _main_role()["Properties"]["AssumeRolePolicyDocument"]["Statement"][0]
+    assert statement["Condition"]["StringEquals"] == {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": {
+            "Fn::Sub": (
+                "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:"
+                "environment:${GitHubEnvironment}"
+            )
+        },
+    }
+
+
+def test_main_template_action_allowlist_is_exact() -> None:
+    assert _main_actions() == {
+        "bedrock-mantle:CallWithBearerToken",
+        "bedrock-mantle:CreateInference",
+        "bedrock-mantle:GetProject",
+        "bedrock-mantle:ListProjects",
+        "bedrock-mantle:ListTagsForResource",
+    }
+
+
+def test_main_template_scopes_mantle_permissions() -> None:
+    statements = _main_role()["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+    token_statement = next(
+        statement
+        for statement in statements
+        if statement["Action"] == "bedrock-mantle:CallWithBearerToken"
+    )
+    assert token_statement["Resource"] == "*"
+    assert token_statement["Condition"]["StringEquals"] == {
+        "bedrock-mantle:bearerTokenType": "SHORT_TERM"
+    }
+
+    project_statement = next(
+        statement for statement in statements if isinstance(statement["Action"], list)
+    )
+    assert project_statement["Resource"] == {
+        "Fn::Sub": (
+            "arn:${AWS::Partition}:bedrock-mantle:${AWS::Region}:${AWS::AccountId}:project/*"
+        )
+    }
+
+
+def test_main_template_has_no_runtime_iam_or_wildcard_actions() -> None:
+    actions = _main_actions()
+    assert "*" not in actions
+    assert "bedrock:InvokeModel" not in actions
+    assert "bedrock:ListInferenceProfiles" not in actions
+    assert not any(action.startswith("iam:") for action in actions)
+
+
+def test_main_setup_defaults_to_read_only_and_main_identity() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '[string]$StackName = "dusk-bedrock-mantle-main"' in script
+    assert '[string]$GitHubEnvironment = "real-agent"' in script
+    assert '$RoleName = "DuskRealAgentMainMantleRole"' in script
+    assert "if (-not $Deploy)" in script
+    assert "if (-not $Confirm)" in script
+
+
+def test_main_setup_requires_main_only_environment_protection() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert '"ritiksah141" -notin $reviewerLogins' in script
+    assert "prevent_self_review" in script
+    assert '$allowedPatterns[0] -eq "main"' in script
+    assert "Only 'main' must be allowed" in script
+
+
+def test_main_setup_validates_exact_live_permissions() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "list-attached-role-policies" in script
+    assert "$policyNames.Count -ne 1" in script
+    assert "$policy.PolicyDocument.Statement.Count -ne 2" in script
+    assert "Unexpected action" in script
+    assert "SHORT_TERM" in script
+
+
+def test_main_setup_never_dispatches_or_changes_provider_variables() -> None:
+    script = _MAIN_SETUP_PATH.read_text(encoding="utf-8")
+    assert "gh workflow run" not in script
+    assert 'gh variable set "AWS_ROLE_ARN"' in script
+    assert 'gh variable set "AWS_REGION"' not in script
+    assert 'gh variable set "BEDROCK_PROVIDER"' not in script
+    assert 'gh variable set "BEDROCK_MODEL_ID"' not in script
 
 
 # --- Dev IAM ---------------------------------------------------------------
@@ -428,8 +703,11 @@ def test_dev_workflow_stop_containers_runs_always() -> None:
 
 
 def test_dev_workflow_fails_if_real_llm_tests_skipped() -> None:
-    text = _DEV_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "skipped" in text.lower() and "exit 1" in text
+    validate = next(s for s in _dev_steps() if s.get("name") == "Validate model evidence")
+    assert "validate_real_agent_evidence.py" in validate["run"]
+    validator = _EVIDENCE_VALIDATOR_PATH.read_text(encoding="utf-8")
+    assert '("failures", "errors", "skipped")' in validator
+    assert "raise ValueError" in validator
 
 
 def test_dev_workflow_log_collection_is_stage_aware() -> None:
@@ -438,7 +716,7 @@ def test_dev_workflow_log_collection_is_stage_aware() -> None:
     assert "docker compose" in script
     assert "ps -q dusk-gate" in script
     assert "gate-not-started" in script
-    assert "if [ ! -s ci-logs/real-agent-gate.log ]" in script
+    assert 'if [ ! -s "$EVIDENCE_DIR/real-agent-gate.log" ]' in script
 
 
 def test_dev_workflow_never_generates_or_prints_bearer_token() -> None:

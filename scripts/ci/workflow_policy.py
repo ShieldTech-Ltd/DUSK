@@ -15,10 +15,11 @@ def main() -> None:
         if data.get("permissions") != {"contents": "read"}:
             errors.append(f"{path}: top-level permissions must be contents: read")
         for name, job in data.get("jobs", {}).items():
-            if "timeout-minutes" not in job:
+            if "timeout-minutes" not in job and "uses" not in job:
                 errors.append(f"{path}:{name}: missing timeout-minutes")
         for action in re.findall(r"uses:\s*([^\s#]+)", text):
-            if not re.fullmatch(r"[^@]+@[0-9a-f]{40}", action):
+            local_workflow = action.startswith("./.github/workflows/") and Path(action).is_file()
+            if not local_workflow and not re.fullmatch(r"[^@]+@[0-9a-f]{40}", action):
                 errors.append(f"{path}: action is not pinned to a full SHA: {action}")
         if "pull_request_target" in text:
             errors.append(f"{path}: pull_request_target is prohibited")

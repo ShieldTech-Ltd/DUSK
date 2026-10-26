@@ -13,6 +13,8 @@ from rich.console import Console
 from dusk import __version__
 from dusk.config import ConfigError, get_config
 from dusk.core.engine import VERDICT_ALERT, Engine
+from dusk.terminal_cli import register_terminal_commands
+from dusk.welcome import show_welcome
 
 if TYPE_CHECKING:
     from dusk.actions.heal import HealResult
@@ -37,10 +39,11 @@ def _configure_logging(*, verbose: bool, level_name: str) -> None:
     )
 
 
-@click.group(help="Dusk, behavioral threat detection for agentic networks.")
+@click.group(invoke_without_command=True, help="DUSK, agent action security.")
 @click.version_option(__version__, prog_name="dusk")
 @click.option("--verbose", is_flag=True, default=False, help="Enable DEBUG logging.")
-def main(verbose: bool) -> None:
+@click.pass_context
+def main(ctx: click.Context, verbose: bool) -> None:
     """Dusk CLI entry point: load config and configure logging."""
     try:
         config = get_config()
@@ -53,6 +56,8 @@ def main(verbose: bool) -> None:
 
     _configure_logging(verbose=verbose, level_name=config.log_level)
     logger.debug("Dusk %s starting (verbose=%s)", __version__, verbose)
+    if ctx.invoked_subcommand is None:
+        show_welcome(console)
 
 
 @main.command(help="Analyse a pcap file and print a verdict.")
@@ -334,6 +339,8 @@ def _fail(message: str, *, as_json: bool) -> None:
         console.print(f"[bold red]Error:[/bold red] {message}")
     sys.exit(2)
 
+
+register_terminal_commands(main)
 
 if __name__ == "__main__":
     main()

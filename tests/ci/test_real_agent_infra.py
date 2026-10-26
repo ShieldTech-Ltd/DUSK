@@ -272,53 +272,15 @@ def test_workflow_has_caller_identity_step() -> None:
     )
 
 
-def test_workflow_has_bedrock_availability_check() -> None:
-    w = _workflow()
-    job = w["jobs"]["real-agent-validation"]
-    bedrock_check = next(
-        (
-            s
-            for s in job["steps"]
-            if "bedrock" in s.get("name", "").lower()
-            and ("access" in s.get("name", "").lower() or "availab" in s.get("name", "").lower())
-        ),
-        None,
-    )
-    assert bedrock_check is not None, (
-        "No Bedrock model availability check step found. "
-        "Add a step that validates the model before running tests."
-    )
-    run_script = bedrock_check.get("run", "")
-    assert "list-inference-profiles" in run_script, (
-        "Bedrock check step must call 'aws bedrock list-inference-profiles'"
-    )
+def test_mantle_workflow_does_not_use_runtime_only_model_discovery() -> None:
+    text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "list-inference-profiles" not in text
 
 
-def test_role_allows_every_bedrock_action_used_by_workflow() -> None:
-    """Catch workflow calls that the assumed OIDC role cannot authorize."""
-    t = _template()
-    policy_statements = t["Resources"]["DuskBedrockRole"]["Properties"]["Policies"][0][
-        "PolicyDocument"
-    ]["Statement"]
-    allowed_actions = {
-        action
-        for statement in policy_statements
-        for action in (
-            [statement["Action"]] if isinstance(statement["Action"], str) else statement["Action"]
-        )
-    }
-
+def test_workflow_does_not_add_aws_calls_beyond_caller_identity() -> None:
     workflow_text = _WORKFLOW_PATH.read_text(encoding="utf-8")
-    required_actions = {"bedrock:InvokeModel"}
-    if "aws bedrock list-inference-profiles" in workflow_text:
-        required_actions.add("bedrock:ListInferenceProfiles")
-    if "aws bedrock get-foundation-model" in workflow_text:
-        required_actions.add("bedrock:GetFoundationModel")
-
-    assert required_actions <= allowed_actions, (
-        "The real-agent workflow uses Bedrock operations that its OIDC role "
-        f"cannot authorize: {sorted(required_actions - allowed_actions)}"
-    )
+    assert workflow_text.count("aws ") == 1
+    assert "aws sts get-caller-identity" in workflow_text
 
 
 def test_list_inference_profiles_uses_wildcard_resource_only() -> None:

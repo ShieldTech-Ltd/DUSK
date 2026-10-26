@@ -4,7 +4,7 @@ import yaml
 
 _WORKFLOW_PATH = Path(".github/workflows/real-agent-sandbox.yml")
 _CONFIGURE_AWS_SHA = "e6de054238d6b7531b4efff3b6587d9aade6a06c"
-_LOCK_FILE_PATH = Path("examples/agent-action-monitor/requirements-real-agent.txt")
+_LOCK_FILE_PATH = Path("dusk-agent-harness/requirements-real-agent.txt")
 
 
 def _workflow() -> dict[str, object]:
@@ -50,10 +50,79 @@ def test_real_agent_workflow_requires_environment_configuration() -> None:
 
     assert "AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}" in text
     assert "AWS_REGION: ${{ vars.AWS_REGION }}" in text
+    assert "BEDROCK_PROVIDER: ${{ vars.BEDROCK_PROVIDER }}" in text
     assert "BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}" in text
     assert "DUSK_GATE_API_KEY: ${{ secrets.DUSK_GATE_API_KEY }}" in text
-    assert 'AWS_DEFAULT_REGION: "${{ vars.AWS_REGION }}"' in text
-    assert 'BEDROCK_MODEL_ID: "${{ vars.BEDROCK_MODEL_ID }}"' in text
+
+
+def test_main_job_exports_the_mantle_provider_contract() -> None:
+    job = _workflow()["jobs"]["real-agent-validation"]
+
+    assert job["env"] == {
+        "AWS_REGION": "${{ vars.AWS_REGION }}",
+        "BEDROCK_PROVIDER": "${{ vars.BEDROCK_PROVIDER }}",
+        "BEDROCK_MODEL_ID": "${{ vars.BEDROCK_MODEL_ID }}",
+    }
+    test_step = next(step for step in job["steps"] if step.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["USE_REAL_BEDROCK"] == "true"
+
+
+def test_main_workflow_exposes_the_harness_root_to_real_model_tests() -> None:
+    test_step = next(step for step in _steps() if step.get("name") == "Run real-LLM gate tests")
+    assert test_step["env"]["PYTHONPATH"] == ".:src:runtime"
+
+
+def test_main_workflow_does_not_run_claude_inference_profile_preflight() -> None:
+    text = _WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "list-inference-profiles" not in text
+    assert "Verify Bedrock model access" not in text
+
+
+def test_main_workflow_starts_only_persistent_compose_services_with_wait() -> None:
+    start_step = next(
+        step
+        for step in _steps()
+        if step.get("name") == "Start gate and mock-prod via Docker Compose"
+    )
+    compose_up_lines = [
+        line.strip()
+        for line in start_step["run"].splitlines()
+        if "docker compose" in line and " up " in f" {line} "
+    ]
+
+    assert compose_up_lines == [
+        "docker compose -f compose.yml -f compose.ci.yml up -d --wait dusk-gate mock-prod"
+    ]
+
+
+def test_main_workflow_uses_production_harness_paths() -> None:
+    job = _workflow()["jobs"]["real-agent-validation"]
+    setup_python = next(
+        step for step in _steps() if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    upload = next(
+        step for step in _steps() if step.get("uses", "").startswith("actions/upload-artifact@")
+    )
+
+    assert job["defaults"]["run"]["working-directory"] == "dusk-agent-harness"
+    assert setup_python["with"]["cache-dependency-path"].strip() == (
+        "dusk-agent-harness/requirements-real-agent.txt"
+    )
+    assert upload["with"]["path"] == "dusk-agent-harness/ci-logs/"
+    legacy_root = "/".join(("examples", "agent-action-monitor"))
+    assert legacy_root not in _WORKFLOW_PATH.read_text(encoding="utf-8")
+
+
+def test_main_gate_log_collection_preserves_an_earlier_startup_failure() -> None:
+    collect_step = next(
+        step for step in _steps() if step.get("name") == "Collect gate logs as evidence"
+    )
+    run_script = collect_step["run"]
+
+    assert "docker compose -f compose.yml -f compose.ci.yml ps -q dusk-gate" in run_script
+    assert "gate-not-started" in run_script
+    assert "exit 0" in run_script
 
 
 # Finding 1: main branch restriction
@@ -133,7 +202,7 @@ def test_log_collection_step_supplies_compose_required_env_vars() -> None:
 
 
 def test_log_collection_step_does_not_swallow_errors() -> None:
-    """Log collection must not silently hide Compose failures with '|| true'."""
+    """The actual Compose log command must not silently hide failures."""
     steps = _steps()
     collect_step = next(
         (
@@ -145,9 +214,10 @@ def test_log_collection_step_does_not_swallow_errors() -> None:
     )
     assert collect_step is not None, "No 'Collect gate logs' step found in workflow"
     run_script = collect_step.get("run", "")
-    assert "|| true" not in run_script, (
-        "Log collection must not swallow Compose failures with '|| true'; "
-        "this hides DUSK_ENFORCE/:? interpolation errors and produces empty log artifacts"
+    log_command = next(line for line in run_script.splitlines() if " logs dusk-gate" in line)
+    assert "|| true" not in log_command, (
+        "The Compose log command must not swallow failures because that can "
+        "produce invalid evidence"
     )
 
 

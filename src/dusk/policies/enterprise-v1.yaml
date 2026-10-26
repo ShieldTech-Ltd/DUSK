@@ -459,23 +459,110 @@ rules:
     severity: high
     decision: REQUIRE_APPROVAL
     prerequisites: [network resource impact]
-  - <<: *planned
+  - <<: *enforced
     id: DUSK-CLOUD-001
     title: Require approval for production deletion
     category: cloud
     severity: critical
     decision: REQUIRE_APPROVAL
-    prerequisites: [environment identity, deletion impact]
-  - <<: *planned
+    rationale: Production resource deletion requires explicit approval bound to the requested action.
+    match:
+      - {field: action.type, operator: equals, value: cloud.resource.delete}
+      - {field: cloud.environment, operator: equals, value: production}
+      - {field: approval.valid, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
     id: DUSK-CLOUD-002
     title: Prevent disabling encryption backups or audit logs
     category: cloud
-    prerequisites: [cloud control semantics]
-  - <<: *planned
+    rationale: Runtime safeguards for encryption, backup, and audit collection must remain enabled.
+    match:
+      - {field: action.type, operator: equals, value: cloud.control.update}
+      - {field: cloud.control, operator: in, value: [encryption, backup, audit]}
+      - {field: cloud.enabled, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
     id: DUSK-CLOUD-003
     title: Prevent public cloud resources
     category: cloud
-    prerequisites: [cloud exposure semantics]
+    rationale: Cloud resources must not be made publicly reachable without a separately approved boundary.
+    match:
+      - {field: cloud.public_exposure, operator: equals, value: true}
+      - {field: approval.valid, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-004
+    title: Prevent cluster-wide administrator grants
+    category: cloud
+    rationale: Workload identities must not receive cluster-admin or equivalent cluster-wide authority.
+    match:
+      - {field: kubernetes.operation, operator: equals, value: rbac.grant}
+      - {field: kubernetes.role, operator: in, value: [cluster-admin, system:masters, admin]}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-005
+    title: Prevent privileged workload creation
+    category: cloud
+    rationale: Privileged workloads can escape namespace and node isolation boundaries.
+    match:
+      - {field: kubernetes.operation, operator: equals, value: workload.create}
+      - {field: kubernetes.privileged, operator: equals, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-006
+    title: Prevent secret retrieval outside workload identity
+    category: cloud
+    rationale: Secret retrieval must be authorized for the cryptographically bound workload identity.
+    match:
+      - {field: action.type, operator: equals, value: secret.read}
+      - {field: cloud.workload_identity_authorized, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-007
+    title: Prevent public load balancer or ingress exposure
+    category: cloud
+    rationale: Kubernetes services and ingress objects must not create an unapproved public boundary.
+    match:
+      - {field: kubernetes.operation, operator: in, value: [service.create, ingress.create]}
+      - {field: kubernetes.public_exposure, operator: equals, value: true}
+      - {field: approval.valid, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-008
+    title: Prevent destructive infrastructure plans
+    category: cloud
+    rationale: Infrastructure plans containing destructive replacement or deletion require a controlled workflow.
+    match:
+      - {field: infrastructure.destructive, operator: equals, value: true}
+      - {field: approval.valid, operator: not_true, value: true}
+    prerequisites: []
+    tests: [allow, deny, bypass, sequence, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-009
+    title: Prevent plans that disable audit backup or encryption controls
+    category: cloud
+    rationale: Infrastructure plans must preserve mandatory audit, backup, and encryption safeguards.
+    match:
+      - {field: infrastructure.disables_controls, operator: contains_any, value: [audit, backup, encryption]}
+    prerequisites: []
+    tests: [allow, deny, bypass, sequence, missing-evidence, watch, enforce]
+  - <<: *enforced
+    id: DUSK-CLOUD-010
+    title: Prevent cross-account or cross-subscription mutation
+    category: cloud
+    rationale: Mutations must remain inside the cloud account or subscription bound to the workload identity.
+    match:
+      - {field: cloud.source_boundary, operator: exists, value: true}
+      - {field: cloud.target_boundary, operator: not_equals, value: "$cloud.source_boundary"}
+    prerequisites: []
+    tests: [allow, deny, bypass, missing-evidence, watch, enforce]
   - <<: *planned
     id: DUSK-DATA-001
     title: Require approval for bulk data export

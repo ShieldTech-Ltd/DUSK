@@ -3,18 +3,21 @@
 set -u
 
 bandit_scan() {
-  bandit -r src examples/agent-action-monitor/src examples/agent-action-monitor/agent-demo \
-    examples/agent-action-monitor/mock-prod \
-    examples/agent-action-monitor/scripts/verify_ci_sandbox.py -ll -x '*/test_*.py'
+  bandit -r src dusk-agent-harness/src dusk-agent-harness/runtime \
+    dusk-agent-harness/mock-prod \
+    dusk-agent-harness/scripts/verify_ci_sandbox.py \
+    services/control-plane/src -ll -x '*/test_*.py'
 }
 
 semgrep_scan() {
-  semgrep scan --config .semgrep.yml --error --metrics=off src examples/agent-action-monitor
+  semgrep scan --config .semgrep.yml --error --metrics=off src \
+    dusk-agent-harness services/control-plane
 }
 
 example_audit() {
-  pip-audit -r examples/agent-action-monitor/agent-demo/requirements.txt &&
-    pip-audit -r examples/agent-action-monitor/mock-prod/requirements.txt
+  pip-audit -r dusk-agent-harness/runtime/requirements.txt &&
+    pip-audit -r dusk-agent-harness/mock-prod/requirements.txt &&
+    pip-audit -r services/control-plane/requirements.txt
 }
 
 workflow_analysis() {
@@ -24,9 +27,13 @@ workflow_analysis() {
 gitleaks_range() {
   base_sha=$1
   head_sha=$2
+  config_args=""
+  if [ -f .gitleaks.toml ]; then
+    config_args="--config .gitleaks.toml"
+  fi
   docker run --rm -v "$PWD:/repo" -w /repo \
     ghcr.io/gitleaks/gitleaks@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 \
-    git /repo --no-banner --redact --exit-code 1 --log-opts="$base_sha..$head_sha"
+    git /repo --no-banner --redact --exit-code 1 $config_args --log-opts="$base_sha..$head_sha"
 }
 
 if [ "${1:-}" = "--task" ]; then

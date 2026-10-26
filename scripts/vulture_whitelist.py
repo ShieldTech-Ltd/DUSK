@@ -8,7 +8,7 @@ genuinely dead during that check got filed as its own issue instead of
 whitelisted (see #76).
 
 Categories:
-- Public API consumed by examples/agent-action-monitor/ (a separate package
+- Public API consumed by dusk-agent-harness/ (a separate package
   vulture can't see when scoped to this repo's own src/), not by anything in
   this repo's own src/ or tests/.
 - v0.2 stub classes (sensor/, detections/, respond/) that are deliberately
@@ -22,7 +22,9 @@ Categories:
 """
 
 from dusk.actions.heal import AgentHealer
+from dusk.application.evaluator import DecisionWrite, EvaluationPrincipal, OffenseWrite
 from dusk.config import set_config
+from dusk.demo_cloudflare import _DemoHandler
 from dusk.detections.lateral import LateralDetection
 from dusk.detections.telemetry import TelemetryDetection
 from dusk.respond.isolate import IsolateResponder
@@ -32,7 +34,7 @@ from dusk.sensor.zeek import ZeekSensor
 from dusk.trace.models import TraceDecision
 from dusk.trace.vector import SimilarDecision, find_similar, find_similar_cached
 
-# Public API only reached from examples/agent-action-monitor/'s api.py, not
+# Public API only reached from dusk-agent-harness/'s api.py, not
 # from anything in this repo's own src/ or tests/. TraceDecision's own dead
 # fields (raw_prompt_snippet, tavily_enrichment, replay_count) were removed
 # entirely rather than whitelisted -- see #76.
@@ -40,7 +42,21 @@ find_similar
 find_similar_cached
 SimilarDecision.similarity
 
+# Canonical application-boundary data consumed structurally by persistence,
+# identity, and legacy adapters. Vulture cannot follow Protocol-driven access.
+EvaluationPrincipal.tenant_id
+EvaluationPrincipal.principal_id
+EvaluationPrincipal.identity_kind
+OffenseWrite.occurred_at
+DecisionWrite.occurred_at
+
 set_config
+
+# BaseHTTPRequestHandler subclass -- methods dispatched by the framework,
+# never called directly from within this repo.
+_DemoHandler.log_message
+_DemoHandler.do_GET
+_DemoHandler.do_POST
 
 # Wired into cli.py's `gate --heal` in #65 (open, not yet merged as of this
 # writing) -- remove once #65 lands on dev.
