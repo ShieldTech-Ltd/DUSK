@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import base64
 import copy
-import hashlib
 import json
 import logging
 import os
@@ -72,7 +71,9 @@ def _load_signing_key() -> Ed25519PrivateKey:
         log.warning('{"event":"ephemeral_key_generated","pub_hex":"%s"}', pub_hex)
         return key
 
-    log.error('{"event":"missing_signing_key","msg":"set DUSK_SIGNING_KEY or DUSK_ALLOW_EPHEMERAL_KEY=1"}')
+    log.error(
+        '{"event":"missing_signing_key","msg":"set DUSK_SIGNING_KEY or DUSK_ALLOW_EPHEMERAL_KEY=1"}'
+    )
     raise SystemExit(1)
 
 
@@ -86,15 +87,23 @@ def _build_auth_context(
 ) -> dict[str, Any]:
     """Build a minimal authorization-stage policy context from the action payload."""
     digest = _action_digest(action)
+    trusted_action = copy.deepcopy(action)
+    trusted_action["_evidence"] = "CONFIRMED"
     return {
-        "action": copy.deepcopy(action),
+        "action": trusted_action,
         "identity": {
             "tenant_id": tenant_id,
             "agent_id": agent_id,
+            "_evidence": "CONFIRMED",
+        },
+        "tenant": {
+            "tenant_id": tenant_id,
+            "_evidence": "CONFIRMED",
         },
         "execution": {
             "stage": "authorization",
             "via_broker": True,
+            "_evidence": "CONFIRMED",
         },
         "permit": {
             "present": False,
@@ -106,6 +115,7 @@ def _build_auth_context(
             "lifetime_exceeded": False,
             "scope": digest,
             "action_scope": digest,
+            "_evidence": "CONFIRMED",
         },
     }
 
@@ -129,12 +139,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:  # noqa: C901, N802
         if self.path != _EVALUATE_PATH:
             self._send_json(404, {"error": "not_found"})
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._send_json(400, {"error": "invalid_content_length"})
+            return
+        if content_length < 0:
+            self._send_json(400, {"error": "invalid_content_length"})
+            return
         if content_length > _MAX_BODY_BYTES:
             self._send_json(413, {"error": "payload_too_large"})
             return
@@ -161,12 +178,22 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "missing_agent_id"})
             return
 
+        trusted_tenant_id = self.headers.get("X-DUSK-Sandbox-Tenant-ID", "").strip()
+        trusted_agent_id = self.headers.get("X-DUSK-Sandbox-Agent-ID", "").strip()
+        if not trusted_tenant_id or not trusted_agent_id:
+            self._send_json(503, {"error": "runtime_identity_missing"})
+            return
+        if tenant_id != trusted_tenant_id or agent_id != trusted_agent_id:
+            self._send_json(403, {"error": "sandbox_identity_mismatch"})
+            return
+
         # The action is the payload minus identity routing fields.
         action: dict[str, Any] = {
-            k: v
-            for k, v in payload.items()
-            if k not in {"tenant_id", "agent_id"}
+            k: v for k, v in payload.items() if k not in {"tenant_id", "agent_id"}
         }
+        if not action:
+            self._send_json(400, {"error": "missing_action"})
+            return
         action_digest = _action_digest(action)
 
         try:
@@ -218,7 +245,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), _Handler)  # nosec B104
+    server = HTTPServer(("0.0.0.0", port), _Handler)  # noqa: S104  # nosec B104
     log.info('{"event":"listening","port":%d}', port)
     server.serve_forever()
 

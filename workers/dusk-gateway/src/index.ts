@@ -6,6 +6,8 @@ const MAX_BODY_BYTES = 65_536;
 
 export interface DuskGatewayEnv {
   DUSK_GATEWAY_TOKEN?: string;
+  DUSK_SANDBOX_TENANT_ID?: string;
+  DUSK_SANDBOX_AGENT_ID?: string;
   DUSK_RUNTIME?: DurableObjectNamespace;
 }
 
@@ -98,7 +100,12 @@ async function handleAction(
     return errorResponse(413, "payload_too_large", requestId);
   }
 
-  if (!env.DUSK_RUNTIME || !env.DUSK_GATEWAY_TOKEN?.trim()) {
+  if (
+    !env.DUSK_RUNTIME ||
+    !env.DUSK_GATEWAY_TOKEN?.trim() ||
+    !env.DUSK_SANDBOX_TENANT_ID?.trim() ||
+    !env.DUSK_SANDBOX_AGENT_ID?.trim()
+  ) {
     return errorResponse(503, "gateway_not_configured", requestId);
   }
   if (!(await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN))) {
@@ -113,6 +120,13 @@ async function handleAction(
     const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
     if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
       return errorResponse(400, "json_object_required", requestId);
+    }
+    const payload = parsed as Record<string, unknown>;
+    if (
+      payload.tenant_id !== env.DUSK_SANDBOX_TENANT_ID ||
+      payload.agent_id !== env.DUSK_SANDBOX_AGENT_ID
+    ) {
+      return errorResponse(403, "sandbox_identity_mismatch", requestId);
     }
   } catch {
     return errorResponse(400, "invalid_json", requestId);
@@ -129,6 +143,8 @@ async function handleAction(
           "Content-Type": "application/json",
           "X-DUSK-Gateway": "cloudflare-worker",
           "X-DUSK-Request-ID": requestId,
+          "X-DUSK-Sandbox-Tenant-ID": env.DUSK_SANDBOX_TENANT_ID,
+          "X-DUSK-Sandbox-Agent-ID": env.DUSK_SANDBOX_AGENT_ID,
         },
       }),
     );
