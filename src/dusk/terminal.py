@@ -233,11 +233,20 @@ class TerminalRuntime:
     @staticmethod
     def _spawn(op: Operation) -> str:
         # No shell, inherited stdin, output buffering or credential environment.
-        environment = {
-            key: os.environ[key]
-            for key in ("SystemRoot", "WINDIR", "TEMP", "TMP")
-            if key in os.environ
-        }
+        # POSIX keys (PATH, HOME, USER, LANG, TMPDIR) and Windows keys are both
+        # included; whichever are absent on the current platform are filtered out.
+        _env_keys = (
+            "PATH",
+            "HOME",
+            "USER",
+            "LANG",
+            "TMPDIR",
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+        )
+        environment = {key: os.environ[key] for key in _env_keys if key in os.environ}
         try:
             result = subprocess.run(  # noqa: S603 - fixed operator-approved argv, never shell text
                 [str(op.executable), *op.args],
