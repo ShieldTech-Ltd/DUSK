@@ -11,9 +11,15 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Path, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from dusk_control_plane.audit import DurableEvaluationService
+from dusk_control_plane.audit_events import (
+    AuditEventPage,
+    AuditEventQuery,
+    AuditEventsUnavailableError,
+)
 from dusk_control_plane.dashboard import (
     ActionBreakdown,
     AgentDetail,
@@ -65,6 +71,7 @@ from dusk_control_plane.request_context import (
 
 REQUEST_ID_HEADER = "X-Request-ID"
 logger = logging.getLogger(__name__)
+SAFE_PUBLIC_DEMO_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _evaluation_authorization = require_route_policy("POST", "/v2/evaluations")
 _decision_list_authorization = require_route_policy("GET", "/v2/decisions")
 _decision_detail_authorization = require_route_policy("GET", "/v2/decisions/{trace_id}")
@@ -77,6 +84,28 @@ _policies_authorization = require_route_policy("GET", "/v2/policies")
 _policy_summary_authorization = require_route_policy("GET", "/v2/policies/summary")
 _integration_health_authorization = require_route_policy("GET", "/v2/integrations/health")
 _service_status_authorization = require_route_policy("GET", "/v2/service/status")
+_audit_events_authorization = require_route_policy("GET", "/v2/audit-events")
+
+
+def _install_public_demo_method_guard(app: FastAPI, container: AppContainer) -> None:
+    if not container.settings.public_demo_anonymous_access_enabled:
+        return
+
+    @app.middleware("http")
+    async def reject_public_demo_mutations(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if request.method not in SAFE_PUBLIC_DEMO_METHODS:
+            response = error_response(
+                status_code=405,
+                code="PUBLIC_DEMO_READ_ONLY",
+                message="The public demo permits read-only requests",
+                retryable=False,
+            )
+            response.headers["Allow"] = "GET, HEAD, OPTIONS"
+            return response
+        return await call_next(request)
 
 
 async def _bounded_evaluate(
@@ -95,6 +124,26 @@ async def _bounded_evaluate(
 
 
 def _install_v2_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
+    if container.settings.evaluation_api_enabled:
+        _install_evaluation_route(app, container, common_errors)
+
+    if container.settings.dashboard_read_api_enabled:
+        _install_dashboard_routes(app, container, common_errors)
+
+    if container.settings.operations_read_api_enabled:
+        _install_operations_routes(app, container, common_errors)
+
+    if not container.settings.decision_read_api_enabled:
+        return
+
+    _install_decision_routes(app, container, common_errors)
+
+
+def _install_evaluation_route(
     app: FastAPI,
     container: AppContainer,
     common_errors: dict[int | str, dict[str, Any]],
@@ -126,15 +175,12 @@ def _install_v2_routes(
         set_decision_trace_id(response.trace_id)
         return response
 
-    if container.settings.dashboard_read_api_enabled:
-        _install_dashboard_routes(app, container, common_errors)
 
-    if container.settings.operations_read_api_enabled:
-        _install_operations_routes(app, container, common_errors)
-
-    if not container.settings.decision_read_api_enabled:
-        return
-
+def _install_decision_routes(
+    app: FastAPI,
+    container: AppContainer,
+    common_errors: dict[int | str, dict[str, Any]],
+) -> None:
     @app.get(
         "/v2/decisions",
         response_model=DecisionPage,
@@ -331,6 +377,21 @@ def _install_operations_routes(
     ) -> ServiceStatus:
         return await reader().service_status(principal)
 
+    @app.get(
+        "/v2/audit-events",
+        response_model=AuditEventPage,
+        tags=["audit"],
+        responses=standard_responses,
+    )
+    async def audit_events(
+        query: Annotated[AuditEventQuery, Query()],
+        principal: Annotated[Principal, Depends(_audit_events_authorization)],
+    ) -> AuditEventPage:
+        audit_reader = container.audit_event_reader
+        if audit_reader is None:
+            raise AuditEventsUnavailableError
+        return await audit_reader.list_events(query, principal)
+
 
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:
     try:
@@ -402,6 +463,18 @@ def create_app(  # noqa: C901
     app.state.container = resolved
     app.state.started = False
     install_error_handlers(app)
+    if settings.cors_allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_allowed_origins),
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            expose_headers=["X-Request-ID"],
+            max_age=600,
+        )
+
+    _install_public_demo_method_guard(app, resolved)
 
     @app.middleware("http")
     async def request_context(

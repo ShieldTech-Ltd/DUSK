@@ -30,9 +30,9 @@ from pathlib import Path
 import fake_sie_sdk
 import pytest
 
-from dusk import api
-from dusk.config import reset_config
-from dusk.trace import vector
+from dusk_harness import api
+from dusk_harness.config import reset_config
+from dusk_harness.trace import vector
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -18,23 +18,23 @@ All three are verified against the live Superlinked model catalog
 
 ## Where each primitive is wired in
 
-- **encode** -- `src/dusk/trace/vector.py`'s `sie_encode()` (wrapped by
-  `embed_text()`), called live by `/v1/gate` (`src/dusk/api.py`): once per
+- **encode** -- `src/dusk_harness/trace/vector.py`'s `sie_encode()` (wrapped by
+  `embed_text()`), called live by `/v1/gate` (`src/dusk_harness/api.py`): once per
   request to embed the incoming action, and once per verdict to record it
   for future lookups. `find_similar_cached()` compares the fresh query
   embedding against a bounded, pre-embedded history (capped at 200 entries)
   to populate the response's `similar_decision_ids`, without re-embedding
   that history on every call.
-- **score** -- `src/dusk/trace/vector.py`'s `sie_score()`, used two ways:
+- **score** -- `src/dusk_harness/trace/vector.py`'s `sie_score()`, used two ways:
   reranking the encode-shortlisted candidates for `similar_decision_ids`,
-  and inside `src/dusk/actions/analyse.py`'s `_semantic_novelty()` to check
+  and inside `src/dusk_harness/actions/analyse.py`'s `_semantic_novelty()` to check
   a new action's rerank similarity against the acting agent's own raw
   baseline history. Its raw cross-encoder output is a logit with no fixed
   scale, so `sie_score()` bounds it into `[0, 1]` via sigmoid before a
   fixed threshold compares against it -- that bounding is monotonic, not a
   calibrated probability (see Known limits below).
-- **extract** -- `src/dusk/trace/vector.py`'s `sie_extract()`, used inside
-  `src/dusk/actions/analyse.py`'s `_extracted_sensitive_terms()` to flag
+- **extract** -- `src/dusk_harness/trace/vector.py`'s `sie_extract()`, used inside
+  `src/dusk_harness/actions/analyse.py`'s `_extracted_sensitive_terms()` to flag
   privileged terms the static frozenset (`_SENSITIVE_TOKENS`/
   `_SENSITIVE_VALUES`) does not already cover. Each extraction keeps its
   GLiNER confidence score; terms below `_EXTRACT_CONFIDENCE_FLOOR` (0.5)

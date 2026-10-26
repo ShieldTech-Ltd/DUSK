@@ -123,6 +123,17 @@ async def test_invalid_or_missing_required_claims_are_rejected(claims: dict[str,
 
 
 @pytest.mark.anyio
+async def test_not_before_is_optional_and_defaults_to_issued_at() -> None:
+    key = signing_key("current")
+    claims = base_claims()
+    claims.pop("nbf")
+
+    principal = await authenticator(key).authenticate(token(key, claims))
+
+    assert principal.subject == claims["sub"]
+
+
+@pytest.mark.anyio
 async def test_algorithm_is_pinned_before_key_lookup() -> None:
     key = signing_key("current")
     forged = jwt.encode(

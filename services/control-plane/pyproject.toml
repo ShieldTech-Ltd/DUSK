@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=80,<84", "wheel>=0.45,<0.48"]
+requires = ["setuptools>=84.1,<85", "wheel>=0.45,<0.48"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,13 +15,15 @@ dependencies = [
     "asyncpg>=0.31,<1",
     "fastapi>=0.116,<1",
     "httpx2>=2.12,<3",
-    "opentelemetry-api>=1.36,<2",
-    "opentelemetry-exporter-otlp-proto-http>=1.36,<2",
-    "opentelemetry-sdk>=1.36,<2",
-    "PyJWT[crypto]>=2.13,<3",
+    "opentelemetry-api>=1.45.1,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.1,<2",
+    "opentelemetry-sdk>=1.45.1,<2",
+    "PyJWT[crypto]>=2.14,<3",
     "pydantic-settings>=2.10,<3",
+    "PyYAML>=6.0,<7",
     "SQLAlchemy[asyncio]>=2.0.52,<2.1",
-    "dusk-security==0.2.0",
+    "urllib3>=2.8,<3",
+    "dusk-security==0.3.0rc1",
     "uvicorn>=0.35,<1",
 ]
 
@@ -36,6 +38,7 @@ dev = [
 [project.scripts]
 dusk-control-plane = "dusk_control_plane.main:run"
 dusk-control-plane-migrate = "dusk_control_plane.migration:main"
+dusk-control-plane-demo-reset = "dusk_control_plane.demo_seed:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -57,6 +60,7 @@ select = ["E", "W", "F", "I", "N", "S", "B", "C90", "UP", "ANN"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "ANN"]
 "scripts/vulture_whitelist.py" = ["B018", "F821"]
+"local/seed_scenarios.py" = ["S310"]
 
 [tool.mypy]
 python_version = "3.11"

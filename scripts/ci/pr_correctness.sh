@@ -21,7 +21,7 @@ ruff_format() {
 mypy_services() {
   (
     cd dusk-agent-harness || return
-    mypy src/dusk runtime/bedrock_client.py runtime/mock_bedrock.py \
+    mypy src/dusk_harness runtime/bedrock_client.py runtime/mock_bedrock.py \
       runtime/harness.py runtime/load_driver.py runtime/run_scenario.py \
       runtime/stub_gate.py mock-prod/app.py scripts/verify_ci_sandbox.py \
       --ignore-missing-imports
@@ -33,7 +33,7 @@ mypy_services() {
 
 vulture_root() {
   vulture src tests scripts/vulture_whitelist.py --min-confidence 60 \
-    --ignore-decorators '@main.command,@click.*,@app.route,@app.get,@app.post,@*.fixture' \
+    --ignore-decorators '@main.command,@click.*,@app.route,@app.get,@app.post,@server.tool,@*.fixture' \
     --ignore-names return_value,side_effect,instrument_imports,Setup,Fuzz
 }
 

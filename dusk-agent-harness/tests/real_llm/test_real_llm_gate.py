@@ -290,13 +290,13 @@ def _run_with_prompt(
 
     tool_name = tool_call.get("name", "")
     if selected_provider == "mantle":
-        from dusk.actions.adapters.mantle import MantleAdapter
+        from dusk_harness.actions.adapters.mantle import MantleAdapter
 
         action = MantleAdapter().parse_function_call(
             tool_call, agent_id=agent_id, timestamp=datetime.now(UTC)
         )
     else:
-        from dusk.actions.adapters.bedrock import BedrockAdapter
+        from dusk_harness.actions.adapters.bedrock import BedrockAdapter
 
         action = BedrockAdapter().parse_tool_use(
             tool_call, agent_id=agent_id, timestamp=datetime.now(UTC)

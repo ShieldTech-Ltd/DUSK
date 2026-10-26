@@ -1,6 +1,6 @@
 """Configurable stub SIEClient for SIE failure-mode tests.
 
-Injects into dusk.trace.vector._sie_client via monkeypatch.  Each instance
+Injects into dusk_harness.trace.vector._sie_client via monkeypatch.  Each instance
 can be configured to simulate a distinct failure mode without spinning up an
 HTTP server.
 """

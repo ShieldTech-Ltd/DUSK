@@ -5,6 +5,7 @@
     "test:worker": "vitest run --config workers/dusk-gateway/vitest.config.ts",
     "typecheck:worker": "tsc --noEmit && tsc --noEmit -p workers/dusk-gateway/test",
     "deploy:worker:dry-run": "wrangler deploy --dry-run",
+    "deploy:worker:bundle-dry-run": "wrangler deploy --dry-run --containers-rollout=none",
     "types:worker": "wrangler types"
   },
   "devDependencies": {

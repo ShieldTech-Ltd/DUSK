@@ -259,8 +259,10 @@ class JwksCache:
         for raw_key in raw_keys:
             if not isinstance(raw_key, dict):
                 raise IdentityProviderUnavailableError
-            kid = raw_key.get("kid")
             use = raw_key.get("use")
+            if use == "enc":
+                continue
+            kid = raw_key.get("kid")
             key_type = raw_key.get("kty")
             if (
                 not isinstance(kid, str)
@@ -273,6 +275,8 @@ class JwksCache:
                 raise IdentityProviderUnavailableError
             algorithm = self._resolve_algorithm(raw_key.get("alg"), cast(str, key_type))
             parsed[kid] = jwt.PyJWK(raw_key, algorithm=algorithm)
+        if not parsed:
+            raise IdentityProviderUnavailableError
         return parsed
 
     def _resolve_algorithm(self, algorithm: object, key_type: str) -> str:
@@ -345,7 +349,7 @@ class OidcAuthenticator:
                 audience=self._settings.oidc_audience,
                 issuer=self._settings.oidc_issuer,
                 options={
-                    "require": ["iss", "aud", "sub", "iat", "nbf", "exp"],
+                    "require": ["iss", "aud", "sub", "iat", "exp"],
                     "verify_exp": False,
                     "verify_iat": False,
                     "verify_nbf": False,
@@ -366,7 +370,7 @@ class OidcAuthenticator:
         except (TypeError, ValueError) as exc:
             raise AuthenticationRejectedError("invalid_identity_kind") from exc
         issued_at = _numeric_date(claims.get("iat"))
-        not_before = _numeric_date(claims.get("nbf"))
+        not_before = _numeric_date(claims.get("nbf", claims.get("iat")))
         expires_at = _numeric_date(claims.get("exp"))
         now = self._wall_clock()
         skew = self._settings.oidc_clock_skew_seconds
@@ -446,7 +450,21 @@ async def authenticated_principal(
     request: Request,
     credential: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Principal:
-    authenticator: Authenticator | None = request.app.state.container.authenticator
+    container = request.app.state.container
+    settings: Settings = container.settings
+    if settings.public_demo_anonymous_access_enabled:
+        if credential is not None:
+            raise AuthenticationRejectedError("credential_not_allowed")
+        if settings.public_demo_tenant_id is None:  # protected by settings validation
+            raise IdentityProviderUnavailableError
+        return Principal(
+            issuer="urn:dusk:public-demo",
+            subject="anonymous-demo-viewer",
+            tenant_id=settings.public_demo_tenant_id,
+            kind=IdentityKind.HUMAN,
+            roles=frozenset({Role.VIEWER}),
+        )
+    authenticator: Authenticator | None = container.authenticator
     if credential is None or credential.scheme.lower() != "bearer":
         raise AuthenticationRejectedError("missing_credential")
     if authenticator is None:

@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.abspath(LAB_DIR))
 
 import generate_actions  # noqa: E402
 
-from dusk.actions.event import AgentAction  # noqa: E402
-from dusk.actions.ingest import ingest_file  # noqa: E402
+from dusk_harness.actions.event import AgentAction  # noqa: E402
+from dusk_harness.actions.ingest import ingest_file  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 

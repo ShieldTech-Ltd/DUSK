@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dusk import api
-from dusk.config import reset_config
+from dusk_harness import api
+from dusk_harness.config import reset_config
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 BASELINE_PATH = str(FIXTURES / "actions_normal.json")
@@ -259,9 +259,9 @@ def test_gate_enforce_mode_via_config_blocks_instead_of_would_block(client, monk
 
 def test_gate_allow_fires_decision_and_report_but_not_alert(client) -> None:
     with (
-        patch("dusk.trace.n8n_client.fire_decision") as mock_decision,
-        patch("dusk.trace.n8n_client.fire_report") as mock_report,
-        patch("dusk.trace.n8n_client.fire_alert") as mock_alert,
+        patch("dusk_harness.trace.n8n_client.fire_decision") as mock_decision,
+        patch("dusk_harness.trace.n8n_client.fire_report") as mock_report,
+        patch("dusk_harness.trace.n8n_client.fire_alert") as mock_alert,
     ):
         r = client.post("/v1/gate", json=_action_payload(port=443))
 
@@ -273,9 +273,9 @@ def test_gate_allow_fires_decision_and_report_but_not_alert(client) -> None:
 
 def test_gate_refusal_fires_all_three_webhooks(client) -> None:
     with (
-        patch("dusk.trace.n8n_client.fire_decision") as mock_decision,
-        patch("dusk.trace.n8n_client.fire_report") as mock_report,
-        patch("dusk.trace.n8n_client.fire_alert") as mock_alert,
+        patch("dusk_harness.trace.n8n_client.fire_decision") as mock_decision,
+        patch("dusk_harness.trace.n8n_client.fire_report") as mock_report,
+        patch("dusk_harness.trace.n8n_client.fire_alert") as mock_alert,
     ):
         r = client.post(
             "/v1/gate", json=_action_payload(agent_id="ghost-agent", target="fw-restricted")
@@ -288,7 +288,7 @@ def test_gate_refusal_fires_all_three_webhooks(client) -> None:
 
 
 def test_gate_webhook_payload_includes_action_context(client) -> None:
-    with patch("dusk.trace.n8n_client.fire_decision") as mock_decision:
+    with patch("dusk_harness.trace.n8n_client.fire_decision") as mock_decision:
         client.post("/v1/gate", json=_action_payload(port=443))
 
     payload = mock_decision.call_args[0][0]

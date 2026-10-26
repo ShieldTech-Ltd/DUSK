@@ -14,6 +14,11 @@ from dusk_control_plane.audit import (
     PostgresDecisionEvidenceStore,
     ProviderBrokerIntentResolver,
 )
+from dusk_control_plane.audit_events import (
+    AuditCursorCodec,
+    AuditEventReader,
+    PostgresAuditEventReader,
+)
 from dusk_control_plane.config import Settings
 from dusk_control_plane.dashboard import (
     AgentRiskCursorCodec,
@@ -71,6 +76,7 @@ class AppContainer:
     decision_reader: DecisionReader | None = None
     dashboard_reader: DashboardReader | None = None
     operations_reader: OperationsReader | None = None
+    audit_event_reader: AuditEventReader | None = None
     telemetry_runtime: TelemetryRuntime | None = None
     retention_service: RetentionService | None = None
     retention_policy_service: RetentionPolicyService | None = None
@@ -89,6 +95,7 @@ class AppContainer:
         decision_reader: DecisionReader | None = None,
         dashboard_reader: DashboardReader | None = None,
         operations_reader: OperationsReader | None = None,
+        audit_event_reader: AuditEventReader | None = None,
         policy_pack: PolicyPack | None = None,
         telemetry_runtime: TelemetryRuntime | None = None,
         retention_service: RetentionService | None = None,
@@ -215,6 +222,16 @@ class AppContainer:
                     outbox_worker=resolved_outbox_worker,
                 ),
             )
+        resolved_audit_event_reader = audit_event_reader
+        if resolved_settings.operations_read_api_enabled and resolved_audit_event_reader is None:
+            if resolved_database is None or resolved_settings.decision_cursor_signing_key is None:
+                raise ValueError("operations_read_api_enabled requires audit query dependencies")
+            resolved_audit_event_reader = PostgresAuditEventReader(
+                resolved_database,
+                AuditCursorCodec(
+                    resolved_settings.decision_cursor_signing_key.get_secret_value().encode()
+                ),
+            )
         return cls(
             settings=resolved_settings,
             readiness_probes=tuple(resolved_probes),
@@ -232,6 +249,7 @@ class AppContainer:
             decision_reader=resolved_decision_reader,
             dashboard_reader=resolved_dashboard_reader,
             operations_reader=resolved_operations_reader,
+            audit_event_reader=resolved_audit_event_reader,
             telemetry_runtime=resolved_telemetry,
             retention_service=resolved_retention_service,
             retention_policy_service=resolved_retention_policy_service,

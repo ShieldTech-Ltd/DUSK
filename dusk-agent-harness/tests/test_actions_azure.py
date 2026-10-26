@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from dusk.actions.adapters.azure import AzureAdapter
-from dusk.actions.adapters.base import AdapterError
+from dusk_harness.actions.adapters.azure import AzureAdapter
+from dusk_harness.actions.adapters.base import AdapterError
 
 
 def _nsg_record(**overrides: object) -> dict[str, object]:

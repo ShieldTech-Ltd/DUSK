@@ -1,4 +1,4 @@
-"""Tests for SIE-backed similarity search in dusk.trace.vector."""
+"""Tests for SIE-backed similarity search in dusk_harness.trace.vector."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dusk.config import Config
-from dusk.trace import vector
-from dusk.trace.models import TraceDecision
+from dusk_harness.config import Config
+from dusk_harness.trace import vector
+from dusk_harness.trace.models import TraceDecision
 
 DEFAULT_CONFIG = Config()
 

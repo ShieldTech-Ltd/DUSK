@@ -193,11 +193,11 @@ class PolicyEvaluationService:
     ) -> tuple[dict[str, object], tuple[EvidenceSubmission, ...]]:
         return (
             {
+                **request.action.attributes,
                 "type": request.action.action_type,
                 "target": request.action.target,
                 "consequential": request.action.consequential,
                 "tenant_id": principal.tenant_id,
-                **request.action.attributes,
             },
             tuple(
                 EvidenceSubmission(

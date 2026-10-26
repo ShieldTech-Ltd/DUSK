@@ -228,6 +228,19 @@ def test_v2_evaluation_route_fails_closed_without_activated_service() -> None:
     assert response.json()["error"]["retryable"] is True
 
 
+def test_evaluation_route_can_be_removed_for_read_only_deployments() -> None:
+    settings = _settings(
+        v2_enabled=True,
+        evaluation_api_enabled=False,
+        oidc_issuer="https://identity.example.test/",
+        oidc_audience="dusk-control-plane",
+        oidc_jwks_uri="https://identity.example.test/jwks.json",
+    )
+    app = create_app(container=AppContainer.build(settings=settings))
+
+    assert "/v2/evaluations" not in {route.path for route in app.routes}
+
+
 class _LifecycleWorker:
     def __init__(self) -> None:
         import asyncio

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from dusk.actions.adapters.base import AdapterError
-from dusk.actions.adapters.generic import GenericAdapter
+from dusk_harness.actions.adapters.base import AdapterError
+from dusk_harness.actions.adapters.generic import GenericAdapter
 
 
 def _record(**overrides: object) -> dict[str, object]:

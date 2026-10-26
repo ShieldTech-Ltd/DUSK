@@ -92,7 +92,7 @@ the SDK itself has that requirement:
 cp .env.example .env
 
 # terminal 1: the gate
-python -m dusk.api
+python -m dusk_harness.api
 
 # terminal 2: the dummy downstream target
 python mock-prod/app.py
@@ -146,7 +146,7 @@ to turn it on.
 ### Webhook integrations
 
 Every verdict can fire `decision` and `report`; refused verdicts can also fire
-`alert` through `src/dusk/trace/n8n_client.py`. The local Compose stack routes
+`alert` through `src/dusk_harness/trace/n8n_client.py`. The local Compose stack routes
 these paths to the bounded metadata sink in `mock-prod`. Inspect received
 events at `http://localhost:9000/webhook-log`.
 
@@ -204,7 +204,7 @@ not break gate decisions.
 `/v1/gate`'s response carries the result directly: `similar_decision_ids`
 is populated from a real per-agent decision history (embedded once at
 record time, capped at 200 entries so lookup cost stays O(1) regardless of
-how long the gate has been running -- see `src/dusk/api.py`), not
+how long the gate has been running -- see `src/dusk_harness/api.py`), not
 hardcoded. The optional live benchmark is skipped unless an endpoint and any
 required credential are supplied at runtime. See `docs/sie-primitives.md` for
 where each primitive is wired in.
@@ -278,7 +278,7 @@ complete local flow:
 - `contracts/v1-gate-golden.json` -- deterministic response and side-effect
   snapshots protecting the frozen contract during refactoring; the documented
   normalization policy is in `docs/v1-gate-golden-contract.md`
-- `src/dusk/` -- the gate itself: `actions/` (baseline, analyse, verdict),
+- `src/dusk_harness/` -- the gate itself: `actions/` (baseline, analyse, verdict),
   `trace/` (SIE client, n8n webhooks), `config.py`, and `api.py`. This example
   deliberately contains only the agent-action gate; network packet detection
   is outside its scope

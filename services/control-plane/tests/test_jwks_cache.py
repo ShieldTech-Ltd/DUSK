@@ -102,11 +102,22 @@ async def test_single_algorithm_can_be_applied_to_jwk_without_alg_metadata() -> 
     assert (await jwks.get(key.kid)).algorithm_name == "RS256"
 
 
+@pytest.mark.anyio
+async def test_explicit_encryption_keys_are_ignored_when_signing_key_is_present() -> None:
+    key = signing_key("signing-key")
+    encryption_key = signing_key("encryption-key").jwk
+    encryption_key.update({"use": "enc", "alg": "RSA-OAEP"})
+    jwks = cache(SequenceFetcher([{"keys": [key.jwk, encryption_key]}]), Clock())
+
+    assert (await jwks.get(key.kid)).key_id == key.kid
+
+
 @pytest.mark.parametrize(
     "document",
     [
         {},
         {"keys": []},
+        {"keys": [{"kid": "enc-only", "use": "enc", "kty": "RSA"}]},
         {"keys": [{"kid": "bad", "alg": "HS256", "kty": "oct", "k": "AA"}]},
         {"keys": [{"kid": "duplicate"}, {"kid": "duplicate"}]},
     ],

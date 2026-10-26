@@ -2,13 +2,13 @@ name: dusk-control-plane
 
 services:
   postgresql:
-    profiles: [storage]
+    profiles: [storage, control-plane, console]
     image: postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
     environment:
       POSTGRES_DB: dusk_control_plane
       POSTGRES_USER: dusk_control_plane
       POSTGRES_PASSWORD: local-development-only
-    ports: ["127.0.0.1:${DUSK_CP_POSTGRES_PORT:-5432}:5432"]
+    ports: ["127.0.0.1:${DUSK_CP_POSTGRES_PORT:-55432}:5432"]
     volumes: [control-plane-postgresql:/var/lib/postgresql/data]
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U dusk_control_plane -d dusk_control_plane"]
@@ -18,7 +18,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   control-plane:
-    profiles: [control-plane]
+    profiles: [control-plane, console]
     build:
       context: ../..
       dockerfile: services/control-plane/Dockerfile
@@ -27,7 +27,23 @@ services:
       DUSK_CP_HOST: 0.0.0.0
       DUSK_CP_PORT: "8080"
       DUSK_CP_API_DOCS_ENABLED: "true"
-      DUSK_CP_V2_ENABLED: "false"
+      DUSK_CP_V2_ENABLED: "true"
+      DUSK_CP_OIDC_ISSUER: http://localhost:8081/realms/dusk-local
+      DUSK_CP_OIDC_AUDIENCE: dusk-control-plane
+      DUSK_CP_OIDC_JWKS_URI: http://keycloak:8080/realms/dusk-local/protocol/openid-connect/certs
+      DUSK_CP_STORAGE_ENABLED: "true"
+      DUSK_CP_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:local-development-only@postgresql/dusk_control_plane
+      DUSK_CP_DECISION_READ_API_ENABLED: "true"
+      DUSK_CP_DASHBOARD_READ_API_ENABLED: "true"
+      DUSK_CP_OPERATIONS_READ_API_ENABLED: "true"
+      DUSK_CP_DECISION_CURSOR_SIGNING_KEY: local-cursor-signing-key-console-208
+      DUSK_CP_CORS_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      DUSK_CP_LOCAL_STACK_ENABLED: "true"
+      DUSK_CP_LOCAL_TENANT_ID: 11111111-1111-4111-8111-111111111111
+      DUSK_CP_LOCAL_EVIDENCE_SIGNING_KEY: local-evidence-signing-key-console-208
+      DUSK_CP_LOCAL_AUDIT_SIGNING_KEY: local-audit-signing-key-console-208-only
+    depends_on:
+      migration: {condition: service_completed_successfully}
     ports: ["127.0.0.1:${DUSK_CP_HOST_PORT:-8080}:8080"]
     read_only: true
     tmpfs: [/tmp]
@@ -43,6 +59,109 @@ services:
       timeout: 3s
       start_period: 5s
       retries: 3
+
+  migration:
+    profiles: [control-plane, console]
+    build:
+      context: ../..
+      dockerfile: services/control-plane/Dockerfile
+    command: ["dusk-control-plane-migrate"]
+    environment:
+      DUSK_CP_ENVIRONMENT: local
+      DUSK_CP_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:local-development-only@postgresql/dusk_control_plane
+    depends_on:
+      postgresql: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  keycloak:
+    profiles: [console]
+    image: quay.io/keycloak/keycloak:26.3.3@sha256:6a7217a100bd3e5de4063a27a538ef999a3c5a88c4b4ec0ffc0a642aee7b2597
+    command: ["start-dev", "--import-realm", "--hostname", "http://localhost:8081", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: local-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-admin-console-208
+    ports: ["127.0.0.1:${DUSK_CP_KEYCLOAK_PORT:-8081}:8080"]
+    volumes:
+      - ./local/keycloak/dusk-local-realm.json:/opt/keycloak/data/import/dusk-local-realm.json:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/9000'" ]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 20
+
+  scenario-loader:
+    profiles: [console]
+    build:
+      context: ../..
+      dockerfile: services/control-plane/Dockerfile
+    command: ["python", "/app/seed_scenarios.py"]
+    environment:
+      DUSK_CP_ENVIRONMENT: local
+      DUSK_CP_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:local-development-only@postgresql/dusk_control_plane
+      DUSK_CP_LOCAL_EVIDENCE_SIGNING_KEY: local-evidence-signing-key-console-208
+      DUSK_LOCAL_KEYCLOAK_URL: http://keycloak:8080
+      DUSK_LOCAL_CONTROL_PLANE_URL: http://control-plane:8080
+    depends_on:
+      control-plane: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  health-monitor:
+    profiles: [console]
+    build:
+      context: ../..
+      dockerfile: services/control-plane/Dockerfile
+    command: ["python", "/app/seed_scenarios.py"]
+    environment:
+      DUSK_CP_ENVIRONMENT: local
+      DUSK_CP_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:local-development-only@postgresql/dusk_control_plane
+      DUSK_LOCAL_KEYCLOAK_URL: http://keycloak:8080
+      DUSK_LOCAL_CONTROL_PLANE_URL: http://control-plane:8080
+      DUSK_LOCAL_HEALTH_MONITOR: "true"
+    depends_on:
+      scenario-loader: {condition: service_completed_successfully}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import os,time; assert time.time() - os.stat('/tmp/dusk-health-monitor').st_mtime < 75
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  console:
+    profiles: [console]
+    build:
+      context: ../..
+      dockerfile: apps/console/Dockerfile
+    ports: ["127.0.0.1:${DUSK_CONSOLE_PORT:-3000}:8080"]
+    depends_on:
+      scenario-loader: {condition: service_completed_successfully}
+    volumes:
+      - ../../apps/console/public/config.json:/usr/share/nginx/html/config.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 
 volumes:
   control-plane-postgresql:

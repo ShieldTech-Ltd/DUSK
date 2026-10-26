@@ -13,7 +13,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==83.0.0 wheel==0.47.0 \
+RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==84.1.0 wheel==0.47.0 \
     && pip install --no-cache-dir -e .
 
 COPY runtime/requirements.txt ./runtime/requirements.txt
