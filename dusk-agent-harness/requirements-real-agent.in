@@ -11,7 +11,7 @@ PyYAML>=6.0
 flask>=3.0
 flask-cors>=4.0
 gunicorn>=22.0
-python-dotenv>=1.0
+python-dotenv>=1.2.4
 
 # Test harness
 pytest>=7.4.0
