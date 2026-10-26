@@ -196,8 +196,15 @@ def test_release_uses_protected_main_oidc_and_no_ssh() -> None:
     ci_workflow = (ROOT / ".github/workflows/dusk.yml").read_text(encoding="utf-8")
     assert "workflow_call:" in workflow
     assert "timeout-minutes: 45" in workflow
-    assert "needs: [security-gate]" in ci_workflow
-    assert "github.ref == 'refs/heads/main'" in ci_workflow
+    trigger = (ROOT / ".github/workflows/deploy-validated-main.yml").read_text(encoding="utf-8")
+    assert "security-gate:" in ci_workflow
+    assert "needs: [await-ci]" in trigger
+    assert "branches: [main]" in trigger
+    assert '--branch main --event push --commit "$SOURCE_SHA"' in trigger
+    assert 'test "$conclusion" = success' in trigger
+    assert "source_sha: ${{ github.sha }}" in trigger
+    assert "ref: ${{ inputs.source_sha }}" in workflow
+    assert 'git merge-base --is-ancestor "$EXPECTED_SHA" origin/main' in workflow
     assert "id-token: write" in workflow
     assert "linux/amd64,linux/arm64" in workflow
     assert "OCI_RESOURCE_PRINCIPAL_VERSION=2.2" in workflow

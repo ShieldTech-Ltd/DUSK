@@ -1,0 +1,56 @@
+name: Deploy validated main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  await-ci:
+    name: Require successful CI for this main commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Wait for the exact main push to pass CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow dusk.yml \
+              --branch main --event push --commit "$SOURCE_SHA" --limit 1 \
+              --json status,conclusion,headSha)
+            status=$(printf '%s' "$runs" | jq -r '.[0].status // "pending"')
+            if test "$status" = completed; then
+              conclusion=$(printf '%s' "$runs" | jq -r '.[0].conclusion')
+              head_sha=$(printf '%s' "$runs" | jq -r '.[0].headSha')
+              test "$head_sha" = "$SOURCE_SHA"
+              test "$conclusion" = success
+              echo "CI passed for the exact main commit."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "CI did not finish successfully before the deployment wait expired." >&2
+          exit 1
+
+  public-demo:
+    name: Deploy public demo
+    needs: [await-ci]
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+    uses: ./.github/workflows/public-demo.yml
+    with:
+      source_sha: ${{ github.sha }}
+    secrets:
+      OCI_WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
+      OCI_WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}
