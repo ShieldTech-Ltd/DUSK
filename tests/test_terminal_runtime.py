@@ -159,6 +159,15 @@ def test_tampered_permit_never_reaches_the_command(tmp_path: Path, monkeypatch) 
     assert runtime.execute("write-marker", request)["status"] == "REPLAY_REJECTED"
 
 
+def test_spawn_passes_path_to_subprocess(tmp_path: Path) -> None:
+    effect = tmp_path / "env_path"
+    code = f"import os; from pathlib import Path; Path({str(effect)!r}).write_text(os.environ.get('PATH', 'MISSING'))"
+    runtime = TerminalRuntime(load_terminal_config(config_file(tmp_path, code=code)))
+    result = runtime.execute("write-marker", str(uuid.uuid4()))
+    assert result["status"] == "EXECUTED"
+    assert effect.read_text() != "MISSING"
+
+
 def test_uncertain_audit_outcome_still_consumes_request_id(tmp_path: Path, monkeypatch) -> None:
     config = load_terminal_config(config_file(tmp_path))
     runtime = TerminalRuntime(config)

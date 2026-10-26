@@ -233,9 +233,11 @@ class TerminalRuntime:
     @staticmethod
     def _spawn(op: Operation) -> str:
         # No shell, inherited stdin, output buffering or credential environment.
+        # Windows keys (SystemRoot, WINDIR, TEMP, TMP) and POSIX keys (PATH, HOME,
+        # USER, LANG, TMPDIR) are both included; whichever are absent are filtered out.
         environment = {
             key: os.environ[key]
-            for key in ("SystemRoot", "WINDIR", "TEMP", "TMP")
+            for key in ("PATH", "HOME", "USER", "LANG", "TMPDIR", "SystemRoot", "WINDIR", "TEMP", "TMP")
             if key in os.environ
         }
         try:
