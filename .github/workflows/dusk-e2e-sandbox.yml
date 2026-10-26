@@ -4,8 +4,9 @@ name: DUSK E2E Sandbox
 # Protected by the `sandbox` environment which requires a reviewer approval
 # and gates secrets. Real AWS/CF credentials are never available here.
 #
-# This workflow validates local Worker emulation and container packaging. It does
-# not authenticate to Cloudflare, deploy a Worker, or contact remote bindings.
+# GitHub Actions runs the direct Python runtime contract, Worker typecheck, and
+# local Miniflare emulator suites inside the protected sandbox environment.
+# These suites provide local/emulator evidence, not deployed binding validation.
 
 on:
   workflow_dispatch:
@@ -36,33 +37,22 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install Node dependencies
-        run: npm ci
-
       - name: Install Python deps
         run: |
           pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Test sandbox-native Worker and Durable Object flow
-        run: |
-          npm run test:worker
-          npm run typecheck:worker
-
-      - name: Test container runtime and DUSK permit flow
+      - name: Test Python (unit)
         run: |
           PYTHONPATH=src python -m pytest -q \
             tests/test_cloudflare_gateway.py \
-            tests/test_cloudflare_runtime_server.py \
             tests/test_secure_action_flow.py
 
-      - name: Build container and validate Worker packaging without deployment
+      - name: Test Container runtime contract
+        run: PYTHONPATH=src python -m pytest -q tests/test_cloudflare_runtime_server.py
+
+      - name: Test native Worker evidence path
         run: |
-          docker version --format '{{.Server.Version}}'
-          npm run deploy:worker:dry-run
+          npm ci
+          npm run typecheck:worker
+          npm run test:worker

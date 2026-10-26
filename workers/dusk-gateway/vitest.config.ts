@@ -6,7 +6,7 @@ export default defineConfig({
 		cloudflareTest({
 			wrangler: { configPath: "wrangler.jsonc" },
 			miniflare: {
-				vars: {
+				bindings: {
 					DUSK_GATEWAY_TOKEN: "expected-token",
 				},
 			},
