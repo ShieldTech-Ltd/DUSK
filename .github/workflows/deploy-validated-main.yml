@@ -35,6 +35,7 @@ jobs:
               echo "CI passed for the exact main commit."
               exit 0
             fi
+            echo "Waiting for CI ($attempt/120)."
             sleep 15
           done
           echo "CI did not finish successfully before the deployment wait expired." >&2
