@@ -11,15 +11,15 @@ sys.path.insert(0, os.path.abspath(LAB_DIR))
 
 import generate_actions  # noqa: E402
 
-from dusk.actions import baseline as baseline_module  # noqa: E402
-from dusk.actions.analyse import analyse  # noqa: E402
-from dusk.actions.baseline import Baseline, target_class  # noqa: E402
-from dusk.actions.event import AgentAction  # noqa: E402
-from dusk.actions.normaliser import normalise_record  # noqa: E402
-from dusk.actions.offense_memory import OffenseMemory, OffenseRecord  # noqa: E402
-from dusk.actions.verdict import ALLOW, BLOCK, WOULD_BLOCK, ActionGate  # noqa: E402
-from dusk.config import Config  # noqa: E402
-from dusk.trace.vector import ExtractedTerm  # noqa: E402
+from dusk_harness.actions import baseline as baseline_module  # noqa: E402
+from dusk_harness.actions.analyse import analyse  # noqa: E402
+from dusk_harness.actions.baseline import Baseline, target_class  # noqa: E402
+from dusk_harness.actions.event import AgentAction  # noqa: E402
+from dusk_harness.actions.normaliser import normalise_record  # noqa: E402
+from dusk_harness.actions.offense_memory import OffenseMemory, OffenseRecord  # noqa: E402
+from dusk_harness.actions.verdict import ALLOW, BLOCK, WOULD_BLOCK, ActionGate  # noqa: E402
+from dusk_harness.config import Config  # noqa: E402
+from dusk_harness.trace.vector import ExtractedTerm  # noqa: E402
 
 CONFIG = Config()
 _TS = datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
@@ -179,7 +179,7 @@ def test_agent_history_low_rerank_similarity_adds_reason() -> None:
     action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
     baseline_only = analyse(baseline, action)
 
-    with patch("dusk.actions.analyse.sie_score", return_value=[0.05, 0.05]):
+    with patch("dusk_harness.actions.analyse.sie_score", return_value=[0.05, 0.05]):
         reranked = analyse(baseline, action, agent_history=_normal()[:2])
 
     assert reranked.score > baseline_only.score
@@ -194,7 +194,7 @@ def test_agent_history_high_rerank_similarity_is_unchanged() -> None:
     action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
     baseline_only = analyse(baseline, action)
 
-    with patch("dusk.actions.analyse.sie_score", return_value=[0.9, 0.9]):
+    with patch("dusk_harness.actions.analyse.sie_score", return_value=[0.9, 0.9]):
         reranked = analyse(baseline, action, agent_history=_normal()[:2])
 
     assert reranked.score == baseline_only.score
@@ -210,7 +210,7 @@ def test_sie_extract_flags_terms_missed_by_the_static_frozenset() -> None:
     baseline_only = analyse(baseline, action)
 
     term = ExtractedTerm(text="superuser", label="role", score=0.95)
-    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+    with patch("dusk_harness.actions.analyse.sie_extract", return_value=[term]):
         extracted = analyse(baseline, action)
 
     assert extracted.score > baseline_only.score
@@ -226,7 +226,7 @@ def test_sie_extract_terms_already_in_static_set_are_not_duplicated() -> None:
     baseline_only = analyse(baseline, action)
 
     term = ExtractedTerm(text="owner", label="role", score=0.95)
-    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+    with patch("dusk_harness.actions.analyse.sie_extract", return_value=[term]):
         extracted = analyse(baseline, action)
 
     assert extracted.score == baseline_only.score
@@ -242,7 +242,7 @@ def test_sie_extract_low_confidence_term_is_ignored() -> None:
     baseline_only = analyse(baseline, action)
 
     term = ExtractedTerm(text="superuser", label="role", score=0.2)
-    with patch("dusk.actions.analyse.sie_extract", return_value=[term]):
+    with patch("dusk_harness.actions.analyse.sie_extract", return_value=[term]):
         extracted = analyse(baseline, action)
 
     assert extracted.score == baseline_only.score
@@ -260,7 +260,7 @@ def test_sie_extract_high_confidence_non_privileged_label_is_ignored() -> None:
         ExtractedTerm(text="eth0", label="resource", score=0.95),
         ExtractedTerm(text="8080", label="port", score=0.95),
     ]
-    with patch("dusk.actions.analyse.sie_extract", return_value=terms):
+    with patch("dusk_harness.actions.analyse.sie_extract", return_value=terms):
         extracted = analyse(baseline, action)
 
     assert extracted.score == baseline_only.score
@@ -431,7 +431,7 @@ def test_gate_evaluate_passes_history_to_sie_rerank() -> None:
     gate.learn(_normal())
     action = _action("netops-agent", "firewall_rule_change", "fw-corp-https", port=443)
 
-    with patch("dusk.actions.analyse.sie_score", return_value=[0.05] * 20):
+    with patch("dusk_harness.actions.analyse.sie_score", return_value=[0.05] * 20):
         verdict = gate.evaluate(action)
 
     assert any("SIE rerank" in r for r in verdict.analysis.reasons)

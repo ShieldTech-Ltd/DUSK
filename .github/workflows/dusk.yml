@@ -193,6 +193,25 @@ jobs:
           python scripts/validate_control_plane_deployment.py first-install \
             /tmp/dusk-control-plane-first-install.yaml
 
+  worker-packaging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24.8.0
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Validate Worker and build its Container with Docker
+        run: |
+          docker info
+          npm run test:worker
+          npm run typecheck:worker
+          npm audit --audit-level=moderate
+          npm run deploy:worker:dry-run
+
   console:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -237,7 +256,7 @@ jobs:
 
   security-gate:
     if: always()
-    needs: [correctness, compatibility, security-tools, codeql, containers, deployment-manifests, console]
+    needs: [correctness, compatibility, security-tools, codeql, containers, deployment-manifests, worker-packaging, console]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -252,18 +271,3 @@ jobs:
           failures=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<<"$NEEDS_JSON")
           test -z "$failures" || { echo "$failures"; exit 1; }
           python scripts/ci/control.py aggregate --lane pr --results all-results
-
-  public-demo:
-    name: Deploy public demo
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [security-gate]
-    permissions:
-      contents: read
-      # Forward only the release permissions declared by the reusable workflow.
-      id-token: write
-      packages: write
-      attestations: write
-    uses: ./.github/workflows/public-demo.yml
-    secrets:
-      OCI_WIF_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}
-      OCI_WIF_CLIENT_SECRET: ${{ secrets.OCI_WIF_CLIENT_SECRET }}

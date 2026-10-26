@@ -19,11 +19,11 @@ sys.path.insert(0, os.path.abspath(LAB_DIR))
 
 import generate_actions  # noqa: E402
 
-from dusk.actions.event import AgentAction  # noqa: E402
-from dusk.actions.normaliser import normalise_record  # noqa: E402
-from dusk.actions.verdict import ActionGate  # noqa: E402
-from dusk.config import Config  # noqa: E402
-from dusk.trace.vector import sie_encode  # noqa: E402
+from dusk_harness.actions.event import AgentAction  # noqa: E402
+from dusk_harness.actions.normaliser import normalise_record  # noqa: E402
+from dusk_harness.actions.verdict import ActionGate  # noqa: E402
+from dusk_harness.config import Config  # noqa: E402
+from dusk_harness.trace.vector import sie_encode  # noqa: E402
 
 
 def _normal() -> list[AgentAction]:

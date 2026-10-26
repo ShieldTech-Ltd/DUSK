@@ -69,7 +69,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
     if provider == "mantle":
         from bedrock_client import build_mantle_client, extract_function_call
 
-        from dusk.actions.adapters.mantle import MantleAdapter
+        from dusk_harness.actions.adapters.mantle import MantleAdapter
 
         region = os.getenv("AWS_REGION", "us-east-1")
         model_id = os.getenv("BEDROCK_MODEL_ID", "")
@@ -98,7 +98,7 @@ def run_scenario(agent_id: str, scenario: str) -> dict[str, Any]:
         if tool_use is None:
             return {"verdict": "NO_ACTION", "action": None, "applied": False}
 
-        from dusk.actions.adapters.bedrock import BedrockAdapter
+        from dusk_harness.actions.adapters.bedrock import BedrockAdapter
 
         action = BedrockAdapter().parse_tool_use(
             tool_use, agent_id=agent_id, timestamp=datetime.now(UTC)

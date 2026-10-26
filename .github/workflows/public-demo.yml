@@ -2,6 +2,11 @@ name: Public demo deployment
 
 on:
   workflow_call:
+    inputs:
+      source_sha:
+        description: Exact main commit whose CI security gate passed
+        required: true
+        type: string
     secrets:
       OCI_WIF_CLIENT_ID: {required: true}
       OCI_WIF_CLIENT_SECRET: {required: true}
@@ -29,14 +34,16 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Confirm immutable main source
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ inputs.source_sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test "$GITHUB_REF" = refs/heads/main
+          git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -49,12 +56,12 @@ jobs:
           context: .
           file: services/control-plane/Dockerfile
           push: true
-          tags: ghcr.io/shieldtech-ltd/dusk-control-plane:public-demo-${{ github.sha }}
+          tags: ghcr.io/shieldtech-ltd/dusk-control-plane:public-demo-${{ inputs.source_sha }}
           platforms: linux/amd64,linux/arm64
           provenance: mode=max
           sbom: true
           build-args: |
-            OCI_REVISION=${{ github.sha }}
+            OCI_REVISION=${{ inputs.source_sha }}
             OCI_VERSION=public-demo
             SOURCE_DATE_EPOCH=0
       - id: console
@@ -63,7 +70,7 @@ jobs:
           context: .
           file: apps/console/Dockerfile
           push: true
-          tags: ghcr.io/shieldtech-ltd/dusk-console:public-demo-${{ github.sha }}
+          tags: ghcr.io/shieldtech-ltd/dusk-console:public-demo-${{ inputs.source_sha }}
           platforms: linux/amd64,linux/arm64
           provenance: mode=max
           sbom: true
@@ -94,7 +101,7 @@ jobs:
         run: pip install --require-hashes -r deploy/public-demo/oci-cli.lock
       - name: Exchange GitHub identity and deploy with OCI Run Command
         env:
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ inputs.source_sha }}
           CONTROL_PLANE_DIGEST: ${{ steps.control-plane.outputs.digest }}
           CONSOLE_DIGEST: ${{ steps.console.outputs.digest }}
           OCI_CLIENT_ID: ${{ secrets.OCI_WIF_CLIENT_ID }}

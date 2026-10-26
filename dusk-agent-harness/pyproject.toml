@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=84.1,<85", "wheel>=0.45,<0.48"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dusk-agent-action-monitor"
-version = "0.2.0"
+version = "0.3.0rc1"
 description = "DUSK Production Agent Harness, judging a proposed agent action against a per-agent behavioural baseline, with Superlinked SIE surfacing anomalies."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -68,12 +68,12 @@ disallow_untyped_defs = true
 disallow_any_generics = true
 
 [[tool.mypy.overrides]]
-module = ["dusk.api"]
+module = ["dusk_harness.api"]
 ignore_missing_imports = true
 disable_error_code = ["type-var", "untyped-decorator", "unused-ignore", "import-untyped", "import-not-found"]
 
 [[tool.mypy.overrides]]
-module = ["dusk.trace.*"]
+module = ["dusk_harness.trace.*"]
 ignore_missing_imports = true
 disable_error_code = ["import-untyped", "attr-defined", "unused-ignore"]
 

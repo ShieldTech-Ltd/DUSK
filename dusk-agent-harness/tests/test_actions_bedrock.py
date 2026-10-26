@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from dusk.actions.adapters.base import AdapterError
-from dusk.actions.adapters.bedrock import BedrockAdapter
+from dusk_harness.actions.adapters.base import AdapterError
+from dusk_harness.actions.adapters.bedrock import BedrockAdapter
 
 
 def _firewall_tool_use(**overrides: object) -> dict[str, object]:
@@ -97,7 +97,7 @@ def test_parse_missing_tool_use_raises() -> None:
 
 def test_registered_in_normaliser() -> None:
     """BedrockAdapter is registered under the 'bedrock' source name."""
-    from dusk.actions.normaliser import get_adapter, known_sources
+    from dusk_harness.actions.normaliser import get_adapter, known_sources
 
     assert "bedrock" in known_sources()
     assert isinstance(get_adapter("bedrock"), BedrockAdapter)

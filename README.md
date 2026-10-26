@@ -52,6 +52,9 @@
 
 ## The problem
 
+For the terminal and MCP prerelease, see the [installation guide](docs/terminal-install.md).
+The installed command is `dusk`. The package is `dusk-security`.
+
 Many established security controls focus on identity, permissions, or known
 signatures. AI agents add machine-speed decisions and valid-credential misuse,
 which create a need for action-level behavioral monitoring.

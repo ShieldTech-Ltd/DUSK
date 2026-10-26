@@ -80,7 +80,7 @@ root_mutation() {
 
 auth_mutation() {
   PYTHONPATH=dusk-agent-harness/src mutmut run \
-    --paths-to-mutate dusk-agent-harness/src/dusk/auth.py \
+    --paths-to-mutate dusk-agent-harness/src/dusk_harness/auth.py \
     --test-time-base 1 \
     --runner 'env PYTHONPATH=dusk-agent-harness/src python -m pytest -q dusk-agent-harness/tests/test_auth.py'
   rc=$?

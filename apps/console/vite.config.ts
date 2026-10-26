@@ -20,6 +20,7 @@ export default defineConfig({
           )
             return "charts";
           if (id.includes("node_modules/oidc-client-ts")) return "identity";
+          if (id.includes("node_modules/lucide-react")) return "icons";
           if (id.includes("node_modules/@tanstack")) return "tanstack";
           if (id.includes("node_modules/react")) return "react";
         },

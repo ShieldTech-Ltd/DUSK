@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from dusk.config import Config, ConfigError, load_config
+from dusk_harness.config import Config, ConfigError, load_config
 
 
 def test_defaults() -> None:
@@ -165,3 +165,9 @@ def test_gate_block_threshold_zero_raises() -> None:
     """A zero gate_block_threshold blocks every action; almost certainly a misconfiguration."""
     with pytest.raises(ConfigError):
         Config(gate_block_threshold=0)
+
+
+def test_namespace_migration_preserves_default_yaml_filename(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "dusk.yaml").write_text("gate_block_threshold: 0.75\n", encoding="utf-8")
+    assert load_config().gate_block_threshold == 0.75

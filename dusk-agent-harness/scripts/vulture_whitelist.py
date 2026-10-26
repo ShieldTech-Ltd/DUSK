@@ -27,10 +27,10 @@ against a real cross-reference search before being added.
   never called directly by test code, so vulture cannot see them as used.
 """
 
-from dusk.actions.verdict import ActionGate
-from dusk.application.evaluator import EvaluationOutput, EvaluationPrincipal
-from dusk.config import set_config
-from dusk.trace.vector import SimilarDecision
+from dusk_harness.actions.verdict import ActionGate
+from dusk_harness.application.evaluator import EvaluationOutput, EvaluationPrincipal
+from dusk_harness.config import set_config
+from dusk_harness.trace.vector import SimilarDecision
 
 ActionGate.evaluate_all
 set_config

@@ -5,16 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from dusk import api
-from dusk.actions.event import AgentAction
-from dusk.application.evaluator import EvaluationMode, EvaluationPrincipal
+from dusk_harness import api
+from dusk_harness.actions.event import AgentAction
+from dusk_harness.application.evaluator import EvaluationMode, EvaluationPrincipal
 
 
 def test_harness_evaluator_matches_the_canonical_package_source() -> None:
     repository = Path(__file__).resolve().parents[2]
     canonical = repository / "src/dusk/application/evaluator.py"
-    harness = repository / "dusk-agent-harness/src/dusk/application/evaluator.py"
-    assert harness.read_bytes() == canonical.read_bytes()
+    harness = repository / "dusk-agent-harness/src/dusk_harness/application/evaluator.py"
+    assert harness.read_text().replace("dusk_harness", "dusk") == canonical.read_text()
 
 
 def test_legacy_shadow_evaluation_is_observational_only() -> None:
@@ -35,9 +35,9 @@ def test_legacy_shadow_evaluation_is_observational_only() -> None:
     before_decisions = list(api._decision_history)
 
     with (
-        patch("dusk.trace.n8n_client.fire_decision") as decision,
-        patch("dusk.trace.n8n_client.fire_report") as report,
-        patch("dusk.trace.n8n_client.fire_alert") as alert,
+        patch("dusk_harness.trace.n8n_client.fire_decision") as decision,
+        patch("dusk_harness.trace.n8n_client.fire_report") as report,
+        patch("dusk_harness.trace.n8n_client.fire_alert") as alert,
     ):
         output = api._build_canonical_evaluator().evaluate(
             action,
