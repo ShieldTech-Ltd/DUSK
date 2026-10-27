@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import sys
@@ -85,6 +86,66 @@ def test_health(client) -> None:
     r = client.get("/health")
     assert r.status_code == 200
     assert r.get_json()["status"] == "ok"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timestamp", "invalid\r\nSENSITIVE_TIMESTAMP"),
+        ("action_type", "invalid\r\nSENSITIVE_ACTION"),
+        ("action_type", ["invalid"]),
+        ("action_type", {"invalid": True}),
+        ("action_type", None),
+    ],
+)
+def test_invalid_action_never_exposes_exception_or_reaches_evaluator(client, field, value) -> None:
+    payload = _action_payload(port=443)
+    payload[field] = value
+    with patch.object(api, "_build_canonical_evaluator") as evaluator:
+        response = client.post("/v1/gate", json=payload)
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "INVALID_ACTION"}
+    evaluator.assert_not_called()
+
+
+def test_unexpected_validation_detail_stays_private(client) -> None:
+    with (
+        patch(
+            "dusk_harness.actions.event.AgentAction.from_dict",
+            side_effect=ValueError("C:/private/secret.pem\nINTERNAL_DETAIL"),
+        ),
+        patch.object(api, "_build_canonical_evaluator") as evaluator,
+    ):
+        response = client.post("/v1/gate", json=_action_payload())
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "INVALID_ACTION"}
+    evaluator.assert_not_called()
+
+
+def test_refused_action_logs_escape_untrusted_fields(client, caplog) -> None:
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/v1/gate",
+            json=_action_payload(
+                agent_id="ghost\r\nFORGED_AGENT", target="fw-restricted\r\nFORGED_TARGET"
+            ),
+        )
+    assert response.status_code == 200
+    assert response.get_json()["verdict"] in {"WOULD-BLOCK", "BLOCK"}
+    records = [r for r in caplog.records if r.name.startswith("dusk_harness")]
+    assert any("gate refused" in r.getMessage() for r in records)
+    assert all("\r" not in r.getMessage() and "\n" not in r.getMessage() for r in records)
+
+
+def test_gate_log_does_not_include_attacker_controlled_identity(client, caplog) -> None:
+    with caplog.at_level(logging.INFO, logger="dusk_harness.api"):
+        response = client.post("/v1/gate", json=_action_payload(agent_id="agent\r\nFORGED_RECORD"))
+    assert response.status_code == 200
+    records = [r for r in caplog.records if r.name == "dusk_harness.api"]
+    assert records
+    assert all("FORGED_RECORD" not in r.getMessage() for r in records)
+    assert all("\r" not in r.getMessage() and "\n" not in r.getMessage() for r in records)
+    assert "trace_id=" in records[-1].getMessage()
 
 
 def test_gate_returns_contract_shaped_verdict(client) -> None:

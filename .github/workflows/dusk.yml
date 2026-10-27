@@ -211,6 +211,13 @@ jobs:
           npm run typecheck:worker
           npm audit --audit-level=moderate
           npm run deploy:worker:dry-run
+      - name: Validate and audit Cloudflare demo
+        working-directory: cloudflare-demo
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run typecheck
+          npm audit --audit-level=low
 
   console:
     runs-on: ubuntu-latest

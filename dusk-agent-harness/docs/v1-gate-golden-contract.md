@@ -28,6 +28,14 @@ compatibility evidence at their public seam.
 
 ## Normalization policy
 
+Security update: model-validation failures retain HTTP 400 and the `error`
+field, with the stable value `INVALID_ACTION`. Exception text and submitted
+values are no longer reflected. The seven validation snapshots were updated
+deliberately for this information-disclosure fix. Authentication, malformed
+JSON, success/verdict bodies, health and webhook snapshots remain unchanged.
+Gate stdout logging retains trace ID, verdict and score without raw agent IDs;
+the decision record still carries the action context for correlation.
+
 Only nondeterministic or semantically insignificant values are normalized:
 
 1. UUID generation uses recorded 32-character hexadecimal IDs.
