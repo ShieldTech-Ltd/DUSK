@@ -393,6 +393,42 @@ def _install_operations_routes(
         return await audit_reader.list_events(query, principal)
 
 
+async def _read_bounded_body(
+    receive: Callable[[], Awaitable[Any]],
+    max_bytes: int,
+) -> tuple[bytes, bool]:
+    """Drain the ASGI receive stream into a buffer, returning (body, too_large)."""
+    parts: list[bytes] = []
+    total = 0
+    while True:
+        message = await receive()
+        if message.get("type") == "http.request":
+            chunk = message.get("body", b"")
+            total += len(chunk)
+            if total > max_bytes:
+                return b"", True
+            parts.append(chunk)
+            if not message.get("more_body", False):
+                break
+        else:
+            break
+    return b"".join(parts), False
+
+
+class _BodyReplay:
+    """ASGI receive callable that replays a buffered request body once."""
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._delivered = False
+
+    async def __call__(self) -> dict[str, Any]:
+        if not self._delivered:
+            self._delivered = True
+            return {"type": "http.request", "body": self._body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+
 async def _probe_component(probe: DependencyProbe, timeout_seconds: float) -> ComponentHealth:
     try:
         await asyncio.wait_for(probe.check(), timeout=timeout_seconds)
@@ -503,29 +539,12 @@ def create_app(  # noqa: C901
                         retryable=False,
                     )
                 else:
-                    # Read directly from the raw ASGI receive callable so we
-                    # count actual bytes without consuming Starlette's stream
-                    # state. This also handles chunked transfer encoding where
-                    # Content-Length is absent or lies.
-                    original_receive = request._receive  # type: ignore[attr-defined]
-                    body_parts: list[bytes] = []
-                    total_bytes = 0
-                    too_large = False
-
-                    while True:
-                        message = await original_receive()
-                        if message.get("type") == "http.request":
-                            chunk = message.get("body", b"")
-                            total_bytes += len(chunk)
-                            if total_bytes > settings.max_request_body_bytes:
-                                too_large = True
-                                break
-                            body_parts.append(chunk)
-                            if not message.get("more_body", False):
-                                break
-                        else:
-                            break
-
+                    # Drain body via raw receive to count actual bytes,
+                    # bypassing Starlette stream state. Replay it so the
+                    # route handler can still read the body normally.
+                    body_bytes, too_large = await _read_bounded_body(
+                        request._receive, settings.max_request_body_bytes
+                    )
                     if too_large:
                         response = error_response(
                             status_code=413,
@@ -534,21 +553,7 @@ def create_app(  # noqa: C901
                             retryable=False,
                         )
                     else:
-                        buffered = b"".join(body_parts)
-                        delivered = False
-
-                        async def _replay_receive() -> dict[str, object]:
-                            nonlocal delivered
-                            if not delivered:
-                                delivered = True
-                                return {
-                                    "type": "http.request",
-                                    "body": buffered,
-                                    "more_body": False,
-                                }
-                            return {"type": "http.disconnect"}
-
-                        request._receive = _replay_receive  # type: ignore[attr-defined]
+                        request._receive = _BodyReplay(body_bytes)
                         response = await call_next(request)
             except Exception:  # noqa: BLE001 - map unexpected failures to a safe boundary
                 logger.error(
