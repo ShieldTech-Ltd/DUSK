@@ -52,7 +52,7 @@ jobs:
           DUSK_TEST_DATABASE_URL: postgresql+asyncpg://dusk_control_plane:ci-integration-only@127.0.0.1:5432/dusk_control_plane
         run: pytest -q -n 0 services/control-plane/tests/integration
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: correctness-results, path: results/, if-no-files-found: error, retention-days: 30}
 
   compatibility:
@@ -79,7 +79,7 @@ jobs:
           --controls ${{ matrix.control }} -- sh -c
           'pytest -q && pytest -q services/control-plane/tests'
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: "compatibility-${{ matrix.python }}-results", path: results/, if-no-files-found: error, retention-days: 30}
 
   security-tools:
@@ -99,7 +99,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: sh scripts/ci/pr_security.sh "$BASE_SHA" "$HEAD_SHA"
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: security-results, path: results/, if-no-files-found: error, retention-days: 30}
 
   codeql:
@@ -123,7 +123,7 @@ jobs:
           python scripts/ci/control.py record --control SEC-001 --status "$status" --output results/codeql/SEC-001.json --details "CodeQL $OUTCOME"
           test "$status" = PASS
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: codeql-results, path: results/, if-no-files-found: error, retention-days: 30}
 
   containers:
@@ -155,10 +155,10 @@ jobs:
         working-directory: dusk-agent-harness
         run: sh scripts/run_owasp_demo.sh --no-build enforce
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: container-results, path: results/, if-no-files-found: error, retention-days: 30}
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: container-evidence
           path: |
@@ -243,7 +243,7 @@ jobs:
         working-directory: apps/console
         run: npm run test:e2e
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: console-browser-results
           path: |
