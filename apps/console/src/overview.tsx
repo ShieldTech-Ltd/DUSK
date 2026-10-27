@@ -187,10 +187,7 @@ export function OverviewPage() {
         query: {
           limit: 8,
           verdict: (feedVerdict || undefined) as
-            | "ALLOW"
-            | "WOULD-BLOCK"
-            | "BLOCK"
-            | undefined,
+            "ALLOW" | "WOULD-BLOCK" | "BLOCK" | undefined,
         },
       },
     },
