@@ -225,8 +225,8 @@ def evaluate_gate_action() -> object:
 
     try:
         action = AgentAction.from_dict(raw)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "INVALID_ACTION"}), 400
 
     from dusk_harness.application.evaluator import EvaluationPrincipal
 
@@ -240,9 +240,8 @@ def evaluate_gate_action() -> object:
     )
     response = output.response
     logger.info(
-        "gate verdict trace_id=%s agent=%s verdict=%s score=%.2f",
+        "gate verdict trace_id=%s verdict=%s score=%.2f",
         response["trace_id"],
-        action.agent_id,
         response["verdict"],
         output.decision.score,
     )

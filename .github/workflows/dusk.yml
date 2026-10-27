@@ -108,11 +108,11 @@ jobs:
     permissions: {contents: read, security-events: write}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with: {languages: python, queries: security-extended}
       - id: analyze
         continue-on-error: true
-        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           # Preserve the base branch's analysis identity so GitHub can compare
           # PR alerts instead of emitting a neutral "configuration not found".
@@ -211,6 +211,13 @@ jobs:
           npm run typecheck:worker
           npm audit --audit-level=moderate
           npm run deploy:worker:dry-run
+      - name: Validate and audit Cloudflare demo
+        working-directory: cloudflare-demo
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run typecheck
+          npm audit --audit-level=low
 
   console:
     runs-on: ubuntu-latest

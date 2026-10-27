@@ -120,7 +120,7 @@ class OffenseMemory:
             self._by_agent.move_to_end(agent_id)
         while len(self._by_agent) > _MAX_TRACKED_AGENTS:
             evicted_id, _ = self._by_agent.popitem(last=False)
-            logger.info("Evicted offense memory for agent %s (tracked-agent cap)", evicted_id)
+            logger.info("Evicted offense memory for agent %r (tracked-agent cap)", evicted_id)
         return offenses
 
     def _load(self, storage_path: Path) -> None:

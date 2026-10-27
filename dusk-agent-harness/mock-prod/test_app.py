@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from app import app, applied_log, webhook_log
 
@@ -43,6 +45,17 @@ def test_apply_logs_the_action(client):
 def test_apply_rejects_non_object_body(client):
     resp = client.post("/apply", json=["not", "an", "object"])
     assert resp.status_code == 400
+
+
+def test_apply_keeps_json_record_but_not_untrusted_log_fields(client, caplog):
+    marker = "agent\r\nFORGED_RECORD"
+    with caplog.at_level(logging.INFO, logger="mock-prod"):
+        response = client.post("/apply", json={"agent_id": marker, "target": "safe"})
+    assert response.status_code == 200
+    assert response.get_json()["agent_id"] == marker
+    assert applied_log[-1]["agent_id"] == marker
+    records = [r for r in caplog.records if r.name == "mock-prod"]
+    assert records and all(r.getMessage() == "action applied" for r in records)
 
 
 def test_webhook_sink_records_bounded_metadata(client):
