@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic DUSK public demo health check
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=5m
+Persistent=true
+Unit=dusk-demo-health.service
+
+[Install]
+WantedBy=timers.target

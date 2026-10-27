@@ -147,3 +147,16 @@ def test_explicit_false_bool_env_values_are_accepted(_clean_env: None, value: st
     os.environ["DUSK_ENFORCE"] = value
     config = load_config("nonexistent-dusk.yaml")
     assert config.enforce is False
+
+
+def test_bool_empty_string_raises_config_error(_clean_env: None) -> None:
+    """An empty string is not a valid boolean; must raise ConfigError, not silently map to False."""
+    os.environ["DUSK_ENFORCE"] = ""
+    with pytest.raises(ConfigError, match="boolean"):
+        load_config("nonexistent-dusk.yaml")
+
+
+def test_gate_block_threshold_zero_raises() -> None:
+    """A zero gate_block_threshold blocks every action; almost certainly a misconfiguration."""
+    with pytest.raises(ConfigError):
+        Config(gate_block_threshold=0)

@@ -36,7 +36,7 @@
 
 - [The problem](#the-problem)
 - [Detection in action](#detection-in-action)
-- [OWASP reviewer demo](#owasp-reviewer-demo)
+- [OWASP reviewer validation](#owasp-reviewer-validation)
 - [What it detects](#what-it-detects)
 - [Architecture](#architecture)
 - [Optional Superlinked SIE enrichment](#optional-superlinked-sie-enrichment)
@@ -51,6 +51,9 @@
 ---
 
 ## The problem
+
+For the terminal and MCP prerelease, see the [installation guide](docs/terminal-install.md).
+The installed command is `dusk`. The package is `dusk-security`.
 
 Many established security controls focus on identity, permissions, or known
 signatures. AI agents add machine-speed decisions and valid-credential misuse,
@@ -99,14 +102,16 @@ GATE evaluated 18 action(s), refused 3.
 
 The gate scores 1.0 precision, 1.0 recall, and 0.0 false-positive rate on the bundled benchmark (`test_benchmark_precision_recall`).
 
-## OWASP reviewer demo
+## OWASP reviewer validation
 
-The self-contained application demo runs a mock agent, the real DUSK HTTP
-gate, and a mock downstream target on a localhost-only Docker network. It needs
-no credential, paid service, model download, or production system.
+The DUSK Production Agent Harness includes a keyless reviewer scenario with a
+mock agent, the real DUSK HTTP gate, and a mock downstream target on a
+localhost-only Docker network. It needs no credential, paid service, model
+download, or production system. Authenticated real LLM validation is a separate
+protected workflow.
 
 ```bash
-cd examples/agent-action-monitor
+cd dusk-agent-harness
 ./scripts/run_owasp_demo.sh watch
 ./scripts/run_owasp_demo.sh enforce
 ```
@@ -171,7 +176,7 @@ Each detection returns a confidence or anomaly score, blast radius estimate, MIT
 ### Current gate implementation
 
 <p align="center">
-  <img src="examples/agent-action-monitor/docs/architecture.svg" alt="Current DUSK agent-action-monitor implementation with deterministic analysis, Superlinked SIE enrichment, verdicts, state, execution, and notifications" width="100%">
+  <img src="dusk-agent-harness/docs/architecture.svg" alt="DUSK Production Agent Harness implementation with deterministic analysis, Superlinked SIE enrichment, verdicts, state, execution, and notifications" width="100%">
 </p>
 
 This is the implemented boundary of the self-contained HTTP gate example. It
@@ -216,15 +221,15 @@ SIEM rules fire on known-bad signatures. A behavioral baseline fires on anything
 ## Optional Superlinked SIE enrichment
 
 The agent action gate is also shipped as a self-contained HTTP service
-(`POST /v1/gate`) inside
-[`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md).
+(`POST /v1/gate`) inside the
+[DUSK Production Agent Harness](dusk-agent-harness/README.md).
 [Superlinked SIE](https://github.com/superlinked/sie) can optionally enrich
 behavioral similarity through encode, score, and extract operations. Every SIE
 signal is additive to the deterministic core, so the default local stack needs
 no SIE runtime or outbound model download.
 
 ```bash
-cd examples/agent-action-monitor
+cd dusk-agent-harness
 docker compose up
 
 curl -X POST http://localhost:8000/v1/gate \
@@ -234,15 +239,34 @@ curl -X POST http://localhost:8000/v1/gate \
        "change": {"before": null, "after": {"port": 443}}, "source": "generic"}'
 ```
 
-The full runnable example includes the gate service, a local
-webhook sink, a mock downstream target, and a Bedrock-or-mock agent harness. An
+The full runnable harness includes the gate service, a local
+webhook sink, a mock downstream target, and a Bedrock-or-mock agent runtime. An
 importable n8n workflow remains available for operators who provide a separately
-maintained n8n deployment. The example lives entirely at
-[`examples/agent-action-monitor/`](examples/agent-action-monitor/README.md).
+maintained n8n deployment. The DUSK Production Agent Harness lives entirely at
+[`dusk-agent-harness/`](dusk-agent-harness/README.md).
 This root package does not run `/v1/gate`; its `dusk gate` CLI command evaluates
 a batch of actions offline instead.
 
 ---
+
+## Cloudflare Edge Demo
+
+A controlled Cloudflare edge demo for DUSK action authorization.
+It is not a production deployment or a guarantee of agent safety.
+
+The demo enforces two scenarios end-to-end through a Cloudflare Worker backed by a
+loopback Python policy service:
+
+| Action | risk_signal | Result |
+|--------|-------------|--------|
+| `demo.read_status` | `normal` | ALLOWED, executed: true |
+| `demo.rotate_demo_key` | `prompt_injection` | BLOCKED, executed: false |
+
+Source: [`cloudflare-demo/`](cloudflare-demo/) and [`src/dusk/demo_cloudflare.py`](src/dusk/demo_cloudflare.py).
+Full local run guide: [`docs/cloudflare-edge-demo.md`](docs/cloudflare-edge-demo.md).
+
+---
+
 
 ## Quickstart
 
@@ -369,10 +393,9 @@ src/dusk/
   sensor/               Traffic sources (pcap; live and Zeek next)
   respond/              Responders (alert log; isolation next)
   trace/                Superlinked SIE client (vector.py) + trace models, offline CLI path
-examples/agent-action-monitor/  Self-contained Superlinked SIE example with its
-                                 own package, gate API, webhook client, hardened
-                                 Docker stack, agent demo, mock target, contract,
-                                 and optional n8n workflow asset.
+dusk-agent-harness/  DUSK Production Agent Harness with its own package, gate
+                     API, webhook client, hardened Docker stack, agent runtime,
+                     mock target, contract, and optional n8n workflow asset.
 lab/
   actions/              Action fixture generators (normal + out-of-pattern)
   scenarios/            pcap generators for network fixture data
@@ -405,6 +428,10 @@ fresh-container scans run on a separate schedule. See the
 commands, performance design, and release boundary.
 
 ## Governance and security
+
+The repository's merge, deep-security, container, and release guarantees are defined by the
+[100-control enterprise CI catalogue](docs/ci-controls.md). Branch protection needs only the
+fail-closed `security-gate` status.
 
 DUSK is preparing for an OWASP Incubator application as a tool project. It does
 not claim complete OWASP Agentic Top 10 coverage or product

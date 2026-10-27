@@ -1,0 +1,38 @@
+name: Terminal installation
+on:
+  push:
+    branches: [feat/terminal-mcp-release]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: {python-version: "3.11"}
+      - run: python -m pip install build pytest
+      - run: python -m build --outdir dist
+      - run: python -m build dusk-agent-harness --wheel --outdir dist
+      - name: Install both wheels and check namespace ownership
+        shell: bash
+        run: |
+          python -m pip install dist/*.whl
+          python -m pip check
+          python -c "import dusk, dusk_harness.api; assert dusk.__version__ == '0.3.0rc1'"
+      - name: Test installed CLI and MCP outside checkout
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/dusk-installed-tests"
+          cp tests/test_terminal_cli.py tests/test_terminal_runtime.py "$RUNNER_TEMP/dusk-installed-tests/"
+          cd "$RUNNER_TEMP/dusk-installed-tests"
+          python -m dusk
+          python -m pytest -q

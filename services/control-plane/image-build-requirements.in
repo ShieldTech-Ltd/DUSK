@@ -1,0 +1,3 @@
+-r requirements.txt
+setuptools==84.1.0
+wheel==0.47.0

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E501
-"""Generate the DUSK README hero and compact workflow strip."""
+"""Generate the DUSK brand assets used by documentation and the console."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
-SOURCE_ARCH = ROOT / "examples" / "agent-action-monitor" / "docs" / "architecture.svg"
+SOURCE_ARCH = ROOT / "dusk-agent-harness" / "docs" / "architecture.svg"
 
 
 def _logo_uri() -> str:
@@ -17,6 +17,13 @@ def _logo_uri() -> str:
     if match is None:
         raise RuntimeError("embedded DUSK logo not found in architecture.svg")
     return match.group(1)
+
+
+def logo() -> str:
+    """Wrap the repository's original embedded logo as a reusable SVG asset."""
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="360" height="116" viewBox="0 0 360 116" role="img" aria-label="DUSK">
+<image href="{_logo_uri()}" width="360" height="116" preserveAspectRatio="xMidYMid meet"/>
+</svg>'''
 
 
 def hero() -> str:
@@ -48,10 +55,14 @@ def workflow() -> str:
 
 
 def main() -> None:
-    assets = {"dusk-hero-banner.svg": hero(), "dusk-workflow-strip.svg": workflow()}
+    assets = {
+        "dusk-logo.svg": logo(),
+        "dusk-hero-banner.svg": hero(),
+        "dusk-workflow-strip.svg": workflow(),
+    }
     for name, content in assets.items():
         out = DOCS / name
-        out.write_text(content, encoding="utf-8")
+        out.write_text(content, encoding="utf-8", newline="\n")
         print(f"wrote {out} ({out.stat().st_size} bytes)")
 
 
