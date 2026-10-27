@@ -225,8 +225,8 @@ def evaluate_gate_action() -> object:
 
     try:
         action = AgentAction.from_dict(raw)
-    except ValueError:
-        return jsonify({"error": "invalid action"}), 400
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     from dusk_harness.application.evaluator import EvaluationPrincipal
 
