@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.87.4",
-    "@tanstack/react-router": "1.131.35",
+    "@tanstack/react-router": "1.170.46",
     "echarts": "6.1.0",
     "lucide-react": "0.544.0",
     "oidc-client-ts": "3.5.0",
