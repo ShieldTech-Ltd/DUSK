@@ -23,10 +23,10 @@ jobs:
           pip install --require-hashes -r ci/example-requirements.lock
       - run: sh scripts/ci/deep_controls.sh general
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: deep-general-results, path: results/, if-no-files-found: error, retention-days: 30}
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: deep-general-evidence, path: deep-evidence/, if-no-files-found: warn, retention-days: 30}
 
   mutation:
@@ -47,10 +47,10 @@ jobs:
           pip install --require-hashes -r ci/example-requirements.lock
       - run: sh scripts/ci/deep_controls.sh "${{ matrix.group }}"
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: "deep-${{ matrix.group }}-results", path: results/, if-no-files-found: error, retention-days: 30}
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: "deep-${{ matrix.group }}-evidence", path: deep-evidence/, if-no-files-found: warn, retention-days: 30}
 
   scorecard:
@@ -67,10 +67,10 @@ jobs:
           SCORECARD_TOKEN: "${{ secrets.SCORECARD_TOKEN || github.token }}"
         run: sh scripts/ci/deep_controls.sh scorecard
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: deep-scorecard-results, path: results/, if-no-files-found: error, retention-days: 30}
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: deep-scorecard-evidence, path: deep-evidence/, if-no-files-found: warn, retention-days: 30}
 
   deep-security-gate:
