@@ -503,29 +503,53 @@ def create_app(  # noqa: C901
                         retryable=False,
                     )
                 else:
-                    # Count actual bytes from the stream to catch chunked requests
-                    # that omit Content-Length and would bypass the header-only check.
-                    chunks: list[bytes] = []
+                    # Read directly from the raw ASGI receive callable so we
+                    # count actual bytes without consuming Starlette's stream
+                    # state. This also handles chunked transfer encoding where
+                    # Content-Length is absent or lies.
+                    original_receive = request._receive  # type: ignore[attr-defined]
+                    body_parts: list[bytes] = []
                     total_bytes = 0
-                    async for chunk in request.stream():
-                        total_bytes += len(chunk)
-                        if total_bytes > settings.max_request_body_bytes:
-                            response = error_response(
-                                status_code=413,
-                                code="REQUEST_TOO_LARGE",
-                                message="Request body exceeds the configured limit",
-                                retryable=False,
-                            )
+                    too_large = False
+
+                    while True:
+                        message = await original_receive()
+                        if message.get("type") == "http.request":
+                            chunk = message.get("body", b"")
+                            total_bytes += len(chunk)
+                            if total_bytes > settings.max_request_body_bytes:
+                                too_large = True
+                                break
+                            body_parts.append(chunk)
+                            if not message.get("more_body", False):
+                                break
+                        else:
                             break
-                        chunks.append(chunk)
+
+                    if too_large:
+                        response = error_response(
+                            status_code=413,
+                            code="REQUEST_TOO_LARGE",
+                            message="Request body exceeds the configured limit",
+                            retryable=False,
+                        )
                     else:
-                        body = b"".join(chunks)
+                        buffered = b"".join(body_parts)
+                        delivered = False
 
-                        async def _cached_receive() -> dict[str, object]:
-                            return {"type": "http.request", "body": body, "more_body": False}
+                        async def _replay_receive() -> dict[str, object]:
+                            nonlocal delivered
+                            if not delivered:
+                                delivered = True
+                                return {
+                                    "type": "http.request",
+                                    "body": buffered,
+                                    "more_body": False,
+                                }
+                            return {"type": "http.disconnect"}
 
-                        bounded = Request(request.scope, _cached_receive)
-                        response = await call_next(bounded)
+                        request._receive = _replay_receive  # type: ignore[attr-defined]
+                        response = await call_next(request)
             except Exception:  # noqa: BLE001 - map unexpected failures to a safe boundary
                 logger.error(
                     "unhandled control-plane request failure",
