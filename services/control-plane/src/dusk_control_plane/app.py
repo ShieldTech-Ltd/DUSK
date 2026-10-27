@@ -503,7 +503,29 @@ def create_app(  # noqa: C901
                         retryable=False,
                     )
                 else:
-                    response = await call_next(request)
+                    # Count actual bytes from the stream to catch chunked requests
+                    # that omit Content-Length and would bypass the header-only check.
+                    chunks: list[bytes] = []
+                    total_bytes = 0
+                    async for chunk in request.stream():
+                        total_bytes += len(chunk)
+                        if total_bytes > settings.max_request_body_bytes:
+                            response = error_response(
+                                status_code=413,
+                                code="REQUEST_TOO_LARGE",
+                                message="Request body exceeds the configured limit",
+                                retryable=False,
+                            )
+                            break
+                        chunks.append(chunk)
+                    else:
+                        body = b"".join(chunks)
+
+                        async def _cached_receive() -> dict[str, object]:
+                            return {"type": "http.request", "body": body, "more_body": False}
+
+                        bounded = Request(request.scope, _cached_receive)
+                        response = await call_next(bounded)
             except Exception:  # noqa: BLE001 - map unexpected failures to a safe boundary
                 logger.error(
                     "unhandled control-plane request failure",
