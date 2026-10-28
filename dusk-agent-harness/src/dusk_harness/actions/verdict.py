@@ -137,7 +137,7 @@ class ActionGate:
         if result.score >= self.config.gate_block_threshold:
             verdict = BLOCK if self.enforce else WOULD_BLOCK
             logger.error(
-                "gate refused: verdict=%s agent=%s action_type=%s target=%s "
+                "gate refused: verdict=%s agent=%r action_type=%r target=%r "
                 "score=%.2f attack=%s atlas=%s blast=%s",
                 verdict,
                 result.agent_id,

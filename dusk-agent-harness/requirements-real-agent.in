@@ -18,6 +18,10 @@ pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-env>=1.1.0
 requests>=2.31
+# Security floors for the sandbox's TLS and HTTP dependencies.
+certifi>=2026.10.18
+urllib3>=2.8
+Werkzeug>=3.1.9
 types-PyYAML>=6.0
 
 # AWS Bedrock (runtime/requirements.txt, only needed when USE_REAL_BEDROCK=true)

@@ -17,6 +17,7 @@ semgrep_scan() {
 example_audit() {
   pip-audit -r dusk-agent-harness/runtime/requirements.txt &&
     pip-audit -r dusk-agent-harness/mock-prod/requirements.txt &&
+    pip-audit --require-hashes --disable-pip -r dusk-agent-harness/requirements-real-agent.txt &&
     pip-audit -r services/control-plane/requirements.txt
 }
 

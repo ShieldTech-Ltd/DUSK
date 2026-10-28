@@ -40,7 +40,7 @@ def apply() -> tuple[dict[str, Any], int]:
         "target": action.get("target"),
     }
     applied_log.append(record)
-    logger.info("applied: %s", record)
+    logger.info("action applied")
     return {"status": "applied", **record}, 200
 
 

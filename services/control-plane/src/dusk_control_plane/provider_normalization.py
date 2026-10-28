@@ -265,6 +265,14 @@ def _azure_subscription(resource_id: str) -> str:
     raise EvidenceRejectedError("Azure resourceId is missing its subscription boundary")
 
 
+_INTERNAL_LB_ANNOTATIONS: dict[str, str] = {
+    "service.beta.kubernetes.io/aws-load-balancer-internal": "true",
+    "service.beta.kubernetes.io/azure-load-balancer-internal": "true",
+    "cloud.google.com/load-balancer-type": "internal",
+    "networking.gke.io/load-balancer-type": "internal",
+}
+
+
 def _kubernetes_semantics(
     kind: str,
     operation: str,
@@ -285,7 +293,8 @@ def _kubernetes_semantics(
         spec = _mapping(obj.get("spec"))
         annotations = _mapping(_mapping(obj.get("metadata")).get("annotations"))
         internal = any(
-            "internal" in key and str(value).lower() == "true" for key, value in annotations.items()
+            str(annotations.get(key, "")).lower() == expected
+            for key, expected in _INTERNAL_LB_ANNOTATIONS.items()
         )
         return f"service.{verb}", {
             "role": "none",
@@ -312,13 +321,23 @@ def _kubernetes_semantics(
 
 
 def _kubernetes_privileged(obj: Mapping[str, object]) -> bool:
+    kind = str(obj.get("kind", ""))
     spec = _mapping(obj.get("spec"))
-    template = _mapping(spec.get("template"))
-    pod_spec = _mapping(template.get("spec")) if template else spec
-    containers = pod_spec.get("containers")
-    if not isinstance(containers, list):
-        return False
-    return any(
-        _mapping(_mapping(container).get("securityContext")).get("privileged") is True
-        for container in containers
-    )
+    if kind == "CronJob":
+        job_spec = _mapping(_mapping(spec.get("jobTemplate")).get("spec"))
+        pod_spec = _mapping(_mapping(job_spec.get("template")).get("spec"))
+    elif spec.get("template") is not None:
+        pod_spec = _mapping(_mapping(spec.get("template")).get("spec"))
+    else:
+        pod_spec = spec
+    found_any = False
+    for key in ("containers", "initContainers", "ephemeralContainers"):
+        clist = pod_spec.get(key)
+        if isinstance(clist, list):
+            found_any = True
+            if any(
+                _mapping(_mapping(c).get("securityContext")).get("privileged") is True
+                for c in clist
+            ):
+                return True
+    return not found_any
