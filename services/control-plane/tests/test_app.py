@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sys
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.testclient import TestClient
 
 from dusk_control_plane.app import REQUEST_ID_HEADER, create_app
@@ -14,6 +14,26 @@ from dusk_control_plane.dependencies import AppContainer, DependencyProbe
 from dusk_control_plane.identity import IdentityKind, Principal
 
 REQUEST_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+
+
+def test_chunked_body_limit_and_legitimate_body_replay() -> None:
+    app = create_app(container=AppContainer.build(settings=_settings(max_request_body_bytes=1024)))
+
+    @app.post("/__body_probe")
+    async def body_probe(request: Request):
+        return {"size": len(await request.body())}
+
+    with TestClient(app) as client:
+        for size in (1023, 1024, 1025, 4098):
+            response = client.post(
+                "/__body_probe", content=iter([b"x" * (size // 2), b"x" * (size - size // 2)])
+            )
+            assert "content-length" not in response.request.headers
+            if size > 1024:
+                assert response.status_code == 413
+            else:
+                assert response.status_code == 200
+                assert response.json() == {"size": size}
 
 
 def _settings(**overrides: object) -> Settings:

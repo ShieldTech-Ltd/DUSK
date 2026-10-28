@@ -86,11 +86,12 @@ jobs:
       - run: pip install PyYAML
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: {name: release-control-results, path: results}
-      - env: {UPSTREAM: "${{ needs.release-controls.result }}"}
+      - env:
+          UPSTREAM: "${{ needs.release-controls.result }}"
+          RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
         run: |
           test "$UPSTREAM" = success
-          python scripts/validate_provider_certification.py \
-            docs/evidence/provider-certification.json
+          python scripts/check_release_certification.py "$RELEASE_REF"
           python scripts/ci/control.py aggregate --lane release --results results
 
   publish:
@@ -105,7 +106,13 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
-        run: gh release create "$RELEASE_REF" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "DUSK $RELEASE_REF"
+        run: |
+          case "$RELEASE_REF" in
+            *a[0-9]*|*b[0-9]*|*rc[0-9]*)
+              gh release create "$RELEASE_REF" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease --title "DUSK $RELEASE_REF (development package)" ;;
+            *)
+              gh release create "$RELEASE_REF" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "DUSK $RELEASE_REF" ;;
+          esac
 
   publish-pypi:
     needs: [release-gate]
