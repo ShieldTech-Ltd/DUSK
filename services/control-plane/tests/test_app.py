@@ -19,9 +19,10 @@ REQUEST_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 def test_chunked_body_limit_and_legitimate_body_replay() -> None:
     app = create_app(container=AppContainer.build(settings=_settings(max_request_body_bytes=1024)))
 
-    @app.post("/__body_probe")
     async def body_probe(request: Request):
         return {"size": len(await request.body())}
+
+    app.add_api_route("/__body_probe", body_probe, methods=["POST"])
 
     with TestClient(app) as client:
         for size in (1023, 1024, 1025, 4098):
