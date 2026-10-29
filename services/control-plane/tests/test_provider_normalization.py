@@ -16,6 +16,50 @@ from dusk_control_plane.provider_normalization import (
 NOW = datetime(2026, 9, 4, 10, 0, tzinfo=UTC)
 
 
+@pytest.mark.parametrize("kind", ["Pod", "Deployment", "Job", "CronJob"])
+@pytest.mark.parametrize("collection", ["containers", "initContainers", "ephemeralContainers"])
+@pytest.mark.parametrize("privileged", [True, False])
+def test_privilege_in_all_workload_container_paths(kind, collection, privileged):
+    pod_spec = {collection: [{"securityContext": {"privileged": privileged}}]}
+    spec = pod_spec if kind == "Pod" else {"template": {"spec": pod_spec}}
+    if kind == "CronJob":
+        spec = {"jobTemplate": {"spec": spec}}
+    event = normalize_kubernetes_admission(
+        {
+            "request": {
+                "uid": "regression-workload",
+                "operation": "CREATE",
+                "kind": {"kind": kind},
+                "namespace": "test",
+                "object": {"kind": kind, "spec": spec},
+            }
+        },
+        source_identity="kubernetes-admission",
+        observed_at=NOW,
+    )
+    assert event.domains["kubernetes"]["privileged"] is privileged
+
+
+def test_invented_internal_annotation_cannot_hide_public_service():
+    event = normalize_kubernetes_admission(
+        {
+            "request": {
+                "uid": "regression-service",
+                "operation": "CREATE",
+                "kind": {"kind": "Service"},
+                "namespace": "test",
+                "object": {
+                    "spec": {"type": "LoadBalancer"},
+                    "metadata": {"annotations": {"example.invalid/internal": "true"}},
+                },
+            }
+        },
+        source_identity="kubernetes-admission",
+        observed_at=NOW,
+    )
+    assert event.domains["kubernetes"]["public_exposure"] is True
+
+
 def test_aws_privileged_iam_and_public_network_events_are_normalized() -> None:
     iam = normalize_aws_cloudtrail(
         {
