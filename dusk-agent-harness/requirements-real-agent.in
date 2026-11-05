@@ -25,7 +25,7 @@ Werkzeug>=3.1.9
 types-PyYAML>=6.0
 
 # AWS Bedrock (runtime/requirements.txt, only needed when USE_REAL_BEDROCK=true)
-boto3>=1.43.118
+boto3>=1.43.123
 
 # Bedrock Mantle provider (Kimi K2.5) - OpenAI-compatible client + token minting.
 # Only exercised when BEDROCK_PROVIDER=mantle.
