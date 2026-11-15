@@ -138,7 +138,12 @@ def _trusted_scope(raw: bytes, headers: HTTPMessage, payload: dict[str, Any]) ->
     secret = os.environ.get("DUSK_SCOPE_CONTEXT_KEY", "")
     stamp = headers.get("X-DUSK-Scope-Time", "")
     proof = headers.get("X-DUSK-Scope-Proof", "")
-    if len(secret) < 32 or not stamp.isascii() or not stamp.isdigit() or len(stamp) > 16:
+    if (
+        len(secret.encode("utf-8")) < 32
+        or not stamp.isascii()
+        or not stamp.isdigit()
+        or len(stamp) > 16
+    ):
         return False
     now_ms = int(time.time() * 1000)
     if abs(now_ms - int(stamp)) > 30_000:

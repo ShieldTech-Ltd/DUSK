@@ -182,7 +182,7 @@ async function handleAction(
   try {
     const internalHeaders = new Headers({ "Content-Type": "application/json", "X-DUSK-Gateway": "cloudflare-worker", "X-DUSK-Request-ID": requestId });
     if (trustedScope) {
-      if (!env.DUSK_SCOPE_CONTEXT_KEY || env.DUSK_SCOPE_CONTEXT_KEY.length < 32) return errorResponse(503, "scope_not_configured", requestId);
+      if (!env.DUSK_SCOPE_CONTEXT_KEY || new TextEncoder().encode(env.DUSK_SCOPE_CONTEXT_KEY).length < 32) return errorResponse(503, "scope_not_configured", requestId);
       const stamp = String(Date.now());
       const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.DUSK_SCOPE_CONTEXT_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
       const message = new TextEncoder().encode(`${stamp}\n${new TextDecoder().decode(body)}`);
@@ -220,7 +220,7 @@ export default {
         const response = await handleAction(new Request("https://dusk-internal/v1/actions/evaluate", {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.DUSK_GATEWAY_TOKEN}` },
           body: JSON.stringify({ tenant_id: action.tenant_id, agent_id: action.agent_id,
-            type: action.action_class, target: action.url, method: action.method, body: action.body,
+            type: action.action_class, target: new URL(action.url).href, method: action.method, body: action.body,
             environment: action.environment, session_id: action.session_id,
             scope_context: { ...contract, origin: new URL(action.url).origin, method: action.method, action_class: action.action_class } }),
         }), env, context, true);
