@@ -37,7 +37,7 @@ export class ScopeGuardDO extends DurableObject<Env> {
 
   async issue(contractInput: TargetContract, action: ScopedAction, actionDigest: string): Promise<string | null> {
     const contract = parseTargetContract(contractInput, Date.now());
-    if (!/^[a-f0-9]{64}$/.test(actionDigest) || !targetAllows(contract, action, Date.now())) return null;
+    if (typeof actionDigest !== "string" || !/^[a-f0-9]{64}$/.test(actionDigest) || !targetAllows(contract, action, Date.now())) return null;
     const token = crypto.randomUUID();
     const [tokenHash, contractHash, sessionHash, boundDigest] = await Promise.all([
       digest(token), digest(contractBytes(contract)), digest(sessionBytes(contract)),
@@ -59,7 +59,7 @@ export class ScopeGuardDO extends DurableObject<Env> {
 
   async consume(contractInput: TargetContract, action: ScopedAction, actionDigest: string, token: string): Promise<boolean> {
     const contract = parseTargetContract(contractInput, Date.now());
-    if (!/^[a-f0-9]{64}$/.test(actionDigest) || typeof token !== "string" || token.length > 128 ||
+    if (typeof actionDigest !== "string" || !/^[a-f0-9]{64}$/.test(actionDigest) || typeof token !== "string" || token.length > 128 ||
         !targetAllows(contract, action, Date.now())) return false;
     const [tokenHash, contractHash, sessionHash, boundDigest] = await Promise.all([
       digest(token), digest(contractBytes(contract)), digest(sessionBytes(contract)),

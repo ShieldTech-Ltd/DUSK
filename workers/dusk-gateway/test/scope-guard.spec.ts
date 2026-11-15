@@ -15,6 +15,23 @@ function stub(name: string) {
 }
 
 describe("persistent Scope Guard authority", () => {
+  it.each([null, [], {}, { ...action, method: 123 }])("denies malformed RPC actions without creating authority", async (input) => {
+    expect(await stub(`malformed-${JSON.stringify(input)}`).issue(contract(), input as never, hash)).toBeNull();
+  });
+  it("rejects non-string digests rather than coercing them", async () => {
+    expect(await stub("digest-type").issue(contract(), action, [hash] as never)).toBeNull();
+  });
+  it("makes revocation final when racing with issuance or consumption", async () => {
+    const guard = stub("revocation-race");
+    const c = contract();
+    const token = (await guard.issue(c, action, hash))!;
+    const [issued] = await Promise.all([guard.issue(c, action, hash), guard.revoke(c), guard.consume(c, action, hash, token)]);
+    // A consume that linearized before revoke may succeed. Once revoke returns,
+    // no old or concurrently issued authority can authorize another action.
+    expect(await guard.consume(c, action, hash, token)).toBe(false);
+    if (issued) expect(await guard.consume(c, action, hash, issued)).toBe(false);
+    expect(await guard.issue(c, action, hash)).toBeNull();
+  });
   it("cleans expired permit records without removing live authority", async () => {
     const guard = stub("cleanup");
     const c = contract();

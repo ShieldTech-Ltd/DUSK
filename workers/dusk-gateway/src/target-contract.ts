@@ -72,12 +72,15 @@ export interface ScopedAction {
   action_class: string;
 }
 
-export function targetAllows(contract: TargetContract, action: ScopedAction, now: number): boolean {
+export function targetAllows(contract: TargetContract, candidate: unknown, now: number): boolean {
+  const action = record(candidate);
+  if (!action || !["tenant_id", "agent_id", "environment", "session_id", "url", "method", "action_class"]
+    .every((field) => Object.hasOwn(action, field) && typeof action[field] === "string")) return false;
   if (!Number.isSafeInteger(now) || now >= contract.expires_at_ms) return false;
   for (const field of ["tenant_id", "agent_id", "environment", "session_id"] as const) {
     if (action[field] !== contract[field]) return false;
   }
   const url = destination(action.url);
   return url !== null && contract.allowed_origins.includes(url.origin) &&
-    contract.allowed_methods.includes(action.method) && contract.allowed_action_classes.includes(action.action_class);
+    contract.allowed_methods.includes(action.method as string) && contract.allowed_action_classes.includes(action.action_class as string);
 }
