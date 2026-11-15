@@ -59,14 +59,19 @@ export function scopeExecutor(config: TargetContract, guard: Guard, policy: Poli
         if (await policy(action) !== "ALLOW") return { decision: "DENY", code: "policy_denied" };
         const hash = await actionDigest(action);
         if (!await guard.consume(contract, action, hash, token)) return { decision: "DENY", code: "permit_denied" };
+        if (!targetAllows(contract, action, Date.now())) return { decision: "DENY", code: "scope_denied" };
         // Consume before egress. Never retry after a timeout or lost response.
         const response = await service.fetch(new Request(action.url, {
           method: action.method, body: ["GET", "HEAD"].includes(action.method) ? undefined : action.body,
           headers: { "Content-Type": "application/json" }, redirect: "manual", signal: AbortSignal.timeout(10_000),
         }));
-        await response.body?.cancel();
-        if (response.redirected || (response.status >= 300 && response.status < 400)) {
+        const redirected = response.redirected || (response.status >= 300 && response.status < 400);
+        if (redirected) {
           await guard.revoke(contract);
+        }
+        // Cleanup is not part of authorization and cannot skip revocation.
+        try { await response.body?.cancel(); } catch { /* Do not expose upstream errors. */ }
+        if (redirected) {
           return { decision: "DENY", code: "redirect_denied", action_digest: hash };
         }
         return { decision: "ALLOW", code: "executed", action_digest: hash, upstream_status: response.status };
