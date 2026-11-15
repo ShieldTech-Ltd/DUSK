@@ -11,7 +11,7 @@ function setup() {
   // the real Durable Object binding, and downstream calls are counted separately.
   const policy = vi.fn().mockImplementation(async () => Response.json({ decision: "ALLOW", action_digest: "a".repeat(64),
     policy_version: "test", matched_rule_ids: [], reason_code: null }));
-  const bindings: DuskGatewayEnv = { DUSK_GATEWAY_TOKEN: "route-test-token", DUSK_TARGET_CONTRACT: JSON.stringify(contract),
+  const bindings: DuskGatewayEnv = { DUSK_GATEWAY_TOKEN: "route-test-token", DUSK_SCOPE_CONTEXT_KEY: "test-scope-key-of-at-least-32-characters", DUSK_TARGET_CONTRACT: JSON.stringify(contract),
     SCOPE_GUARD: (env as unknown as DuskGatewayEnv).SCOPE_GUARD, DUSK_SCOPE_TARGET: { fetch: target } as unknown as Fetcher,
     DUSK_RUNTIME: { idFromName: () => "test", get: () => ({ fetch: policy }) } as unknown as DurableObjectNamespace };
   const action = { tenant_id: "tenant", agent_id: "agent", environment: "sandbox", session_id: id,
@@ -21,10 +21,27 @@ function setup() {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ request_id, action: override }),
   }), bindings, createExecutionContext());
-  return { call, target, policy, action };
+  return { call, target, policy, action, bindings };
 }
 
 describe("authenticated scope routes with private prepared permits", () => {
+  it("attests the exact native policy bytes using the separate server secret", async () => {
+    const s = setup();
+    expect((await s.call("preflight")).status).toBe(200);
+    const request = s.policy.mock.calls[0]![0] as Request;
+    const raw = await request.text();
+    const stamp = request.headers.get("X-DUSK-Scope-Time")!;
+    const proof = request.headers.get("X-DUSK-Scope-Proof")!;
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(s.bindings.DUSK_SCOPE_CONTEXT_KEY),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const signature = Uint8Array.from(proof.match(/../g)!, (byte) => parseInt(byte, 16));
+    expect(await crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(`${stamp}\n${raw}`))).toBe(true);
+    const payload = JSON.parse(raw);
+    expect(payload.type).toBe(s.action.action_class);
+    expect(payload.scope_context.tenant_id).toBe("tenant");
+    expect(payload.scope_context.origin).toBe("https://owned.example.test");
+    expect(raw).not.toContain(s.bindings.DUSK_SCOPE_CONTEXT_KEY);
+  });
   it("executes only a prepared action once and exposes no permit or payload", async () => {
     const s = setup();
     expect((await s.call("execute")).status).toBe(403);

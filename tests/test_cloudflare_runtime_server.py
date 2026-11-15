@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import http.client
 import importlib.util
 import json
 import os
 import sys
 import threading
+import time
 from collections.abc import Generator
 from http.server import HTTPServer
 from pathlib import Path
@@ -53,14 +56,20 @@ def server() -> Generator[HTTPServer, None, None]:
     server.server_close()
 
 
-def _post(server: HTTPServer, body: bytes) -> tuple[int, dict[str, object]]:
+def _post(
+    server: HTTPServer, body: bytes, headers: dict[str, str] | None = None
+) -> tuple[int, dict[str, object]]:
     host, port = server.server_address
     connection = http.client.HTTPConnection(host, port, timeout=5)
     connection.request(
         "POST",
         "/v1/actions/evaluate",
         body=body,
-        headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+        headers={
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+            **(headers or {}),
+        },
     )
     response = connection.getresponse()
     return response.status, json.loads(response.read())
@@ -101,19 +110,85 @@ def test_non_object_json_is_rejected(server: HTTPServer) -> None:
 
 
 def test_caller_cannot_downgrade_consequence_or_attest_evidence(server: HTTPServer) -> None:
-    status, body = _post(server, json.dumps({
-        "tenant_id": "fake-tenant", "agent_id": "fake-agent", "type": "resource.read",
-        "consequential": False, "_evidence": "CONFIRMED",
-    }).encode())
+    status, body = _post(
+        server,
+        json.dumps(
+            {
+                "tenant_id": "fake-tenant",
+                "agent_id": "fake-agent",
+                "type": "resource.read",
+                "consequential": False,
+                "_evidence": "CONFIRMED",
+            }
+        ).encode(),
+    )
     assert status == 200
     assert body["decision"] == "DENY"
     assert body["permit_id"] is None
 
 
 def test_policy_context_keeps_untrusted_evidence_unknown() -> None:
-    context = _rs._build_auth_context({"consequential": False, "_evidence": "CONFIRMED"}, "tenant", "agent")
+    context = _rs._build_auth_context(
+        {"consequential": False, "_evidence": "CONFIRMED"}, "tenant", "agent"
+    )
     assert context["action"]["consequential"] is True
     assert "_evidence" not in context["action"]
+
+
+@pytest.mark.parametrize(
+    "case, expected",
+    [
+        ("valid", "ALLOW"),
+        ("unsigned", "DENY"),
+        ("tampered", "DENY"),
+        ("expired", "DENY"),
+        ("body_unknown", "DENY"),
+        ("unsupported_action", "DENY"),
+    ],
+)
+def test_real_policy_scoped_attestation(server: HTTPServer, case: str, expected: str) -> None:
+    key = "test-only-scope-key-with-at-least-32-characters"
+    now = int(time.time() * 1000)
+    payload = {
+        "tenant_id": "tenant",
+        "agent_id": "agent",
+        "environment": "sandbox",
+        "session_id": "session",
+        "type": "http.request",
+        "target": "https://owned.example.test/tool",
+        "method": "GET",
+        "body": "",
+        "scope_context": {
+            "tenant_id": "tenant",
+            "agent_id": "agent",
+            "environment": "sandbox",
+            "session_id": "session",
+            "method": "GET",
+            "origin": "https://owned.example.test",
+            "action_class": "http.request",
+            "expires_at_ms": now + 60_000,
+        },
+    }
+    if case == "expired":
+        payload["scope_context"]["expires_at_ms"] = now - 1000
+    if case == "body_unknown":
+        payload["body"] = "unclassified content"
+    if case == "unsupported_action":
+        payload["type"] = "process.execute"
+        payload["scope_context"]["action_class"] = "process.execute"
+    raw = json.dumps(payload).encode()
+    stamp = str(now)
+    proof = hmac.new(key.encode(), stamp.encode() + b"\n" + raw, hashlib.sha256).hexdigest()
+    headers = (
+        {} if case == "unsigned" else {"X-DUSK-Scope-Time": stamp, "X-DUSK-Scope-Proof": proof}
+    )
+    if case == "tampered":
+        raw = raw.replace(b"/tool", b"/other")
+    with patch.dict(os.environ, {"DUSK_SCOPE_CONTEXT_KEY": key}):
+        status, result = _post(server, raw, headers)
+    assert status == 200
+    assert result["decision"] == expected
+    assert bool(result["permit_id"]) == (expected == "ALLOW")
 
 
 @pytest.mark.parametrize(

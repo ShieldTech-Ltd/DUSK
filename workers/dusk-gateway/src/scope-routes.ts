@@ -1,6 +1,7 @@
 import type { ScopeGuardDO } from "./scope-guard-do";
 import { scopeExecutor, type ExecutionAction } from "./scope-executor";
 import { parseTargetContract } from "./target-contract";
+import type { TargetContract } from "./target-contract";
 
 export interface ScopedGatewayEnv {
   DUSK_TARGET_CONTRACT?: string;
@@ -10,7 +11,7 @@ export interface ScopedGatewayEnv {
 
 export async function scopedRoute(request: Request, env: ScopedGatewayEnv,
   readBody: (request: Request) => Promise<Uint8Array | null>,
-  policy: (action: Readonly<ExecutionAction>) => Promise<unknown>): Promise<Response> {
+  policy: (action: Readonly<ExecutionAction>, contract: TargetContract) => Promise<unknown>): Promise<Response> {
   const deny = (status: number, code: string) => Response.json({ decision: "DENY", code }, { status });
   if (request.method !== "POST") return deny(405, "method_not_allowed");
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return deny(400, "content_type_required");
@@ -33,7 +34,7 @@ export async function scopedRoute(request: Request, env: ScopedGatewayEnv,
       issue: async (c, a, hash) => await guard.prepare(c, a, hash, id) ? id : null,
       consume: (c, a, hash) => guard.consumePrepared(c, a, hash, id),
       revoke: (c) => guard.revoke(c),
-    }, policy, { origin: contract.allowed_origins[0]!, service: env.DUSK_SCOPE_TARGET });
+    }, (action) => policy(action, contract), { origin: contract.allowed_origins[0]!, service: env.DUSK_SCOPE_TARGET });
     if (new URL(request.url).pathname === "/v1/actions/preflight") {
       const prepared = await executor.preflight(input.action);
       return prepared ? Response.json({ decision: "ALLOW", request_id: id, action_digest: prepared.action_digest })

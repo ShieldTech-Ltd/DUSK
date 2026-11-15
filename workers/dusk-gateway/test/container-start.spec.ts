@@ -29,6 +29,16 @@ describe("runtime Container configuration", () => {
 });
 
 describe("runtime readiness and forwarding", () => {
+  it("forwards attestation only to the action endpoint, without unrelated headers", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(Response.json({ decision: "ALLOW" }));
+    const forward = setup(fetch);
+    await forward("action", new Headers({ "X-DUSK-Scope-Time": "123", "X-DUSK-Scope-Proof": "proof", Authorization: "secret" }));
+    expect(fetch.mock.calls[0]![1].headers).toBeUndefined();
+    const headers = fetch.mock.calls[1]![1].headers as Headers;
+    expect(headers.get("X-DUSK-Scope-Proof")).toBe("proof");
+    expect(headers.get("Authorization")).toBeNull();
+  });
   function setup(fetch: ReturnType<typeof vi.fn>) {
     return runtimeForwarder({ running: true, start: vi.fn(), getTcpPort: () => ({ fetch }) as unknown as Fetcher }, () => "test-key");
   }

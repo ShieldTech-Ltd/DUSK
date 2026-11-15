@@ -7,6 +7,7 @@ This source adds internal scope enforcement and authenticated preflight/execute 
 One bearer principal is bound to one operator-provisioned contract in this first adapter. Do not share this credential across unrelated tenants. The client cannot choose or replace the operator contract.
 
 - `DUSK_GATEWAY_TOKEN`: existing high-entropy Worker secret.
+- `DUSK_SCOPE_CONTEXT_KEY`: separate high-entropy Worker secret (at least32 characters), passed to the policy Container at startup. It authenticates a timestamp and exact native policy request bytes using HMAC-SHA256. It must be distinct from gateway authentication and permit signing keys. Restart existing Containers after setting or rotating it.
 - `DUSK_TARGET_CONTRACT`: JSON contract with `contract_id`, `tenant_id`, `agent_id`, `environment`, `session_id`, `allowed_origins`, `allowed_methods`, `allowed_action_classes`, and `expires_at_ms`.
 - `SCOPE_GUARD`: SQLite Durable Object binding.
 - `DUSK_SCOPE_TARGET`: operator-selected service binding to the owned downstream Worker. The first adapter requires exactly one allowed HTTPS logical origin.
@@ -42,4 +43,4 @@ Responses contain decision metadata, never downstream response bodies, action bo
 
 ## Evidence still required
 
-Current route tests use a stubbed policy service, real Scope Guard Durable Objects, and counted fake downstream fetches. They do not prove that the native enterprise policy will approve an owned action or that live Cloudflare resources are connected. Native policy-context validation, execution receipts/telemetry, protected sandbox scenarios, supply-chain provenance and independently reviewed live bindings remain required by issues271,272,284,285.
+Current route tests use a stubbed policy service, real Scope Guard Durable Objects, and counted fake downstream fetches. Separate real Python HTTP tests prove native ALLOW for a valid, attested `http.request` with GET and an empty body, and DENY for missing/tampered/expired attestations, unsupported actions and unclassified bodies. The native trusted-context adapter supports only GET/HEAD `http.request` actions with an empty body. Other action classes, write methods and bodies remain denied because their evidence is unknown. This does not prove a complete live Worker-to-Container round trip or connected Cloudflare resources. Execution receipts/telemetry, protected sandbox scenarios, supply-chain provenance and independently reviewed live bindings remain required by issues271,272,284,285.

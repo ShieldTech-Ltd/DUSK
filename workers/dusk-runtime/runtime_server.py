@@ -18,13 +18,17 @@ from __future__ import annotations
 import base64
 import copy
 import hashlib
+import hmac
 import json
 import logging
 import os
 import sys
+import time
 from datetime import UTC, datetime
+from http.client import HTTPMessage
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import urlsplit
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
@@ -72,7 +76,9 @@ def _load_signing_key() -> Ed25519PrivateKey:
         log.warning('{"event":"ephemeral_key_generated","pub_hex":"%s"}', pub_hex)
         return key
 
-    log.error('{"event":"missing_signing_key","msg":"set DUSK_SIGNING_KEY or DUSK_ALLOW_EPHEMERAL_KEY=1"}')
+    log.error(
+        '{"event":"missing_signing_key","msg":"set DUSK_SIGNING_KEY or DUSK_ALLOW_EPHEMERAL_KEY=1"}'
+    )
     raise SystemExit(1)
 
 
@@ -83,6 +89,8 @@ def _build_auth_context(
     action: dict[str, Any],
     tenant_id: str,
     agent_id: str,
+    *,
+    trusted_scope: bool = False,
 ) -> dict[str, Any]:
     """Build a minimal authorization-stage policy context from the action payload."""
     digest = _action_digest(action)
@@ -90,8 +98,9 @@ def _build_auth_context(
     # A caller cannot downgrade a consequential operation or attest its own
     # evidence. Only a server-verified scoped context may establish trust.
     policy_action.pop("_evidence", None)
+    policy_action.pop("scope_context", None)
     policy_action["consequential"] = True
-    return {
+    context = {
         "action": policy_action,
         "identity": {
             "tenant_id": tenant_id,
@@ -113,6 +122,45 @@ def _build_auth_context(
             "action_scope": digest,
         },
     }
+    if trusted_scope:
+        # Attestation proves the fixed HTTP envelope and operator scope. It does
+        # not classify arbitrary commands, request bodies, or sensitive data.
+        supported = action.get("type") == "http.request" and action.get("method") in {"GET", "HEAD"}
+        context["action"]["_evidence"] = "CONFIRMED" if supported else "UNKNOWN"
+        for domain in ("identity", "execution", "permit"):
+            context[domain]["_evidence"] = "CONFIRMED"
+        context["destination"] = {"_evidence": "CONFIRMED", "external": False, "approved": True}
+        context["data"] = {"_evidence": "NOT_APPLICABLE" if action.get("body") == "" else "UNKNOWN"}
+    return context
+
+
+def _trusted_scope(raw: bytes, headers: HTTPMessage, payload: dict[str, Any]) -> bool:
+    secret = os.environ.get("DUSK_SCOPE_CONTEXT_KEY", "")
+    stamp = headers.get("X-DUSK-Scope-Time", "")
+    proof = headers.get("X-DUSK-Scope-Proof", "")
+    if len(secret) < 32 or not stamp.isascii() or not stamp.isdigit() or len(stamp) > 16:
+        return False
+    now_ms = int(time.time() * 1000)
+    if abs(now_ms - int(stamp)) > 30_000:
+        return False
+    expected = hmac.new(secret.encode(), stamp.encode() + b"\n" + raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, proof):
+        return False
+    scope = payload.get("scope_context")
+    if not isinstance(scope, dict):
+        return False
+    expiry = scope.get("expires_at_ms")
+    if type(expiry) is not int or not now_ms < expiry <= now_ms + 3_600_000:
+        return False
+    if any(
+        scope.get(field) != payload.get(field)
+        for field in ("tenant_id", "agent_id", "environment", "session_id", "method")
+    ):
+        return False
+    if scope.get("action_class") != payload.get("type"):
+        return False
+    target = urlsplit(payload.get("target", ""))
+    return target.scheme == "https" and f"https://{target.netloc}" == scope.get("origin")
 
 
 def _reason_code(result_decision: Decision, matched_rule_ids: list[str]) -> str | None:
@@ -174,14 +222,17 @@ class _Handler(BaseHTTPRequestHandler):
 
         # The action is the payload minus identity routing fields.
         action: dict[str, Any] = {
-            k: v
-            for k, v in payload.items()
-            if k not in {"tenant_id", "agent_id"}
+            k: v for k, v in payload.items() if k not in {"tenant_id", "agent_id"}
         }
         action_digest = _action_digest(action)
 
         try:
-            context = _build_auth_context(action, tenant_id, agent_id)
+            context = _build_auth_context(
+                action,
+                tenant_id,
+                agent_id,
+                trusted_scope=_trusted_scope(raw, self.headers, payload),
+            )
             result = _POLICY.evaluate(context, stage=PolicyStage.AUTHORIZATION)
         except Exception:
             log.error('{"event":"policy_eval_error"}', exc_info=True)
@@ -229,7 +280,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), _Handler)  # nosec B104
+    server = HTTPServer(("0.0.0.0", port), _Handler)  # noqa: S104 - Container ingress
     log.info('{"event":"listening","port":%d}', port)
     server.serve_forever()
 

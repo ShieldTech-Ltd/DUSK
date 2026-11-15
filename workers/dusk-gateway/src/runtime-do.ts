@@ -56,6 +56,7 @@ const CONTAINER_PORT = 8080;
 
 interface RuntimeEnv extends Env {
   DUSK_SIGNING_KEY?: string;
+  DUSK_SCOPE_CONTEXT_KEY?: string;
 }
 
 // Worker secrets do not automatically become Container environment variables.
@@ -63,12 +64,13 @@ interface RuntimeEnv extends Env {
 export function startRuntimeContainer(
   container: Pick<Container, "running" | "start">,
   signingKey: string | undefined,
+  scopeKey?: string,
 ): void {
   if (!signingKey?.trim()) throw new Error("runtime signing key not configured");
   if (!container.running) {
     container.start({
       enableInternet: false,
-      env: { DUSK_SIGNING_KEY: signingKey },
+      env: { DUSK_SIGNING_KEY: signingKey, ...(scopeKey ? { DUSK_SCOPE_CONTEXT_KEY: scopeKey } : {}) },
     });
   }
 }
@@ -76,10 +78,11 @@ export function startRuntimeContainer(
 export function runtimeForwarder(
   container: Pick<Container, "running" | "start" | "getTcpPort">,
   signingKey: () => string | undefined,
-): (body: string) => Promise<Response> {
+  scopeKey: () => string | undefined = () => undefined,
+): (body: string, headers?: Headers) => Promise<Response> {
   let starting: Promise<void> | undefined;
   const waitForServer = async () => {
-    startRuntimeContainer(container, signingKey());
+    startRuntimeContainer(container, signingKey(), scopeKey());
     for (let attempt = 0; attempt < 20; attempt++) {
       try {
         const response = await container.getTcpPort(CONTAINER_PORT).fetch("http://dusk-runtime/health", {
@@ -94,21 +97,26 @@ export function runtimeForwarder(
     }
     throw new Error("runtime readiness timeout");
   };
-  return async (body) => {
+  return async (body, headers) => {
     // Recheck configuration even when sharing a concurrent startup probe.
     if (!signingKey()?.trim()) throw new Error("runtime signing key not configured");
     starting ??= waitForServer().finally(() => { starting = undefined; });
     await starting;
     // Never retry an action: a failed response may follow a successful evaluation.
+    const forwardedHeaders = new Headers({ "Content-Type": "application/json" });
+    for (const name of ["X-DUSK-Scope-Time", "X-DUSK-Scope-Proof"]) {
+      const value = headers?.get(name);
+      if (value) forwardedHeaders.set(name, value);
+    }
     return container.getTcpPort(CONTAINER_PORT).fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
-      method: "POST", body, headers: { "Content-Type": "application/json" }, redirect: "error",
+      method: "POST", body, headers: forwardedHeaders, redirect: "error",
     });
   };
 }
 
 export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
   // Public so tests can replace it via runInDurableObject without subclassing.
-  containerFetch: (body: string) => Promise<Response>;
+  containerFetch: (body: string, headers?: Headers) => Promise<Response>;
 
   // Optional test hook: called with each Analytics Engine event payload.
   // Undefined in production. Set via runInDurableObject in tests.
@@ -119,7 +127,7 @@ export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
     this.onEvent = undefined;
 
     this.containerFetch = ctx.container
-      ? runtimeForwarder(ctx.container, () => this.env.DUSK_SIGNING_KEY)
+      ? runtimeForwarder(ctx.container, () => this.env.DUSK_SIGNING_KEY, () => this.env.DUSK_SCOPE_CONTEXT_KEY)
       : async () => { throw new Error("container binding not configured"); };
   }
 
@@ -136,7 +144,7 @@ export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
     // Call the Python DUSK policy container.
     let containerResponse: Response;
     try {
-      containerResponse = await this.containerFetch(body);
+      containerResponse = await this.containerFetch(body, request.headers);
     } catch {
       console.error(JSON.stringify({ event: "container_unavailable", request_id: requestId }));
       return errorResponse(503, "runtime_unavailable", requestId);

@@ -8,4 +8,5 @@
 # Configure DUSK_SIGNING_KEY as a distinct Worker secret. The DO passes it to the Container.
 # For local development, set a base64-encoded 32-byte Ed25519 private key below.
 DUSK_SIGNING_KEY=
+DUSK_SCOPE_CONTEXT_KEY=
 DUSK_GATEWAY_TOKEN=
