@@ -34,10 +34,11 @@ export class ScopeGuardDO extends DurableObject<Env> {
     )`);
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS scope_permits_expiry ON scope_permits (expires_at_ms)");
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS prepared_scope_actions (
-      request_hash TEXT PRIMARY KEY, contract_hash TEXT NOT NULL,
+      request_hash TEXT PRIMARY KEY, contract_hash TEXT NOT NULL, session_hash TEXT NOT NULL,
       token_hash TEXT NOT NULL, expires_at_ms INTEGER NOT NULL
     )`);
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS prepared_scope_expiry ON prepared_scope_actions (expires_at_ms)");
+    ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS prepared_scope_session ON prepared_scope_actions (session_hash)");
   }
 
   async issue(contractInput: TargetContract, action: ScopedAction, actionDigest: string): Promise<string | null> {
@@ -71,7 +72,9 @@ export class ScopeGuardDO extends DurableObject<Env> {
     if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) return false;
     const contract = parseTargetContract(contractInput, Date.now());
     const requestHash = await digest(JSON.stringify([sessionBytes(contract), requestId]));
+    const sessionHash = await digest(sessionBytes(contract));
     if (this.ctx.storage.sql.exec("SELECT 1 FROM prepared_scope_actions WHERE request_hash = ?", requestHash).toArray().length) return false;
+    if (this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM prepared_scope_actions WHERE session_hash = ? AND expires_at_ms > ?", sessionHash, Date.now()).one().n >= 256) return false;
     const token = await this.issue(contract, action, actionDigest);
     if (!token) return false;
     const [contractHash, tokenHash] = await Promise.all([
@@ -84,8 +87,9 @@ export class ScopeGuardDO extends DurableObject<Env> {
     // Retain the request ID until contract expiry, even after its short-lived
     // permit expires, so preflight cannot recreate authority for a replayed ID.
     return this.ctx.storage.sql.exec(`INSERT OR IGNORE INTO prepared_scope_actions
-      (request_hash, contract_hash, token_hash, expires_at_ms) VALUES (?, ?, ?, ?)
-      RETURNING request_hash`, requestHash, contractHash, tokenHash, contract.expires_at_ms).toArray().length === 1;
+      (request_hash, contract_hash, session_hash, token_hash, expires_at_ms)
+      SELECT ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM prepared_scope_actions WHERE session_hash = ? AND expires_at_ms > ?) < 256
+      RETURNING request_hash`, requestHash, contractHash, sessionHash, tokenHash, contract.expires_at_ms, sessionHash, now).toArray().length === 1;
   }
 
   async consumePrepared(contractInput: TargetContract, action: ScopedAction, actionDigest: string, requestId: string): Promise<boolean> {

@@ -100,6 +100,22 @@ def test_non_object_json_is_rejected(server: HTTPServer) -> None:
     assert body["error"] == "invalid_action"
 
 
+def test_caller_cannot_downgrade_consequence_or_attest_evidence(server: HTTPServer) -> None:
+    status, body = _post(server, json.dumps({
+        "tenant_id": "fake-tenant", "agent_id": "fake-agent", "type": "resource.read",
+        "consequential": False, "_evidence": "CONFIRMED",
+    }).encode())
+    assert status == 200
+    assert body["decision"] == "DENY"
+    assert body["permit_id"] is None
+
+
+def test_policy_context_keeps_untrusted_evidence_unknown() -> None:
+    context = _rs._build_auth_context({"consequential": False, "_evidence": "CONFIRMED"}, "tenant", "agent")
+    assert context["action"]["consequential"] is True
+    assert "_evidence" not in context["action"]
+
+
 @pytest.mark.parametrize(
     ("action", "expected_decision"),
     [

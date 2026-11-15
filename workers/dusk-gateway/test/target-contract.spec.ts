@@ -26,6 +26,7 @@ describe("operator target contract", () => {
       expect(targetAllows(parseTargetContract(config(), now), { ...action(), url }, now)).toBe(false);
     });
   it.each([null, {}, { ...config(), extra: true }, { ...config(), expires_at_ms: now },
+    { ...config(), expires_at_ms: now + 3_600_001 },
     { ...config(), allowed_methods: ["get"] }, { ...config(), allowed_origins: ["https://127.0.0.1"] },
     { ...config(), allowed_origins: ["https://owned.example.test/path"] },
     { ...config(), allowed_action_classes: ["read", "read"] }])("rejects malformed configuration", (value) => {

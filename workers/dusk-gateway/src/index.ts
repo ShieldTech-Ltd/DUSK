@@ -212,7 +212,7 @@ export default {
         const response = await handleAction(new Request("https://dusk-internal/v1/actions/evaluate", {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.DUSK_GATEWAY_TOKEN}` },
           body: JSON.stringify({ tenant_id: action.tenant_id, agent_id: action.agent_id,
-            action_type: action.action_class, target: action.url, method: action.method, body: action.body,
+            type: action.action_class, target: action.url, method: action.method, body: action.body,
             environment: action.environment, session_id: action.session_id }),
         }), env, context);
         if (!response.ok) return "DENY";

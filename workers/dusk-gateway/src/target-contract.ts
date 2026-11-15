@@ -53,6 +53,7 @@ export function parseTargetContract(value: unknown, now: number, allowExpired = 
   }
   if (!Number.isSafeInteger(input.expires_at_ms) || (input.expires_at_ms as number) <= 0 ||
       (!allowExpired && (input.expires_at_ms as number) <= now) ||
+      (!allowExpired && (input.expires_at_ms as number) - now > 3_600_000) ||
       !list(input.allowed_origins, (origin) => destination(origin)?.origin === origin) ||
       !list(input.allowed_methods, (method) => METHODS.has(method)) ||
       !list(input.allowed_action_classes, (action) => IDENTIFIER.test(action))) throw invalid();

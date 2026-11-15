@@ -86,8 +86,13 @@ def _build_auth_context(
 ) -> dict[str, Any]:
     """Build a minimal authorization-stage policy context from the action payload."""
     digest = _action_digest(action)
+    policy_action = copy.deepcopy(action)
+    # A caller cannot downgrade a consequential operation or attest its own
+    # evidence. Only a server-verified scoped context may establish trust.
+    policy_action.pop("_evidence", None)
+    policy_action["consequential"] = True
     return {
-        "action": copy.deepcopy(action),
+        "action": policy_action,
         "identity": {
             "tenant_id": tenant_id,
             "agent_id": agent_id,

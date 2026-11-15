@@ -36,6 +36,8 @@ Send authenticated JSON POST requests to `/v1/actions/preflight`, then `/v1/acti
 
 Use a fresh request ID (16 to128 letters, digits, underscores or hyphens) for every intended action. Preflight returns safe decision metadata and the request ID. The opaque permit remains internal; storage keeps only hashes. Execute computes the body/action digest itself, rechecks policy and scope, atomically consumes authority, rechecks expiry immediately before egress, and sends the action once. A timeout or lost response never triggers automatic retry. Prepared IDs remain reserved until contract expiry, including when their short-lived permit expires.
 
+Contracts can extend at most one hour from validation time. Each session can retain at most256 unexpired prepared request IDs; admission fails closed at capacity while existing permits remain usable. Expired records are reclaimed in bounded batches.
+
 Responses contain decision metadata, never downstream response bodies, action bodies, credentials, or raw permits. Caller-provided headers are not forwarded; this adapter supplies JSON content type. Redirects are not followed and revoke the session. Revocation remains possible after contract expiry and persists for the session across contract renewal.
 
 ## Evidence still required

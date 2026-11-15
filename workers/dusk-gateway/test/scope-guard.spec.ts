@@ -15,6 +15,23 @@ function stub(name: string) {
 }
 
 describe("persistent Scope Guard authority", () => {
+  it("fails closed at per-session prepared capacity while preserving existing authority", async () => {
+    const guard = stub("prepared-capacity");
+    const c = contract();
+    const firstId = "capacity-request-0000";
+    expect(await guard.prepare(c, action, hash, firstId)).toBe(true);
+    // Copy the real session hash to fill retained replay slots without a long
+    // test loop through crypto. Admission still uses the real RPC and SQL.
+    await runInDurableObject(guard, (_instance, state) => {
+      const row = state.storage.sql.exec<{ session_hash: string }>("SELECT session_hash FROM prepared_scope_actions LIMIT 1").one();
+      for (let i = 1; i < 256; i++) state.storage.sql.exec(
+        "INSERT INTO prepared_scope_actions (request_hash, contract_hash, session_hash, token_hash, expires_at_ms) VALUES (?, ?, ?, ?, ?)",
+        `reserved-${i}`, "contract", row.session_hash, "token", c.expires_at_ms);
+    });
+    expect(await guard.prepare(c, action, hash, "capacity-request-overflow")).toBe(false);
+    expect(await guard.consumePrepared(c, action, hash, firstId)).toBe(true);
+    expect(await guard.consumePrepared(c, action, hash, firstId)).toBe(false);
+  });
   it("revokes an expired contract's session and prevents reuse after renewal", async () => {
     const guard = stub("expired-revocation");
     const c = contract();
