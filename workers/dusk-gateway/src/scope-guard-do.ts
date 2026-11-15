@@ -32,6 +32,7 @@ export class ScopeGuardDO extends DurableObject<Env> {
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS revoked_scope_sessions (
       session_hash TEXT PRIMARY KEY
     )`);
+    ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS scope_permits_expiry ON scope_permits (expires_at_ms)");
   }
 
   async issue(contractInput: TargetContract, action: ScopedAction, actionDigest: string): Promise<string | null> {
@@ -44,6 +45,9 @@ export class ScopeGuardDO extends DurableObject<Env> {
     ]);
     const now = Date.now();
     if (!targetAllows(contract, action, now)) return null;
+    // Bound cleanup work per issuance. Expired permits carry no authority.
+    this.ctx.storage.sql.exec(`DELETE FROM scope_permits WHERE token_hash IN
+      (SELECT token_hash FROM scope_permits WHERE expires_at_ms <= ? ORDER BY expires_at_ms LIMIT 256)`, now);
     const inserted = this.ctx.storage.sql.exec(`INSERT INTO scope_permits
       (token_hash, contract_hash, session_hash, action_digest, expires_at_ms)
       SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS

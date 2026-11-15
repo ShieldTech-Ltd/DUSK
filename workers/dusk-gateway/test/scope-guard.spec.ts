@@ -15,6 +15,21 @@ function stub(name: string) {
 }
 
 describe("persistent Scope Guard authority", () => {
+  it("cleans expired permit records without removing live authority", async () => {
+    const guard = stub("cleanup");
+    const c = contract();
+    const live = (await guard.issue(c, action, hash))!;
+    await runInDurableObject(guard, (_instance, state) => {
+      for (let i = 0; i < 300; i++) state.storage.sql.exec(
+        "INSERT INTO scope_permits (token_hash, contract_hash, session_hash, action_digest, expires_at_ms) VALUES (?, ?, ?, ?, 0)",
+        `expired-${i}`, "contract", "session", hash);
+    });
+    await guard.issue(c, action, hash);
+    await runInDurableObject(guard, (_instance, state) => {
+      expect(state.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM scope_permits WHERE expires_at_ms = 0").one().n).toBe(44);
+    });
+    expect(await guard.consume(c, action, hash, live)).toBe(true);
+  });
   it("consumes a permit once even with concurrent callers", async () => {
     const guard = stub("single-use");
     const c = contract();
