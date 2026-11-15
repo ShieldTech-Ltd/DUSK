@@ -29,6 +29,21 @@ describe("runtime Container configuration", () => {
 });
 
 describe("runtime readiness and forwarding", () => {
+  it("uses redirect options accepted by the actual Workers Request API", async () => {
+    const fetch = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
+      const request = new Request(url, init);
+      expect(request.redirect).toBe("manual");
+      return new Response(null, { status: 200 });
+    });
+    await setup(fetch)("action");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("rejects a redirect from the policy runtime without following or retrying", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { Location: "https://outside.example.test" } }));
+    await expect(setup(fetch)("action")).rejects.toThrow("runtime redirect denied");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it("forwards attestation only to the action endpoint, without unrelated headers", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 200 }))
       .mockResolvedValueOnce(Response.json({ decision: "ALLOW" }));

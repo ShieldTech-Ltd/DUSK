@@ -2,16 +2,16 @@ import { createExecutionContext, env, runInDurableObject } from "cloudflare:test
 import { beforeAll, expect, it } from "vitest";
 import worker, { type DuskGatewayEnv } from "../src/index";
 import type { DuskRuntimeDO } from "../src/runtime-do";
+import { runtimeForwarder } from "../src/runtime-do";
 
 const native = env as unknown as DuskGatewayEnv & { NATIVE_POLICY: Fetcher; OWNED_TARGET: Fetcher };
 beforeAll(async () => {
   const stub = env.DUSK_RUNTIME.get(env.DUSK_RUNTIME.idFromName("runtime")) as unknown as DurableObjectStub<DuskRuntimeDO>;
   await runInDurableObject(stub, (instance: DuskRuntimeDO) => {
-    // Replace only Container TCP transport with an owned loopback bridge.
-    // Real gateway, runtime DO, policy server, replay DO, R2, and ScopeGuard run.
-    instance.containerFetch = (body, headers) => native.NATIVE_POLICY.fetch("https://native-policy/v1/actions/evaluate", {
-      method: "POST", body, headers,
-    });
+    // Exercise the actual forwarder/readiness/header filtering through a fake
+    // already-running Container port. VM startup and injection remain unproven.
+    instance.containerFetch = runtimeForwarder({ running: true, start() {}, getTcpPort: () => native.NATIVE_POLICY },
+      () => "native-test-signing-placeholder", () => "native-test-context-key-at-least-32-characters");
   });
 });
 

@@ -12,10 +12,11 @@ export default defineConfig({
       bindings: { DUSK_GATEWAY_TOKEN: "native-test-token", DUSK_SCOPE_CONTEXT_KEY: "native-test-context-key-at-least-32-characters" },
       serviceBindings: {
         NATIVE_POLICY: async (request) => {
-          return fetch(`${nativeUrl}/v1/actions/evaluate`, {
-            method: "POST", body: await request.arrayBuffer(), headers: request.headers,
+          const response = await fetch(`${nativeUrl}${new URL(request.url).pathname}`, {
+            method: request.method, body: request.method === "GET" ? undefined : await request.arrayBuffer(), headers: request.headers,
             redirect: "error", signal: AbortSignal.timeout(5000),
           });
+          return new Response(await response.arrayBuffer(), { status: response.status, headers: response.headers });
         },
         OWNED_TARGET: async (request) => {
           const path = new URL(request.url).pathname;

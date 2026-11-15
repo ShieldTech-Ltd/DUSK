@@ -86,7 +86,7 @@ export function runtimeForwarder(
     for (let attempt = 0; attempt < 20; attempt++) {
       try {
         const response = await container.getTcpPort(CONTAINER_PORT).fetch("http://dusk-runtime/health", {
-          method: "GET", signal: AbortSignal.timeout(1000), redirect: "error",
+          method: "GET", signal: AbortSignal.timeout(1000), redirect: "manual",
         });
         await response.body?.cancel();
         if (response.status === 200) return;
@@ -108,9 +108,14 @@ export function runtimeForwarder(
       const value = headers?.get(name);
       if (value) forwardedHeaders.set(name, value);
     }
-    return container.getTcpPort(CONTAINER_PORT).fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
-      method: "POST", body, headers: forwardedHeaders, redirect: "error",
+    const response = await container.getTcpPort(CONTAINER_PORT).fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
+      method: "POST", body, headers: forwardedHeaders, redirect: "manual",
     });
+    if (response.redirected || (response.status >= 300 && response.status < 400)) {
+      try { await response.body?.cancel(); } catch { /* Discard upstream errors. */ }
+      throw new Error("runtime redirect denied");
+    }
+    return response;
   };
 }
 

@@ -12,6 +12,7 @@ function setup() {
   const policy = vi.fn().mockImplementation(async () => Response.json({ decision: "ALLOW", action_digest: "a".repeat(64),
     policy_version: "test", matched_rule_ids: [], reason_code: null }));
   const bindings: DuskGatewayEnv = { DUSK_GATEWAY_TOKEN: "route-test-token", DUSK_SCOPE_CONTEXT_KEY: "test-scope-key-of-at-least-32-characters", DUSK_TARGET_CONTRACT: JSON.stringify(contract),
+    AUDIT_RECEIPTS: env.AUDIT_RECEIPTS, DUSK_EVENTS: env.DUSK_EVENTS,
     SCOPE_GUARD: (env as unknown as DuskGatewayEnv).SCOPE_GUARD, DUSK_SCOPE_TARGET: { fetch: target } as unknown as Fetcher,
     DUSK_RUNTIME: { idFromName: () => "test", get: () => ({ fetch: policy }) } as unknown as DurableObjectNamespace };
   const action = { tenant_id: "tenant", agent_id: "agent", environment: "sandbox", session_id: id,
@@ -25,6 +26,40 @@ function setup() {
 }
 
 describe("authenticated scope routes with private prepared permits", () => {
+  it("blocks before policy or egress when admission auditing fails", async () => {
+    const s = setup();
+    s.bindings.AUDIT_RECEIPTS = { put: vi.fn().mockRejectedValue(new Error("storage unavailable")) } as unknown as R2Bucket;
+    const response = await s.call("preflight");
+    expect(response.status).toBe(503);
+    expect(s.policy).not.toHaveBeenCalled();
+    expect(s.target).not.toHaveBeenCalled();
+  });
+  it("preserves the executed outcome if completion auditing fails", async () => {
+    const s = setup();
+    expect((await s.call("preflight")).status).toBe(200);
+    let writes = 0;
+    s.bindings.AUDIT_RECEIPTS = { put: vi.fn().mockImplementation(async (...args: Parameters<R2Bucket["put"]>) => {
+      if (++writes === 2) throw new Error("completion write unavailable");
+      return env.AUDIT_RECEIPTS.put(...args);
+    }) } as unknown as R2Bucket;
+    const response = await s.call("execute");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ decision: "ALLOW", code: "executed", audit_status: "pending" });
+    expect(s.target).toHaveBeenCalledTimes(1);
+  });
+  it("writes execution outcome receipts and telemetry without payloads or secrets", async () => {
+    const s = setup();
+    const events = vi.fn();
+    s.bindings.DUSK_EVENTS = { writeDataPoint: events } as unknown as AnalyticsEngineDataset;
+    expect((await s.call("preflight")).status).toBe(200);
+    const response = await s.call("execute");
+    const result = await response.json() as { audit_trace_id: string };
+    const receipt = await (await env.AUDIT_RECEIPTS.get(`scope/${result.audit_trace_id}.json`))!.text();
+    expect(JSON.parse(receipt)).toMatchObject({ phase: "execute", decision: "ALLOW", code: "executed" });
+    for (const evidence of [receipt, JSON.stringify(events.mock.calls)]) {
+      expect(evidence).not.toMatch(/ACTION_SECRET|DOWNSTREAM_SECRET|route-test-token|test-scope-key|Scope-Proof|permit/);
+    }
+  });
   it("attests the exact native policy bytes using the separate server secret", async () => {
     const s = setup();
     expect((await s.call("preflight")).status).toBe(200);
