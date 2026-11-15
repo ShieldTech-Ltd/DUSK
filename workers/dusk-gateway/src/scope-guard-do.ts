@@ -78,7 +78,7 @@ export class ScopeGuardDO extends DurableObject<Env> {
   }
 
   async revoke(contractInput: TargetContract): Promise<void> {
-    const contract = parseTargetContract(contractInput, Date.now());
+    const contract = parseTargetContract(contractInput, Date.now(), true);
     const sessionHash = await digest(sessionBytes(contract));
     this.ctx.storage.sql.exec("INSERT OR IGNORE INTO revoked_scope_sessions (session_hash) VALUES (?)", sessionHash);
   }

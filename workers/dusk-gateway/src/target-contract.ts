@@ -42,15 +42,17 @@ function list(value: unknown, check: (item: string) => boolean): value is string
     value.every((item) => typeof item === "string" && check(item)) && new Set(value).size === value.length;
 }
 
-export function parseTargetContract(value: unknown, now: number): TargetContract {
+// Revocation may validate an expired contract; issuance and execution must not.
+export function parseTargetContract(value: unknown, now: number, allowExpired = false): TargetContract {
   const input = record(value);
   const invalid = () => new Error("invalid target contract");
-  if (!input || !Number.isSafeInteger(now) || Object.keys(input).length !== FIELDS.length ||
+  if (!input || !Number.isSafeInteger(now) || now < 0 || Object.keys(input).length !== FIELDS.length ||
       !FIELDS.every((field) => Object.hasOwn(input, field))) throw invalid();
   for (const field of ["contract_id", "tenant_id", "agent_id", "environment", "session_id"]) {
     if (typeof input[field] !== "string" || !IDENTIFIER.test(input[field] as string)) throw invalid();
   }
-  if (!Number.isSafeInteger(input.expires_at_ms) || (input.expires_at_ms as number) <= now ||
+  if (!Number.isSafeInteger(input.expires_at_ms) || (input.expires_at_ms as number) <= 0 ||
+      (!allowExpired && (input.expires_at_ms as number) <= now) ||
       !list(input.allowed_origins, (origin) => destination(origin)?.origin === origin) ||
       !list(input.allowed_methods, (method) => METHODS.has(method)) ||
       !list(input.allowed_action_classes, (action) => IDENTIFIER.test(action))) throw invalid();

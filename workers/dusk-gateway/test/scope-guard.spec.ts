@@ -15,6 +15,14 @@ function stub(name: string) {
 }
 
 describe("persistent Scope Guard authority", () => {
+  it("revokes an expired contract's session and prevents reuse after renewal", async () => {
+    const guard = stub("expired-revocation");
+    const c = contract();
+    const token = (await guard.issue(c, action, hash))!;
+    await guard.revoke({ ...c, expires_at_ms: Date.now() - 1000 });
+    expect(await guard.consume(c, action, hash, token)).toBe(false);
+    expect(await guard.issue({ ...c, expires_at_ms: Date.now() + 120_000 }, action, hash)).toBeNull();
+  });
   it.each([null, [], {}, { ...action, method: 123 }])("denies malformed RPC actions without creating authority", async (input) => {
     expect(await stub(`malformed-${JSON.stringify(input)}`).issue(contract(), input as never, hash)).toBeNull();
   });
