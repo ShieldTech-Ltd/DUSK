@@ -1,5 +1,6 @@
 export { DuskRuntimeDO } from "./runtime-do";
 export { ReplayGuardDO } from "./replay-guard-do";
+export { ScopeGuardDO } from "./scope-guard-do";
 
 const ACTION_PATH = "/v1/actions/evaluate";
 const MAX_BODY_BYTES = 65_536;
