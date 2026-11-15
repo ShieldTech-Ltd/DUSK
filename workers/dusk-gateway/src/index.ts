@@ -1,11 +1,12 @@
 export { DuskRuntimeDO } from "./runtime-do";
 export { ReplayGuardDO } from "./replay-guard-do";
 export { ScopeGuardDO } from "./scope-guard-do";
+import { scopedRoute, type ScopedGatewayEnv } from "./scope-routes";
 
 const ACTION_PATH = "/v1/actions/evaluate";
 const MAX_BODY_BYTES = 65_536;
 
-export interface DuskGatewayEnv {
+export interface DuskGatewayEnv extends ScopedGatewayEnv {
   DUSK_GATEWAY_TOKEN?: string;
   DUSK_RUNTIME?: DurableObjectNamespace;
 }
@@ -202,7 +203,23 @@ async function handleAction(
 }
 
 export default {
-  fetch(request: Request, env: DuskGatewayEnv, context: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: DuskGatewayEnv, context: ExecutionContext): Promise<Response> {
+    if (["/v1/actions/preflight", "/v1/actions/execute"].includes(new URL(request.url).pathname)) {
+      const requestId = crypto.randomUUID();
+      if (!env.DUSK_GATEWAY_TOKEN?.trim()) return errorResponse(503, "gateway_not_configured", requestId);
+      if (!await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN)) return errorResponse(401, "unauthorized", requestId);
+      return scopedRoute(request, env, readBoundedBody, async (action) => {
+        const response = await handleAction(new Request("https://dusk-internal/v1/actions/evaluate", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.DUSK_GATEWAY_TOKEN}` },
+          body: JSON.stringify({ tenant_id: action.tenant_id, agent_id: action.agent_id,
+            action_type: action.action_class, target: action.url, method: action.method, body: action.body,
+            environment: action.environment, session_id: action.session_id }),
+        }), env, context);
+        if (!response.ok) return "DENY";
+        const result = await response.json() as { decision?: unknown };
+        return result.decision;
+      });
+    }
     return handleAction(request, env, context);
   },
 } satisfies ExportedHandler<DuskGatewayEnv>;

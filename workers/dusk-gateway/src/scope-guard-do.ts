@@ -33,6 +33,11 @@ export class ScopeGuardDO extends DurableObject<Env> {
       session_hash TEXT PRIMARY KEY
     )`);
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS scope_permits_expiry ON scope_permits (expires_at_ms)");
+    ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS prepared_scope_actions (
+      request_hash TEXT PRIMARY KEY, contract_hash TEXT NOT NULL,
+      token_hash TEXT NOT NULL, expires_at_ms INTEGER NOT NULL
+    )`);
+    ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS prepared_scope_expiry ON prepared_scope_actions (expires_at_ms)");
   }
 
   async issue(contractInput: TargetContract, action: ScopedAction, actionDigest: string): Promise<string | null> {
@@ -58,11 +63,48 @@ export class ScopeGuardDO extends DurableObject<Env> {
   }
 
   async consume(contractInput: TargetContract, action: ScopedAction, actionDigest: string, token: string): Promise<boolean> {
+    if (typeof token !== "string" || token.length > 128) return false;
+    return this.#consumeHash(contractInput, action, actionDigest, await digest(token));
+  }
+
+  async prepare(contractInput: TargetContract, action: ScopedAction, actionDigest: string, requestId: string): Promise<boolean> {
+    if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) return false;
     const contract = parseTargetContract(contractInput, Date.now());
-    if (typeof actionDigest !== "string" || !/^[a-f0-9]{64}$/.test(actionDigest) || typeof token !== "string" || token.length > 128 ||
+    const requestHash = await digest(JSON.stringify([sessionBytes(contract), requestId]));
+    if (this.ctx.storage.sql.exec("SELECT 1 FROM prepared_scope_actions WHERE request_hash = ?", requestHash).toArray().length) return false;
+    const token = await this.issue(contract, action, actionDigest);
+    if (!token) return false;
+    const [contractHash, tokenHash] = await Promise.all([
+      digest(contractBytes(contract)), digest(token),
+    ]);
+    const now = Date.now();
+    if (!targetAllows(contract, action, now)) return false;
+    this.ctx.storage.sql.exec(`DELETE FROM prepared_scope_actions WHERE request_hash IN
+      (SELECT request_hash FROM prepared_scope_actions WHERE expires_at_ms <= ? LIMIT 256)`, now);
+    // Retain the request ID until contract expiry, even after its short-lived
+    // permit expires, so preflight cannot recreate authority for a replayed ID.
+    return this.ctx.storage.sql.exec(`INSERT OR IGNORE INTO prepared_scope_actions
+      (request_hash, contract_hash, token_hash, expires_at_ms) VALUES (?, ?, ?, ?)
+      RETURNING request_hash`, requestHash, contractHash, tokenHash, contract.expires_at_ms).toArray().length === 1;
+  }
+
+  async consumePrepared(contractInput: TargetContract, action: ScopedAction, actionDigest: string, requestId: string): Promise<boolean> {
+    if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) return false;
+    const contract = parseTargetContract(contractInput, Date.now());
+    const [requestHash, contractHash] = await Promise.all([
+      digest(JSON.stringify([sessionBytes(contract), requestId])), digest(contractBytes(contract)),
+    ]);
+    const rows = this.ctx.storage.sql.exec<{ token_hash: string }>(`SELECT token_hash FROM prepared_scope_actions
+      WHERE request_hash = ? AND contract_hash = ? AND expires_at_ms > ?`, requestHash, contractHash, Date.now()).toArray();
+    return rows.length === 1 && this.#consumeHash(contract, action, actionDigest, rows[0]!.token_hash);
+  }
+
+  async #consumeHash(contractInput: TargetContract, action: ScopedAction, actionDigest: string, tokenHash: string): Promise<boolean> {
+    const contract = parseTargetContract(contractInput, Date.now());
+    if (typeof actionDigest !== "string" || !/^[a-f0-9]{64}$/.test(actionDigest) ||
         !targetAllows(contract, action, Date.now())) return false;
-    const [tokenHash, contractHash, sessionHash, boundDigest] = await Promise.all([
-      digest(token), digest(contractBytes(contract)), digest(sessionBytes(contract)),
+    const [contractHash, sessionHash, boundDigest] = await Promise.all([
+      digest(contractBytes(contract)), digest(sessionBytes(contract)),
       digest(actionBytes(action, actionDigest)),
     ]);
     const now = Date.now();
