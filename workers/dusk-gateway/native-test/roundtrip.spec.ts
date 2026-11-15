@@ -25,9 +25,9 @@ function setup(method = "GET") {
   const action = { tenant_id: "owned-tenant", agent_id: "owned-agent", environment: "sandbox", session_id: session,
     url: "https://owned.example.test/allowed", method, action_class: "http.request", body: "" };
   const id = crypto.randomUUID();
-  const call = (path: string, value = action) => worker.fetch(new Request(`https://gateway/v1/actions/${path}`, {
+  const call = (path: string, value = action, requestId = id) => worker.fetch(new Request(`https://gateway/v1/actions/${path}`, {
     method: "POST", headers: { Authorization: "Bearer native-test-token", "Content-Type": "application/json" },
-    body: JSON.stringify({ request_id: id, action: value }),
+    body: JSON.stringify({ request_id: requestId, action: value }),
   }), bindings, createExecutionContext());
   return { action, call, id };
 }
@@ -92,4 +92,24 @@ it("real native policy denies unknown body evidence and receipts contain metadat
     const receipt = await (await env.AUDIT_RECEIPTS.get(object.key))!.text();
     expect(receipt).not.toMatch(/NATIVE_BODY_SENTINEL|NATIVE_DOWNSTREAM_SENTINEL|native-test-token|native-test-context-key|permit_id|Scope-Proof/);
   }
+});
+
+it("blocks a login escalation after passive discovery and revokes future session actions", async () => {
+  const s = setup();
+  const before = await count();
+  expect((await s.call("preflight")).status).toBe(200);
+  expect((await s.call("execute")).status).toBe(200);
+  const login = { ...s.action, method: "POST", action_class: "credential.login", url: "https://owned.example.test/login" };
+  expect((await s.call("preflight", login, crypto.randomUUID())).status).toBe(403);
+  expect((await s.call("preflight", s.action, crypto.randomUUID())).status).toBe(403);
+  expect(await count()).toBe(before + 1);
+});
+
+it("blocks numeric private and metadata targets without any downstream access", async () => {
+  const before = await count();
+  for (const url of ["https://127.0.0.1/", "https://169.254.169.254/", "https://[::1]/"]) {
+    const s = setup();
+    expect((await s.call("preflight", { ...s.action, url })).status).toBe(403);
+  }
+  expect(await count()).toBe(before);
 });

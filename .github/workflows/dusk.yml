@@ -211,6 +211,7 @@ jobs:
           npm run typecheck:worker
           npm audit --audit-level=moderate
           npm run deploy:worker:dry-run
+          npx wrangler deploy --dry-run --config workers/dusk-owned-target/wrangler.jsonc
       - name: Validate and audit Cloudflare demo
         working-directory: cloudflare-demo
         run: |
