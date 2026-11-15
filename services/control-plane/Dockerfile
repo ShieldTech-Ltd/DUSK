@@ -28,7 +28,8 @@ FROM ${PYTHON_IMAGE} AS runtime
 ARG SOURCE_DATE_EPOCH=0
 ARG OCI_VERSION=0.0.0
 ARG OCI_REVISION=unknown
-ARG DEBIAN_SNAPSHOT=20260930T120000Z
+# Includes the November apt and zlib security updates. Keep the build reproducible.
+ARG DEBIAN_SNAPSHOT=20261115T120000Z
 
 LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.description="Multi-tenant security decision control plane" \
@@ -43,6 +44,9 @@ RUN sed --in-place \
       /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Check-Valid-Until=false update \
     && apt-get upgrade --yes \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge '3.0.4' \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg7.0)" ge '3.0.4' \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 dusk \
     && useradd --no-create-home --uid 10001 --gid 10001 --shell /usr/sbin/nologin dusk \
