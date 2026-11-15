@@ -54,7 +54,26 @@ function errorResponse(status: number, code: string, requestId: string): Respons
 const EVALUATE_PATH = "/v1/actions/evaluate";
 const CONTAINER_PORT = 8080;
 
-export class DuskRuntimeDO extends DurableObject<Env> {
+interface RuntimeEnv extends Env {
+  DUSK_SIGNING_KEY?: string;
+}
+
+// Worker secrets do not automatically become Container environment variables.
+// Validate configuration even if a previous DO instance left the Container running.
+export function startRuntimeContainer(
+  container: Pick<Container, "running" | "start">,
+  signingKey: string | undefined,
+): void {
+  if (!signingKey?.trim()) throw new Error("runtime signing key not configured");
+  if (!container.running) {
+    container.start({
+      enableInternet: false,
+      env: { DUSK_SIGNING_KEY: signingKey },
+    });
+  }
+}
+
+export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
   // Public so tests can replace it via runInDurableObject without subclassing.
   containerFetch: (body: string) => Promise<Response>;
 
@@ -62,21 +81,15 @@ export class DuskRuntimeDO extends DurableObject<Env> {
   // Undefined in production. Set via runInDurableObject in tests.
   onEvent: ((payload: { blobs: string[]; doubles: number[]; indexes: string[] }) => void) | undefined;
 
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env);
     this.onEvent = undefined;
-
-    // Start the container on first construction if it is configured.
-    // Container.start() is synchronous and void; failures surface on the
-    // next fetch() attempt as a 503 from containerFetch.
-    if (ctx.container && !ctx.container.running) {
-      ctx.container.start();
-    }
 
     this.containerFetch = (body: string) => {
       if (!this.ctx.container) {
         throw new Error("container binding not configured");
       }
+      startRuntimeContainer(this.ctx.container, this.env.DUSK_SIGNING_KEY);
       return this.ctx.container
         .getTcpPort(CONTAINER_PORT)
         .fetch(`http://dusk-runtime${EVALUATE_PATH}`, {

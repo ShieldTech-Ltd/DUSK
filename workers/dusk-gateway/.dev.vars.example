@@ -5,5 +5,7 @@
 # DUSK_ORIGIN has been removed. The runtime is now a Cloudflare Durable Object
 # (DuskRuntimeDO) bound via the DUSK_RUNTIME binding in wrangler.jsonc.
 # DUSK_GATEWAY_TOKEN authorizes the Worker-to-Durable-Object boundary only.
-# Configure DUSK_SIGNING_KEY separately as a Container secret, never in this file.
+# Configure DUSK_SIGNING_KEY as a distinct Worker secret. The DO passes it to the Container.
+# For local development, set a base64-encoded 32-byte Ed25519 private key below.
+DUSK_SIGNING_KEY=
 DUSK_GATEWAY_TOKEN=
