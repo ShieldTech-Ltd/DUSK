@@ -77,6 +77,21 @@ def test_missing_key_without_local_exception_exits() -> None:
             _rs._load_signing_key()
 
 
+@pytest.mark.parametrize("path, expected", [("/health", 200), ("/unknown", 404)])
+def test_readiness_is_metadata_only(server: HTTPServer, path: str, expected: int) -> None:
+    host, port = server.server_address
+    connection = http.client.HTTPConnection(host, port, timeout=5)
+    with patch.object(_rs, "_POLICY") as policy:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        assert response.status == expected
+        assert json.loads(response.read()) == (
+            {"status": "ready"} if expected == 200 else {"error": "not_found"}
+        )
+        policy.evaluate.assert_not_called()
+    connection.close()
+
+
 def test_non_object_json_is_rejected(server: HTTPServer) -> None:
     """Only an action object may cross the permit-issuing HTTP boundary."""
     status, body = _post(server, b"[]")

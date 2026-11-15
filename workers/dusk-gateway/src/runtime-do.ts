@@ -73,6 +73,39 @@ export function startRuntimeContainer(
   }
 }
 
+export function runtimeForwarder(
+  container: Pick<Container, "running" | "start" | "getTcpPort">,
+  signingKey: () => string | undefined,
+): (body: string) => Promise<Response> {
+  let starting: Promise<void> | undefined;
+  const waitForServer = async () => {
+    startRuntimeContainer(container, signingKey());
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        const response = await container.getTcpPort(CONTAINER_PORT).fetch("http://dusk-runtime/health", {
+          method: "GET", signal: AbortSignal.timeout(1000), redirect: "error",
+        });
+        await response.body?.cancel();
+        if (response.status === 200) return;
+      } catch {
+        // Only this side-effect-free probe can be retried.
+      }
+      if (attempt < 19) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error("runtime readiness timeout");
+  };
+  return async (body) => {
+    // Recheck configuration even when sharing a concurrent startup probe.
+    if (!signingKey()?.trim()) throw new Error("runtime signing key not configured");
+    starting ??= waitForServer().finally(() => { starting = undefined; });
+    await starting;
+    // Never retry an action: a failed response may follow a successful evaluation.
+    return container.getTcpPort(CONTAINER_PORT).fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
+      method: "POST", body, headers: { "Content-Type": "application/json" }, redirect: "error",
+    });
+  };
+}
+
 export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
   // Public so tests can replace it via runInDurableObject without subclassing.
   containerFetch: (body: string) => Promise<Response>;
@@ -85,19 +118,9 @@ export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
     super(ctx, env);
     this.onEvent = undefined;
 
-    this.containerFetch = (body: string) => {
-      if (!this.ctx.container) {
-        throw new Error("container binding not configured");
-      }
-      startRuntimeContainer(this.ctx.container, this.env.DUSK_SIGNING_KEY);
-      return this.ctx.container
-        .getTcpPort(CONTAINER_PORT)
-        .fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
-          method: "POST",
-          body,
-          headers: { "Content-Type": "application/json" },
-        });
-    };
+    this.containerFetch = ctx.container
+      ? runtimeForwarder(ctx.container, () => this.env.DUSK_SIGNING_KEY)
+      : async () => { throw new Error("container binding not configured"); };
   }
 
   async fetch(request: Request): Promise<Response> {

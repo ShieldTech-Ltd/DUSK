@@ -129,6 +129,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/health":
+            self._send_json(200, {"status": "ready"})
+        else:
+            self._send_json(404, {"error": "not_found"})
+
     def do_POST(self) -> None:  # noqa: N802
         if self.path != _EVALUATE_PATH:
             self._send_json(404, {"error": "not_found"})

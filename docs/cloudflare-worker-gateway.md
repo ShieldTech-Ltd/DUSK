@@ -31,6 +31,8 @@ Confirm the account, Worker, resource inventory, and reviewed candidate before r
 
 The startup code does not change the environment of an already running Container. After rotating the signing key, stop existing runtime Container instances through the approved deployment procedure and verify that a fresh instance uses the new key before resuming traffic. Removing the Worker signing secret blocks new evaluations even if a Container remains running.
 
+Before forwarding an action, the DO probes the internal `/health` endpoint. Concurrent requests share a readiness check. It retries only the GET probe, at most 20 times with a one-second timeout per probe and 250 ms between attempts. Exhaustion returns the generic `503 runtime_unavailable`. The action POST is sent once and is never retried automatically. The readiness response contains only a status field and does not evaluate policy or issue a permit.
+
 ## Request contract
 
 ```powershell
