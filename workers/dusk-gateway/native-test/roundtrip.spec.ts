@@ -36,6 +36,13 @@ async function count() {
   return ((await response.json()) as { calls: number }).calls;
 }
 
+it("the downstream arrival counter includes rejected methods and unknown paths", async () => {
+  const before = await count();
+  expect((await native.OWNED_TARGET.fetch("https://owned.example.test/login", { method: "POST" })).status).toBe(405);
+  expect((await native.OWNED_TARGET.fetch("https://owned.example.test/unknown")).status).toBe(404);
+  expect(await count()).toBe(before + 2);
+});
+
 it("real native policy allows one action and replay creates no second call", async () => {
   const s = setup();
   const before = await count();
