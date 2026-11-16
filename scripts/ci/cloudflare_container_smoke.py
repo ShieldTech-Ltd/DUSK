@@ -12,16 +12,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 
-def main(base_url: str = "http://127.0.0.1:8080") -> None:
-    target = urlsplit(base_url)
-    if (
-        target.scheme != "http"
-        or target.hostname != "127.0.0.1"
-        or target.username
-        or target.password
-    ):
-        raise ValueError("Smoke checks require owned loopback HTTP")
-    health = f"{base_url}/health"
+def _wait_for_health(health: str) -> None:
     deadline = time.monotonic() + 30
     while True:
         if time.monotonic() >= deadline:
@@ -33,6 +24,18 @@ def main(base_url: str = "http://127.0.0.1:8080") -> None:
         except (OSError, urllib.error.URLError):
             pass
         time.sleep(0.1)
+
+
+def main(base_url: str = "http://127.0.0.1:8080") -> None:
+    target = urlsplit(base_url)
+    if (
+        target.scheme != "http"
+        or target.hostname != "127.0.0.1"
+        or target.username
+        or target.password
+    ):
+        raise ValueError("Smoke checks require owned loopback HTTP")
+    _wait_for_health(f"{base_url}/health")
     now = int(time.time() * 1000)
     payload = {
         "tenant_id": "smoke-tenant",
@@ -63,7 +66,7 @@ def main(base_url: str = "http://127.0.0.1:8080") -> None:
         headers = {"Content-Type": "application/json"}
         if signed:
             headers.update({"X-DUSK-Scope-Time": stamp, "X-DUSK-Scope-Proof": proof})
-        request = urllib.request.Request(
+        request = urllib.request.Request(  # noqa: S310 - base_url validated as loopback HTTP
             f"{base_url}/v1/actions/evaluate", data=body, headers=headers
         )
         with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310 - owned loopback only
