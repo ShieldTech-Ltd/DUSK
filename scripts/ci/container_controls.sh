@@ -7,6 +7,10 @@ console=apps/console
 cloudflare=workers/dusk-runtime
 project=agent-action-monitor
 compose="docker compose --project-name $project -f $harness/compose.yml -f $harness/compose.ci.yml"
+hadolint_image=hadolint/hadolint@sha256:a1d49ae1a4e83c1dbad26b8c1ad7588c8bd1e04f4866b34ad3cac50335198552
+trivy_image=aquasec/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+syft_image=anchore/syft@sha256:b8c170b8e51bfc4779ec3ef4399942c57290f5ce76a9c3af564c9d00d4946a6b
+grype_image=anchore/grype@sha256:13113eeceab017260370cf540e1d25442c59665fd07d1b09b66d63bb0c282887
 
 # Build each image once. Every later operation addresses the immutable local ID.
 DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate runtime mock-prod
@@ -30,6 +34,15 @@ docker run --rm --network host \
   "$control_plane_id" dusk-control-plane-migrate
 mkdir -p container-evidence
 cp ci/grype.yml container-evidence/grype.yaml
+printf '%s\n%s\n%s\n%s\n' "$hadolint_image" "$trivy_image" "$syft_image" "$grype_image" \
+  > container-evidence/scanner-image-refs.txt
+docker run --rm --network none "$hadolint_image" hadolint --version > container-evidence/hadolint-version.txt
+docker run --rm --network none "$trivy_image" --version > container-evidence/trivy-version.txt
+docker run --rm --network none "$syft_image" version > container-evidence/syft-version.txt
+docker run --rm --network none "$grype_image" version > container-evidence/grype-version.txt
+grep -Fq '2.15.1' container-evidence/hadolint-version.txt
+grep -Fq '0.76.2' container-evidence/trivy-version.txt
+grep -Fq '0.121.3' container-evidence/grype-version.txt
 printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
   "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id" \
   > container-evidence/image-ids.txt
@@ -50,21 +63,28 @@ unset smoke_signing_key smoke_context_key
 
 for dockerfile in "$harness/Dockerfile" "$harness/runtime/Dockerfile" \
   "$harness/mock-prod/Dockerfile" "$control_plane/Dockerfile" "$console/Dockerfile" "$cloudflare/Dockerfile"; do
-  docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint - < "$dockerfile"
+  docker run --rm --network none -i "$hadolint_image" hadolint - < "$dockerfile"
 done
 
 for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
-  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 \
-    image --exit-code 1 --ignore-unfixed \
-    --severity HIGH,CRITICAL --scanners vuln,secret,misconfig "$image_id"
   name=$(printf '%s' "$image_id" | cut -c8-19)
-  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  archive=$(mktemp --suffix=.tar)
+  trap 'rm -f "$archive"' EXIT
+  docker save --output "$archive" "$image_id"
+  docker run --rm -v "${archive}:/scan/image.tar:ro" \
+    -v "$PWD/container-evidence:/out" "$trivy_image" \
+    image --input /scan/image.tar --exit-code 1 --ignore-unfixed \
+    --severity HIGH,CRITICAL --scanners vuln,secret,misconfig \
+    --format json --output "/out/$name.trivy.json"
+  docker run --rm -v "${archive}:/scan/image.tar:ro" \
     -v "$PWD/container-evidence:/out" \
-    anchore/syft@sha256:b8c170b8e51bfc4779ec3ef4399942c57290f5ce76a9c3af564c9d00d4946a6b \
-    "$image_id" -o cyclonedx-json="/out/$name.cdx.json"
-  docker run --rm -v "$PWD/container-evidence:/out" anchore/grype:v0.86.1 \
-    "sbom:/out/$name.cdx.json" --config /out/grype.yaml --fail-on high
+    "$syft_image" "docker-archive:/scan/image.tar" -o cyclonedx-json="/out/$name.cdx.json"
+  docker run --rm -v "$PWD/container-evidence:/out:ro" "$grype_image" \
+    "sbom:/out/$name.cdx.json" --config /out/grype.yaml --fail-on high -o json \
+    > "container-evidence/$name.grype.json"
+  rm -f "$archive"
+  trap - EXIT
 done
 
 # Compose carries read-only roots, ALL capability drops and no-new-privileges.
