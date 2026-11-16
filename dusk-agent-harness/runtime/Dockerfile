@@ -6,6 +6,8 @@
 FROM python:3.13.18-alpine3.24@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
 
 WORKDIR /app
+COPY mock-prod/alpine-runtime-patches.sh /tmp/alpine-runtime-patches.sh
+RUN sh /tmp/alpine-runtime-patches.sh && rm /tmp/alpine-runtime-patches.sh
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/

@@ -33,6 +33,7 @@ docker run --rm --network host \
   -e DUSK_CP_MIGRATION_STATEMENT_TIMEOUT_MS=30000 \
   "$control_plane_id" dusk-control-plane-migrate
 mkdir -p container-evidence
+python scripts/ci/suppression_policy.py
 cp ci/grype.yml container-evidence/grype.yaml
 printf '%s\n%s\n%s\n%s\n' "$hadolint_image" "$trivy_image" "$syft_image" "$grype_image" \
   > container-evidence/scanner-image-refs.txt
@@ -69,6 +70,12 @@ done
 for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
   name=$(printf '%s' "$image_id" | cut -c8-19)
+  if test "$image_id" != "$console_id"; then
+    # The only SQLite exception is inapplicable CLI code, never library bugs.
+    docker run --rm --entrypoint sh "$image_id" -c '! command -v sqlite3 && ! apk info -e sqlite'
+    docker run --rm --entrypoint cat "$image_id" /usr/local/share/dusk/os-patches.txt \
+      > "container-evidence/$name.os-patches.txt"
+  fi
   archive=$(mktemp --suffix=.tar)
   trap 'rm -f "$archive"' EXIT
   docker save --output "$archive" "$image_id"
