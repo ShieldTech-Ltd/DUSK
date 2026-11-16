@@ -4,6 +4,7 @@ set -eu
 harness=dusk-agent-harness
 control_plane=services/control-plane
 console=apps/console
+cloudflare=workers/dusk-runtime
 project=agent-action-monitor
 compose="docker compose --project-name $project -f $harness/compose.yml -f $harness/compose.ci.yml"
 
@@ -11,11 +12,13 @@ compose="docker compose --project-name $project -f $harness/compose.yml -f $harn
 DUSK_ENFORCE=false DUSK_GATE_API_KEY=ci-control $compose build dusk-gate runtime mock-prod
 docker build --tag dusk-control-plane:ci --file "$control_plane/Dockerfile" .
 docker build --tag dusk-console:ci --file "$console/Dockerfile" .
+docker build --tag dusk-cloudflare-runtime:ci --build-arg "OCI_REVISION=${GITHUB_SHA:-$(git rev-parse HEAD)}" --file "$cloudflare/Dockerfile" .
 gate_id=$(docker image inspect --format '{{.Id}}' "$project-dusk-gate")
 runtime_id=$(docker image inspect --format '{{.Id}}' "$project-runtime")
 mock_id=$(docker image inspect --format '{{.Id}}' "$project-mock-prod")
 control_plane_id=$(docker image inspect --format '{{.Id}}' dusk-control-plane:ci)
 console_id=$(docker image inspect --format '{{.Id}}' dusk-console:ci)
+cloudflare_id=$(docker image inspect --format '{{.Id}}' dusk-cloudflare-runtime:ci)
 
 # Exercise the installed console script and packaged Alembic migrations against
 # the same real PostgreSQL version used by the deployment integration suite.
@@ -27,16 +30,16 @@ docker run --rm --network host \
   "$control_plane_id" dusk-control-plane-migrate
 mkdir -p container-evidence
 cp ci/grype.yml container-evidence/grype.yaml
-printf '%s\n%s\n%s\n%s\n%s\n' \
-  "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" \
+printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
+  "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id" \
   > container-evidence/image-ids.txt
 
 for dockerfile in "$harness/Dockerfile" "$harness/runtime/Dockerfile" \
-  "$harness/mock-prod/Dockerfile" "$control_plane/Dockerfile" "$console/Dockerfile"; do
+  "$harness/mock-prod/Dockerfile" "$control_plane/Dockerfile" "$console/Dockerfile" "$cloudflare/Dockerfile"; do
   docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint - < "$dockerfile"
 done
 
-for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id"; do
+for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id"; do
   test "$(docker image inspect --format '{{.Config.User}}' "$image_id")" != ""
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.2 \
     image --exit-code 1 --ignore-unfixed \
@@ -58,10 +61,10 @@ grep -q 'read_only: true' container-evidence/compose.json
 grep -q 'cap_drop:' container-evidence/compose.json
 grep -q 'read_only: true' container-evidence/control-plane-compose.json
 grep -q 'cap_drop:' container-evidence/control-plane-compose.json
-for image_id in "$gate_id" "$mock_id" "$control_plane_id" "$console_id"; do
+for image_id in "$gate_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id"; do
   test "$(docker image inspect --format '{{json .Config.Healthcheck}}' "$image_id")" != "null"
 done
-for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id"; do
+for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id"; do
   ! docker run --rm --entrypoint sh "$image_id" -c 'command -v pip || command -v gcc || command -v make'
 done
 
