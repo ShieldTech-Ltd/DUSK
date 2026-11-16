@@ -3,7 +3,7 @@
 # Build context is this example's own root (see compose.yml) since
 # harness.py needs the dusk package (BedrockAdapter) installed alongside
 # its own deps.
-FROM python:3.13.11-slim-bookworm@sha256:20080e807bfc404f8450b185cf0fc95d553462673598549613735f70a5b4d5d0
+FROM python:3.13.18-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 WORKDIR /app
 
