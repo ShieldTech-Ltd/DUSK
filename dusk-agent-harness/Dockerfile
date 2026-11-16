@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==84.1.0 wheel==0
     && mkdir -p /app/state \
     && chown -R dusk:dusk /app
 
-USER dusk
+USER 1000
 
 ENV FLASK_HOST=0.0.0.0 \
     FLASK_PORT=8000 \

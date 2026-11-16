@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==84.1.0 wheel==0
     && useradd --create-home --uid 1000 mockprod \
     && chown -R mockprod:mockprod /app
 
-USER mockprod
+USER 1000
 
 COPY app.py .
 

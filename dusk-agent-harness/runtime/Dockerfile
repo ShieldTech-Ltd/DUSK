@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r runtime/requirements.txt \
     && useradd --create-home --uid 1000 agentdemo \
     && chown -R agentdemo:agentdemo /app
 
-USER agentdemo
+USER 1000
 
 COPY models/ ./models/
 COPY runtime/bedrock_client.py runtime/mock_bedrock.py runtime/harness.py \

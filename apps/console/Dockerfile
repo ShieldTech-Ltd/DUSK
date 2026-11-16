@@ -14,7 +14,7 @@ RUN npm run build && npm prune --omit=dev
 
 # hadolint ignore=DL3006
 FROM ${NGINX_IMAGE} AS runtime
-USER root
+USER 0
 COPY apps/console/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build --chown=101:101 /build/dist /usr/share/nginx/html
 RUN apk add --no-cache --upgrade 'pcre2=10.49-r0' \
