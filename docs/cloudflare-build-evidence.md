@@ -1,6 +1,8 @@
 # Cloudflare candidate build evidence
 
-The native policy image is built from `workers/dusk-runtime/Dockerfile`, using the pinned Python base, fixed Debian snapshot and hash-verified Linux Python dependency closure. The CI build labels the candidate source commit and captures the immutable image ID. Its isolated boot check must pass before scans continue.
+The native policy image is built from `workers/dusk-runtime/Dockerfile`, using a digest-pinned Python 3.13.18 Alpine 3.24 base and hash-verified Python dependency closure. The control plane and harness also use this base. Compatible musl wheels for both locked dependency closures were downloaded and hash-checked before proposing the platform change. The CI build labels the candidate source commit and captures the immutable image ID. Its isolated boot check must pass before scans continue.
+
+The Alpine candidate replaces Debian libraries with unresolved stable-release findings; it does not suppress those findings. Python remains on the same minor version, but the libc and package manager change, so Docker boot, PostgreSQL migrations, watch/enforce scenarios and both scanner gates must pass on the rebuilt images before approval. Alpine package updates use the stable 3.24 repositories. Those repositories can change, so builds are not claimed byte-for-byte reproducible: preserve and promote the exact scanned artifact, its package SBOM and digest rather than rebuilding during deployment.
 
 ## Scanner inventory
 

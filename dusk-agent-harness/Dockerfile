@@ -1,11 +1,9 @@
 # dusk-gate: the deterministic /v1/gate HTTP service and optional integration clients.
-FROM python:3.13.18-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+FROM python:3.13.18-alpine3.24@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get upgrade --yes \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk upgrade --no-cache
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
@@ -13,7 +11,8 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==84.1.0 wheel==0.47.0 \
     && pip install --no-cache-dir -e . \
     && pip uninstall --yes setuptools wheel pip \
-    && useradd --create-home --uid 1000 dusk \
+    && addgroup -g 1000 dusk \
+    && adduser -D -u 1000 -G dusk dusk \
     && mkdir -p /app/state \
     && chown -R dusk:dusk /app
 
