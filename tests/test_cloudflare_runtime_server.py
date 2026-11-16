@@ -135,6 +135,24 @@ def test_policy_context_keeps_untrusted_evidence_unknown() -> None:
     assert "_evidence" not in context["action"]
 
 
+def test_container_smoke_harness_with_real_policy_server(
+    server: HTTPServer, capsys: pytest.CaptureFixture[str]
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "native_smoke_test", Path("scripts/ci/cloudflare_container_smoke.py")
+    )
+    assert spec is not None and spec.loader is not None
+    smoke = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(smoke)
+    with patch.dict(
+        os.environ, {"DUSK_SCOPE_CONTEXT_KEY": "local-smoke-test-key-at-least-32-bytes"}
+    ):
+        smoke.main(f"http://127.0.0.1:{server.server_port}")
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["passed"] is True
+    assert report["checks"] == ["health", "native_allow", "unsigned_deny", "tampered_deny"]
+
+
 @pytest.mark.parametrize(
     "case, expected",
     [

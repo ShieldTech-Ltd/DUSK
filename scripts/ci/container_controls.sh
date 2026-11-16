@@ -34,6 +34,20 @@ printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
   "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$console_id" "$cloudflare_id" \
   > container-evidence/image-ids.txt
 
+# Boot the exact native image with fresh test-only keys, read-only filesystem,
+# no public networking and no Linux capabilities. No live keys enter CI.
+smoke_signing_key=$(python -c 'import base64,secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())')
+smoke_context_key=$(python -c 'import secrets; print(secrets.token_hex(32))')
+cloudflare_container=$(docker run --detach --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  -e "DUSK_SIGNING_KEY=$smoke_signing_key" -e "DUSK_SCOPE_CONTEXT_KEY=$smoke_context_key" "$cloudflare_id")
+trap 'docker rm --force "$cloudflare_container" >/dev/null 2>&1 || true' EXIT
+docker exec -i "$cloudflare_container" python - < scripts/ci/cloudflare_container_smoke.py \
+  > container-evidence/cloudflare-smoke.json
+docker rm --force "$cloudflare_container" >/dev/null
+trap - EXIT
+unset smoke_signing_key smoke_context_key
+
 for dockerfile in "$harness/Dockerfile" "$harness/runtime/Dockerfile" \
   "$harness/mock-prod/Dockerfile" "$control_plane/Dockerfile" "$console/Dockerfile" "$cloudflare/Dockerfile"; do
   docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint - < "$dockerfile"
