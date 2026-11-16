@@ -28,10 +28,10 @@ Send authenticated JSON POST requests to `/v1/actions/preflight`, then `/v1/acti
     "agent_id": "sandbox-agent",
     "environment": "sandbox",
     "session_id": "sandbox-session",
-    "url": "https://owned.example.test/tool",
-    "method": "POST",
-    "action_class": "write",
-    "body": "{\"example\":true}"
+    "url": "https://owned.example.test/allowed",
+    "method": "GET",
+    "action_class": "http.request",
+    "body": ""
   }
 }
 ```

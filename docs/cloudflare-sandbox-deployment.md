@@ -34,6 +34,22 @@ All three required secrets must be fresh sandbox values, distinct from each othe
 5. Keep ingress disabled. Establish a reviewed private service-binding invoker or Access-protected ingress before running remote tests. No test invoker or public route is included in this candidate. Test one native ALLOW, one DENY with zero target arrivals, replay denial, scope escape denial and redirect revocation, with matching durable receipts and target counts.
 6. Record the deployed Worker version and Container image digest, actual cold-start result, telemetry, spend observations and rollback input. Cloudflare Container VM startup remains a separate live gate from CI Docker startup.
 
+## Finite post-approval HTTP proof
+
+`scripts/ci/cloudflare_live_proof.py` is prepared for the reviewed remote run. It never creates resources, stages secrets or deploys. It constructs only `dusk-scope-sandbox` and `dusk-owned-sandbox-target` URLs under the same approved Cloudflare account subdomain. The committed configurations keep both private. Before using this optional HTTP harness, the approved operator must configure Access service-token protection for both endpoints, verify that unauthenticated traffic is blocked, and then enable only the reviewed endpoints. Do not enable the fake target publicly without Access protection. A private invoker is an alternative, but is not implemented by this script.
+
+Provide `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` and the distinct sandbox `DUSK_GATEWAY_TOKEN` through the operator's secure process environment. Never include values in arguments or evidence. The harness first probes both endpoints without credentials and requires a denial or Access login redirect. It never follows redirects or retries action requests.
+
+For each scenario, stage a **fresh operator contract and session** matching a private local contract file. Use `owned-tenant`, `owned-agent`, `sandbox`, only `https://owned.example.test`, only GET and `http.request`, fresh UUID contract/session IDs, and expiry at most one hour away. The file must match the contract actually configured in the gateway. An initial ALLOW preflight proves the session is usable; reusing an already revoked session invalidates the test. Run scenarios serially with exclusive access to the target counter:
+
+```sh
+python scripts/ci/cloudflare_live_proof.py --account-subdomain your-approved-subdomain --contract fresh-contract.json --scenario allow-replay --output new-allow-report.json
+```
+
+The supported scenarios are `allow-replay`, `altered-action`, `wrong-tenant`, `destination`, `private`, `login` and `redirect`. Repeat with a newly staged contract/session and a new output path for each. Requests require matching echoed IDs, unique audit traces and completed audit status. The harness checks target counts before and after each phase, including zero arrivals during preflight or denial. Allowed execute and the approved fake service's redirect execute each have one arrival. The redirect is never followed outside that service. The binding transport performs no destination DNS lookup, so private-target tests demonstrate rejection and binding containment, not a general-purpose DNS rebinding detector.
+
+Reports contain only scenario, decisions, trace IDs, phase/total counts, latency and unauthenticated-ingress status. The script refuses to overwrite an existing report. These are HTTP/counter observations. They do **not** independently prove the deployed commit/image identity or actual R2/Analytics contents. Attach the verified deployment inventory and signed image evidence, retrieve every `scope/<audit_trace_id>.json` receipt, query the corresponding Analytics metadata, and have Ritik verify binding use and redaction before closing the live-evidence issues. No such remote proof is claimed yet.
+
 ## Cost and rollback
 
 The one-instance cap bounds concurrency, not total spend. Confirm account billing, Container/Worker/R2/Analytics limits and alerts before remote testing. Stop after the finite proof scenarios and inspect actual usage. No numerical cost estimate is established here.
