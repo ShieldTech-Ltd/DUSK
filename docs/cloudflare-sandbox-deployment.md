@@ -2,6 +2,16 @@
 
 This configuration is prepared for the owned containment proof. It is not a live deployment or customer production approval. Use `wrangler.sandbox.jsonc` explicitly; the default `wrangler.jsonc` still targets the existing `dusk` Worker.
 
+## Approval and image publication
+
+The manual `Cloudflare native image candidate` workflow publishes an image, never a Cloudflare deployment. It accepts only current `main` with passing exact-head release checks and a separately protected `cloudflare-sandbox` environment. The protection payload and main-only branch policy are reviewable in `deploy/cloudflare/`. They have not been applied remotely. Ritik must be the sole required environment reviewer, self-review disabled and administrator bypass disabled. The operator who dispatches publication must be someone other than Ritik so he can approve it.
+
+After PR approval, merge the runtime repair first, then recheck the combined Scope Guard diff, its required checks and review before merging. Allow main CI to finish. An authorized repository administrator can create the new environment from the reviewed payload and add its branch policy with GitHub's environment APIs. Do not modify an existing environment or duplicate an existing branch rule blindly. Inspect the result and run the release gate before dispatching publication on main.
+
+Publication rebuilds all candidate images, boots the native image, runs the existing scans and harness containment checks, and pushes the same native image ID only after they succeed. It rechecks main and CI immediately before publication. The workflow signs the resulting immutable registry digest, generates provenance and an SBOM attestation, verifies their workflow identity and source commit, and retains the scan, SBOM, boot and verification evidence for 90 days. Any required command failure stops the job. A failed publication may leave an uploaded image without complete verification; such an image must never be promoted.
+
+The workflow itself has local admission tests and static validation. A signed registry artifact is not established until the protected workflow successfully runs after approval. Registry access or visibility required for Cloudflare must also be verified before promotion. Never substitute a mutable tag for the verified digest.
+
 ## Resource inventory
 
 | Resource | Candidate name | Isolation |
