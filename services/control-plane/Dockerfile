@@ -36,8 +36,7 @@ LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.revision="${OCI_REVISION}" \
     org.opencontainers.image.licenses="Apache-2.0"
 
-RUN apk upgrade --no-cache \
-    && addgroup -g 10001 dusk \
+RUN addgroup -g 10001 dusk \
     && adduser -S -D -H -u 10001 -G dusk dusk \
     && mkdir -m 0555 /app \
     && chown 10001:10001 /app

@@ -19,8 +19,7 @@ LABEL org.opencontainers.image.title="DUSK native policy runtime" \
     org.opencontainers.image.source="https://github.com/ShieldTech-Ltd/DUSK" \
     org.opencontainers.image.revision="${OCI_REVISION}" \
     org.opencontainers.image.licenses="Apache-2.0"
-RUN apk upgrade --no-cache \
-    && addgroup -g 1001 dusk-runtime \
+RUN addgroup -g 1001 dusk-runtime \
     && adduser -S -D -H -u 1001 -G dusk-runtime dusk-runtime
 COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
 RUN rm -rf /usr/local/lib/python3.13/site-packages/pip* \
