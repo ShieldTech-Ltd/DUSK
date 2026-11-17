@@ -22,6 +22,7 @@ def _wait_for_health(health: str) -> None:
                 if response.status == 200:
                     break
         except (OSError, urllib.error.URLError):
+            # Cold starts may refuse connections; retry until the deadline above.
             pass
         time.sleep(0.1)
 
