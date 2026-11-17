@@ -54,7 +54,64 @@ function errorResponse(status: number, code: string, requestId: string): Respons
 const EVALUATE_PATH = "/v1/actions/evaluate";
 const CONTAINER_PORT = 8080;
 
-export class DuskRuntimeDO extends DurableObject<Env> {
+interface RuntimeEnv extends Env {
+  DUSK_SIGNING_KEY?: string;
+}
+
+// Worker secrets do not automatically become Container environment variables.
+// Validate configuration even if a previous DO instance left the Container running.
+export function startRuntimeContainer(
+  container: Pick<Container, "running" | "start">,
+  signingKey: string | undefined,
+): void {
+  if (!signingKey?.trim()) throw new Error("runtime signing key not configured");
+  if (!container.running) {
+    container.start({
+      enableInternet: false,
+      env: { DUSK_SIGNING_KEY: signingKey },
+    });
+  }
+}
+
+export function runtimeForwarder(
+  container: Pick<Container, "running" | "start" | "getTcpPort">,
+  signingKey: () => string | undefined,
+): (body: string) => Promise<Response> {
+  let starting: Promise<void> | undefined;
+  const waitForServer = async () => {
+    startRuntimeContainer(container, signingKey());
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        const response = await container.getTcpPort(CONTAINER_PORT).fetch("http://dusk-runtime/health", {
+          method: "GET", signal: AbortSignal.timeout(1000), redirect: "manual",
+        });
+        await response.body?.cancel();
+        if (response.status === 200) return;
+      } catch {
+        // Only this side-effect-free probe can be retried.
+      }
+      if (attempt < 19) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error("runtime readiness timeout");
+  };
+  return async (body) => {
+    // Recheck configuration even when sharing a concurrent startup probe.
+    if (!signingKey()?.trim()) throw new Error("runtime signing key not configured");
+    starting ??= waitForServer().finally(() => { starting = undefined; });
+    await starting;
+    // Never retry an action: a failed response may follow a successful evaluation.
+    const response = await container.getTcpPort(CONTAINER_PORT).fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
+      method: "POST", body, headers: { "Content-Type": "application/json" }, redirect: "manual",
+    });
+    if (response.redirected || (response.status >= 300 && response.status < 400)) {
+      try { await response.body?.cancel(); } catch { /* Discard upstream errors. */ }
+      throw new Error("runtime redirect denied");
+    }
+    return response;
+  };
+}
+
+export class DuskRuntimeDO extends DurableObject<RuntimeEnv> {
   // Public so tests can replace it via runInDurableObject without subclassing.
   containerFetch: (body: string) => Promise<Response>;
 
@@ -62,29 +119,13 @@ export class DuskRuntimeDO extends DurableObject<Env> {
   // Undefined in production. Set via runInDurableObject in tests.
   onEvent: ((payload: { blobs: string[]; doubles: number[]; indexes: string[] }) => void) | undefined;
 
-  constructor(ctx: DurableObjectState, env: Env) {
+  constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env);
     this.onEvent = undefined;
 
-    // Start the container on first construction if it is configured.
-    // Container.start() is synchronous and void; failures surface on the
-    // next fetch() attempt as a 503 from containerFetch.
-    if (ctx.container && !ctx.container.running) {
-      ctx.container.start();
-    }
-
-    this.containerFetch = (body: string) => {
-      if (!this.ctx.container) {
-        throw new Error("container binding not configured");
-      }
-      return this.ctx.container
-        .getTcpPort(CONTAINER_PORT)
-        .fetch(`http://dusk-runtime${EVALUATE_PATH}`, {
-          method: "POST",
-          body,
-          headers: { "Content-Type": "application/json" },
-        });
-    };
+    this.containerFetch = ctx.container
+      ? runtimeForwarder(ctx.container, () => this.env.DUSK_SIGNING_KEY)
+      : async () => { throw new Error("container binding not configured"); };
   }
 
   async fetch(request: Request): Promise<Response> {

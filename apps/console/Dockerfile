@@ -18,6 +18,7 @@ USER root
 COPY apps/console/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build --chown=101:101 /build/dist /usr/share/nginx/html
 RUN apk add --no-cache --upgrade 'pcre2=10.49-r0' \
+      'musl=1.2.6-r3' 'musl-utils=1.2.6-r3' 'zlib=1.4-r0' \
     && chmod -R a-w /usr/share/nginx/html /etc/nginx/conf.d/default.conf
 USER 101:101
 EXPOSE 8080
