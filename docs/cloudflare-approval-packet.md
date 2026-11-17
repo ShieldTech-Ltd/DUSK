@@ -26,7 +26,7 @@ Source and local test preparation can finish before approval. Signed registry pu
 
 ## Ordered handoff after approval
 
-1. Approve and merge #353, then refresh #354 against main, review its final diff and require passing checks before approving and merging it. Do not bypass branch protections or enable automatic deployment from an unreviewed commit.
+1. PR #353 is merged. Refresh #354 against main, review its final diff and require passing checks before approving and merging it. Do not bypass branch protections or enable automatic deployment from an unreviewed commit.
 2. Wait for CI on the resulting main commit. Review and apply the dedicated `cloudflare-sandbox` environment and main-only branch-policy payloads. Confirm actual protections through the API before dispatching the manual image publication workflow.
 3. A dispatcher other than Ritik starts publication; Ritik approves the protected job. Inspect successful verification artifacts and record the immutable native image digest. Failure after a push can leave an incomplete image, which must not be promoted.
 4. Authenticate to the verified Cloudflare owning account, review its current deployment and reconcile bindings. Configure the isolated resources and distinct sandbox secrets, retaining the prior version/image for rollback. Use the verified published digest rather than rebuilding it.

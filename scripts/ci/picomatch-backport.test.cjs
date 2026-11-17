@@ -23,7 +23,7 @@ const helper = fs.readFileSync(
 let original = fs.readFileSync(path.join(pkg, "lib/parse.js"), "utf8");
 if (hash(original) === patchedHash) {
   original = original
-    .replace(helper + "\n", "")
+    .replace(helper + "\n\n", "")
     .replace(
       "    const analysis = isFixedWidthRepeatedBranch(body)\n      ? analyzeRepeatedExtglob(body, opts)\n      : { risky: true };",
       "    const analysis = analyzeRepeatedExtglob(body, opts);",
@@ -44,6 +44,51 @@ process.on("exit", () =>
 test("only the known original parser can be repaired", () => {
   assert.equal(hash(patch(original)), patchedHash);
   assert.throws(() => patch(original + "\n"));
+});
+
+test("prototype names are not audit levels or severities", () => {
+  const node = "node_modules/picomatch";
+  for (const value of ["__proto__", "constructor", "toString"]) {
+    const report = {
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 1,
+        },
+      },
+      vulnerabilities: {
+        picomatch: {
+          severity: value,
+          nodes: [node],
+          via: [
+            {
+              name: "picomatch",
+              url: "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+            },
+          ],
+        },
+      },
+    };
+    assert.throws(() => assess(report, new Set([node]), "moderate"));
+    const empty = {
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        },
+      },
+      vulnerabilities: {},
+    };
+    assert.throws(() => assess(empty, new Set([node]), value));
+  }
 });
 
 test("installed version, lock identity and modified parser cannot bypass admission", () => {

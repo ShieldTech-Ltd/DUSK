@@ -27,7 +27,7 @@ function patch(source) {
   let result = replaceOnce(
     source,
     "const repeatedExtglobRecursion = pattern => {",
-    helper + "\nconst repeatedExtglobRecursion = pattern => {",
+    helper + "\n\nconst repeatedExtglobRecursion = pattern => {",
   );
   result = replaceOnce(
     result,
@@ -107,7 +107,7 @@ function mitigated(name, report, nodes, visited = new Set()) {
 function assess(report, nodes, level) {
   const ranks = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
   if (
-    !(level in ranks) ||
+    !Object.hasOwn(ranks, level) ||
     !report.metadata?.vulnerabilities ||
     !report.vulnerabilities ||
     report.error
@@ -127,7 +127,8 @@ function assess(report, nodes, level) {
   const failures = [];
   const dispositions = [];
   for (const [name, value] of entries) {
-    if (!(value.severity in ranks)) throw new Error("Unknown audit severity");
+    if (!Object.hasOwn(ranks, value.severity))
+      throw new Error("Unknown audit severity");
     if (ranks[value.severity] < ranks[level]) continue;
     if (mitigated(name, report, nodes)) dispositions.push(name);
     else failures.push(name);

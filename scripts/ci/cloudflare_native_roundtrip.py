@@ -17,6 +17,11 @@ def main() -> int:
     parser.add_argument("--vitest")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
+    vitest = (
+        Path(args.vitest) if args.vitest else root / "node_modules/vitest/vitest.mjs"
+    ).resolve()
+    if vitest != (root / "node_modules/vitest/vitest.mjs").resolve():
+        raise ValueError("Use this project's installed Vitest so the tooling guard can verify it")
     # These are test-only values in this child process. Never use live secrets.
     os.environ["DUSK_SIGNING_KEY"] = ""
     os.environ["DUSK_ALLOW_EPHEMERAL_KEY"] = "1"
@@ -37,10 +42,17 @@ def main() -> int:
         "DUSK_GATEWAY_TOKEN": "native-test-token",
     }
     try:
+        subprocess.run(  # noqa: S603 - trusted Node path, fixed local guard, no shell
+            [args.node, str(root / "scripts/ci/picomatch-backport.cjs"), "apply", str(root)],
+            cwd=root,
+            env=child_env,
+            timeout=30,
+            check=True,
+        )
         return subprocess.run(  # noqa: S603 - trusted CLI paths, argv array, no shell
             [
                 args.node,
-                args.vitest or str(root / "node_modules/vitest/vitest.mjs"),
+                str(vitest),
                 "run",
                 "--config",
                 "workers/dusk-gateway/vitest.native.config.ts",

@@ -13,4 +13,3 @@ const isFixedWidthRepeatedBranch = branch => {
   }
   return !quoted;
 };
-

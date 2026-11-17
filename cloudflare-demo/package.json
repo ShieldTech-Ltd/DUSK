@@ -5,6 +5,7 @@
   "description": "Cloudflare Worker transport layer for the DUSK edge demo.",
   "type": "module",
   "scripts": {
+    "pretest": "node ../scripts/ci/picomatch-backport.cjs apply .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
