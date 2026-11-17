@@ -20,6 +20,7 @@ SCENARIOS = (
     "private",
     "login",
     "redirect",
+    "policy",
 )
 
 
@@ -31,7 +32,7 @@ class NoRedirect(HTTPRedirectHandler):
 def validate_contract(contract: dict) -> None:
     if (
         contract.get("allowed_origins") != ["https://owned.example.test"]
-        or contract.get("allowed_methods") != ["GET"]
+        or contract.get("allowed_methods") not in (["GET"], ["GET", "POST"])
         or contract.get("allowed_action_classes") != ["http.request"]
         or contract.get("tenant_id") != "owned-tenant"
         or contract.get("agent_id") != "owned-agent"
@@ -53,7 +54,13 @@ def verified_count(status: int, value: dict) -> int:
 
 
 def verified_receipt(
-    status: int, value: dict, expected: str, phase: str, identifier: str, seen: set[str]
+    status: int,
+    value: dict,
+    expected: str,
+    phase: str,
+    identifier: str,
+    seen: set[str],
+    expected_code: str | None = None,
 ) -> dict:
     if status != (200 if expected == "ALLOW" else 403) or value.get("decision") != expected:
         raise ValueError("Unexpected enforcement decision")
@@ -61,17 +68,25 @@ def verified_receipt(
     uuid.UUID(trace)
     if value.get("request_id") != identifier or trace in seen:
         raise ValueError("Stale or reused receipt")
+    if expected_code is not None and value.get("code") != expected_code:
+        raise ValueError("Wrong denial mechanism")
     if value.get("audit_status") != "complete":
         raise ValueError("Audit completion is unproven")
     seen.add(trace)
     return {"phase": phase, "decision": expected, "audit_trace_id": trace}
 
 
-def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
-    """Exchange is the fixed-endpoint HTTP adapter or an independent test double."""
+def validate_scenario(contract: dict, scenario: str) -> None:
     validate_contract(contract)
     if scenario not in SCENARIOS:
         raise ValueError("Unknown scenario")
+    if contract["allowed_methods"] != (["GET", "POST"] if scenario == "policy" else ["GET"]):
+        raise ValueError("Contract methods must match the selected proof scenario")
+
+
+def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
+    """Exchange is the fixed-endpoint HTTP adapter or an independent test double."""
+    validate_scenario(contract, scenario)
     receipts = []
     seen: set[str] = set()
     action = {k: contract[k] for k in ("tenant_id", "agent_id", "environment", "session_id")}
@@ -90,6 +105,7 @@ def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
         expected: str,
         identifier: str = request_id,
         expected_delta: int = 0,
+        expected_code: str | None = None,
     ) -> None:
         phase_before = count()
         status, value = exchange(
@@ -98,7 +114,7 @@ def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
             f"/v1/actions/{phase}",
             {"request_id": identifier, "action": candidate},
         )
-        receipt = verified_receipt(status, value, expected, phase, identifier, seen)
+        receipt = verified_receipt(status, value, expected, phase, identifier, seen, expected_code)
         delta = count() - phase_before
         if delta != expected_delta:
             raise ValueError("Per-phase downstream arrival count violates containment")
@@ -112,7 +128,13 @@ def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
     )
     call("preflight", initial, "ALLOW")  # Proves the supplied session is initially usable.
     expected_calls = 0
-    if scenario in ("allow-replay", "login"):
+    if scenario == "policy":
+        # In scope but deliberately unsupported by native policy. This must
+        # exercise policy denial rather than a method/origin scope rejection.
+        denied = {**action, "method": "POST", "body": '{"fake":true}'}
+        call("preflight", denied, "DENY", str(uuid.uuid4()))
+        call("execute", denied, "DENY", str(uuid.uuid4()), expected_code="policy_denied")
+    elif scenario in ("allow-replay", "login"):
         call("execute", action, "ALLOW", expected_delta=1)
         expected_calls = 1
         if scenario == "allow-replay":

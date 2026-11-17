@@ -39,6 +39,7 @@ def witness(decisions, deltas, *, pending=False, stale=False, duplicate=False):
             {
                 "request_id": "old-id" if stale else value["request_id"],
                 "decision": decision,
+                "code": "policy_denied" if decision == "DENY" else "prepared",
                 "audit_status": "pending" if pending else "complete",
                 "audit_trace_id": trace if duplicate else str(uuid.uuid4()),
             },
@@ -57,10 +58,14 @@ def witness(decisions, deltas, *, pending=False, stale=False, duplicate=False):
         ("private", ["ALLOW", "DENY", "DENY"], [0, 0, 0]),
         ("login", ["ALLOW", "ALLOW", "DENY", "DENY"], [0, 1, 0, 0]),
         ("redirect", ["ALLOW", "DENY", "DENY"], [0, 1, 0]),
+        ("policy", ["ALLOW", "DENY", "DENY"], [0, 0, 0]),
     ],
 )
 def test_scenarios_require_per_phase_counts_and_redacted_metadata(scenario, decisions, deltas):
-    report = run_proof(contract(), scenario, witness(decisions, deltas))
+    configured = contract()
+    if scenario == "policy":
+        configured["allowed_methods"] = ["GET", "POST"]
+    report = run_proof(configured, scenario, witness(decisions, deltas))
     assert report["passed"] and report["downstream_arrivals"] == sum(deltas)
     assert set(report) == {"passed", "scenario", "downstream_arrivals", "receipts", "evidence"}
     assert [r["downstream_arrivals"] for r in report["receipts"]] == deltas
@@ -91,6 +96,21 @@ def test_pending_stale_or_reused_receipts_cannot_pass(change):
 def test_previously_revoked_session_cannot_establish_a_baseline():
     with pytest.raises(ValueError):
         run_proof(contract(), "allow-replay", witness(["DENY"], [0]))
+
+
+def test_scope_rejection_cannot_be_reported_as_native_policy_denial():
+    configured = contract()
+    configured["allowed_methods"] = ["GET", "POST"]
+    observations = witness(["ALLOW", "DENY", "DENY"], [0, 0, 0])
+
+    def wrong_mechanism(*args):
+        status, value = observations(*args)
+        if value.get("decision") == "DENY":
+            value["code"] = "scope_denied"
+        return status, value
+
+    with pytest.raises(ValueError, match="denial mechanism"):
+        run_proof(configured, "policy", wrong_mechanism)
 
 
 @pytest.mark.parametrize("value", [-1, True, "1", 1.1, None])

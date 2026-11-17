@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+sh scripts/ci/test_sandbox_exit.sh
 
 harness=dusk-agent-harness
 control_plane=services/control-plane
@@ -74,7 +75,7 @@ for image_id in "$gate_id" "$runtime_id" "$mock_id" "$control_plane_id" "$consol
   name=$(printf '%s' "$image_id" | cut -c8-19)
   # The global package-specific exception requires CLI absence in every image.
   docker run --rm --entrypoint sh "$image_id" \
-    -c 'if command -v sqlite3 || apk info -e sqlite; then exit 1; fi; echo absent' \
+    -c 'command -v apk >/dev/null || exit 1; if command -v sqlite3 || apk info -e sqlite; then exit 1; fi; echo absent' \
     > "container-evidence/$name.sqlite-cli-absence.txt"
   if test "$image_id" != "$console_id"; then
     docker run --rm --entrypoint cat "$image_id" /usr/local/share/dusk/os-patches.txt \

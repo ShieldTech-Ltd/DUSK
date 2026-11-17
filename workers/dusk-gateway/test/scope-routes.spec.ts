@@ -26,6 +26,15 @@ function setup() {
 }
 
 describe("authenticated scope routes with private prepared permits", () => {
+  it.each([503, 200])("does not label runtime error status %s as a native policy decision", async (status) => {
+    const s = setup();
+    expect((await s.call("preflight")).status).toBe(200);
+    s.policy.mockImplementation(async () => Response.json({ error: "owned-runtime-failure" }, { status }));
+    const response = await s.call("execute");
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ decision: "DENY", code: "execution_unavailable" });
+    expect(s.target).not.toHaveBeenCalled();
+  });
   it("blocks before policy or egress when admission auditing fails", async () => {
     const s = setup();
     s.bindings.AUDIT_RECEIPTS = { put: vi.fn().mockRejectedValue(new Error("storage unavailable")) } as unknown as R2Bucket;

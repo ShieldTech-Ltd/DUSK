@@ -92,6 +92,8 @@ it("real native policy denies unknown body evidence and receipts contain metadat
   s.action.body = "NATIVE_BODY_SENTINEL";
   const before = await count();
   expect((await s.call("preflight")).status).toBe(403);
+  const denied = await s.call("execute");
+  expect(await denied.json()).toMatchObject({ decision: "DENY", code: "policy_denied" });
   expect(await count()).toBe(before);
   const objects = await env.AUDIT_RECEIPTS.list({ prefix: "receipts/" });
   expect(objects.objects.length).toBeGreaterThan(0);

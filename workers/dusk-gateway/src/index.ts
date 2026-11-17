@@ -224,8 +224,9 @@ export default {
             environment: action.environment, session_id: action.session_id,
             scope_context: { ...contract, origin: new URL(action.url).origin, method: action.method, action_class: action.action_class } }),
         }), env, context, true);
-        if (!response.ok) return "DENY";
-        const result = await response.json() as { decision?: unknown };
+        const result: unknown = await response.json();
+        if (!isPublicDecision(result)) throw new Error("Native policy response invalid");
+        if (response.status !== (result.decision === "ALLOW" ? 200 : 403)) throw new Error("Native policy unavailable");
         return result.decision;
       });
     }
