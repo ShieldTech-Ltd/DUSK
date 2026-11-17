@@ -2,4 +2,5 @@ dist/
 node_modules/
 playwright-report/
 test-results/
+dependency-evidence/
 src/api/schema.d.ts

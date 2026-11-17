@@ -7,6 +7,9 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /build
 COPY apps/console/package.json apps/console/package-lock.json ./
 RUN npm ci --ignore-scripts
+COPY scripts/ci/picomatch-backport.cjs /build/scripts/ci/picomatch-backport.cjs
+COPY ci/picomatch-single-branch-helper.txt /build/ci/picomatch-single-branch-helper.txt
+RUN node scripts/ci/picomatch-backport.cjs apply .
 COPY docs/dusk-hero-banner.svg /docs/dusk-hero-banner.svg
 COPY docs/dusk-logo.svg /docs/dusk-logo.svg
 COPY apps/console/ ./

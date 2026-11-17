@@ -249,9 +249,11 @@ jobs:
       - name: Validate Worker and build its Container with Docker
         run: |
           docker info
+          node scripts/ci/picomatch-backport.cjs apply .
+          node --test scripts/ci/picomatch-backport.test.cjs
           npm run test:worker
           npm run typecheck:worker
-          npm audit --audit-level=moderate
+          node scripts/ci/picomatch-backport.cjs audit . moderate
           npm run deploy:worker:dry-run
           npx wrangler deploy --dry-run --config wrangler.sandbox.jsonc
           npx wrangler deploy --dry-run --config workers/dusk-owned-target/wrangler.jsonc
@@ -259,9 +261,19 @@ jobs:
         working-directory: cloudflare-demo
         run: |
           npm ci --ignore-scripts
+          node ../scripts/ci/picomatch-backport.cjs apply .
           npm test
           npm run typecheck
-          npm audit --audit-level=low
+          node ../scripts/ci/picomatch-backport.cjs audit . low
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: worker-dependency-evidence
+          path: |
+            dependency-evidence/
+            cloudflare-demo/dependency-evidence/
+          if-no-files-found: error
+          retention-days: 30
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -285,13 +297,21 @@ jobs:
       - name: Run console static, unit, contract, and dependency gates
         working-directory: apps/console
         run: |
+          node ../../scripts/ci/picomatch-backport.cjs apply .
           npm run format:check
           npm run lint
           npm run typecheck
           npm test
           npm run build
           npm run check:api
-          npm audit --audit-level=moderate
+          node ../../scripts/ci/picomatch-backport.cjs audit . moderate
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: console-dependency-evidence
+          path: apps/console/dependency-evidence/
+          if-no-files-found: error
+          retention-days: 30
       - name: Install pinned Playwright browsers
         working-directory: apps/console
         run: npx playwright install --with-deps chromium firefox webkit

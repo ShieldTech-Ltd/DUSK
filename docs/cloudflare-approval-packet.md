@@ -12,6 +12,8 @@ This packet prepares maintainer review. It does not authorize or claim a live pr
 
 ## Explicit security decisions
 
+Review the temporary picomatch tooling guard in `picomatch-tooling-hardening.md`. There is no patched registry release for the newly reported advisory. The local guard deliberately restricts repeated-extglob syntax, verifies the exact installed source hashes, preserves raw npm findings, and permits a disposition only for that exact advisory on repaired paths. Other advisories and audit errors fail. The disposition expires 2026-12-01. This is a source hardening proposal requiring review, not a claim that the npm registry package has been fixed.
+
 1. Review the Alpine platform change and standalone SQLite patch. SQLite 3.54.1 is upstream stable, but its architecture-specific signed APK comes from Alpine's pre-release 3.25 branch. The fixed hashes, offline installation, unchanged repositories, loaded-library checks and actual migration evidence are documented in `cloudflare-build-evidence.md`. This needs explicit acceptance before promotion.
 2. Review the sole temporary scanner disposition: CVE-2026-119586 against `sqlite-libs=3.54.1-r0`, expiring 2026-11-30. SQLite identifies this as a C CLI `.recover` issue. Builds and scans assert that the CLI is absent. No SQLite library memory-corruption CVE is exempted. Expired previous Debian exceptions are removed.
 3. Inspect the security-gate result for the **current PR commit**, including both scanner reports, actual native boot, harness containment, console tests and native ARM64 control-plane migration. A newer commit invalidates older passing-check evidence.

@@ -9,6 +9,7 @@
 .mypy_cache
 .ruff_cache
 container-evidence
+**/dependency-evidence
 deploy
 docs
 !docs/
