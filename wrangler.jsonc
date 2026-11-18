@@ -17,12 +17,17 @@
   "durable_objects": {
     "bindings": [
       { "name": "DUSK_RUNTIME", "class_name": "DuskRuntimeDO" },
-      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" }
+      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" },
+      { "name": "SCOPE_GUARD", "class_name": "ScopeGuardDO" }
     ]
   },
   // exports replaces migrations for Container-capable DOs.
   // DuskRuntimeDO attaches the dusk-runtime Container; ReplayGuardDO is SQLite-only.
   "exports": {
+    "ScopeGuardDO": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
     "DuskRuntimeDO": {
       "type": "durable-object",
       "storage": "sqlite",

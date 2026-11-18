@@ -1,0 +1,15 @@
+// DUSK tooling hardening using picomatch's existing risky-pattern fallback.
+// Only fixed-width branches may retain an unbounded outer repetition.
+const isFixedWidthRepeatedBranch = branch => {
+  let quoted = false;
+  for (let i = 0; i < branch.length; i++) {
+    const ch = branch[i];
+    // unescape and class-expansion options can turn these into variable-width
+    // regex fragments. Fail closed regardless of options or quoting.
+    if (ch === '/' || ch === '\\' || ch === '[' || ch === ']') return false;
+    if (ch === '"') { quoted = !quoted; continue; }
+    if (quoted) continue;
+    if (/[*?(){}|!+@]/.test(ch)) return false;
+  }
+  return !quoted;
+};
