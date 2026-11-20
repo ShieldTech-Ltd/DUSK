@@ -1,6 +1,6 @@
 # Publish DUSK to PyPI
 
-Distribution: `dusk-security`. Executable: `dusk`. Candidate: `0.3.0rc1`.
+Distribution: `dusk-security`. Executable: `dusk`. Candidate: `0.3.0rc2`.
 The PyPI project `dusk` is owned by another publisher; do not upload under it.
 
 The release workflow contains an opt-in PyPI publishing job that only consumes
@@ -34,7 +34,7 @@ to the user's PyPI account. Never paste a password or API token into chat.
    release. Approve the protected environment after reviewing the exact tag
    and artifacts. The existing workflow requires main ancestry.
 4. Verify installation in a fresh environment using the public index:
-   `python -m pip install --pre dusk-security==0.3.0rc1` and `dusk`.
+   `python -m pip install --pre dusk-security==0.3.0rc2` and `dusk`.
 
 The `publish` switch controls GitHub release creation independently. Leave it
 disabled when an existing GitHub release should be retained.

@@ -1,12 +1,8 @@
 ignore:
-  # Debian classifies this dpkg finding as won't-fix. The time-bounded
-  # exception is governed by SEC-034 and ci/suppressions.yml.
-  - vulnerability: CVE-2025-6297
+  # False component attribution, pending maintainer review. The C SQLite CLI is
+  # absent, asserted in builds and before scans. No library CVE is exempted.
+  - vulnerability: CVE-2026-119586
     package:
-      name: dpkg
-  - vulnerability: CVE-2026-0915
-  - vulnerability: CVE-2026-0861
-  - vulnerability: CVE-2025-15281
-  - vulnerability: CVE-2025-7458
-  - vulnerability: CVE-2025-13151
-  - vulnerability: CVE-2023-45853
+      name: sqlite-libs
+      version: 3.54.1-r0
+      type: apk

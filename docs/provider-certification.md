@@ -85,7 +85,11 @@ Cloud account provisioning and live execution are intentionally deferred until
 the backend and frontend pass their localhost integration programme. The
 repository therefore does not contain
 `docs/evidence/provider-certification.json` yet. Pull-request CI does not require
-that artifact, while the production release workflow does. A tag cannot pass
+that artifact, while stable production releases do. Development package tags
+with an explicit alpha, beta, or release-candidate suffix may pass the package
+release checks without claiming provider certification. These packages retain
+production cloud activation restrictions and are marked as GitHub prereleases.
+All build, audit, checksum, and provenance controls still apply. A stable tag cannot pass
 the release gate until a protected run produces the sanitized manifest, all ten
 cloud rules are listed, and security review is recorded.
 

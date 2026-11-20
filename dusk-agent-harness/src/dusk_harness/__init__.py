@@ -5,6 +5,6 @@ machine-paced, systematic patterns that signal a hijacked or poisoned
 agent acting against the network it controls.
 """
 
-__version__ = "0.3.0rc1"
+__version__ = "0.3.0rc2"
 
 __all__ = ["__version__"]
