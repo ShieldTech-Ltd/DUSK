@@ -2,6 +2,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest:worker": "node scripts/ci/picomatch-backport.cjs apply .",
+    "predeploy:worker:dry-run": "node scripts/ci/picomatch-backport.cjs apply .",
+    "predeploy:worker:bundle-dry-run": "node scripts/ci/picomatch-backport.cjs apply .",
+    "pretypes:worker": "node scripts/ci/picomatch-backport.cjs apply .",
     "test:worker": "vitest run --config workers/dusk-gateway/vitest.config.ts",
     "typecheck:worker": "tsc --noEmit && tsc --noEmit -p workers/dusk-gateway/test",
     "deploy:worker:dry-run": "wrangler deploy --dry-run",

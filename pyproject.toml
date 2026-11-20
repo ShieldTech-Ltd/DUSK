@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dusk-security"
-version = "0.3.0rc1"
+version = "0.3.0rc2"
 description = "Vendor-neutral behavioral detection and policy gating for autonomous AI agent actions."
 readme = "README.md"
 requires-python = ">=3.11"
