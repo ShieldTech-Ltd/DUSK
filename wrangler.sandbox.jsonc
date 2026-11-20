@@ -1,0 +1,41 @@
+{
+  // Isolated containment proof. No public route or live customer resources.
+  // Scope routes remain disabled until an operator supplies a fresh contract.
+  "name": "dusk-scope-sandbox",
+  "main": "workers/dusk-gateway/src/index.ts",
+  "compatibility_date": "2026-09-06",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "secrets": {
+    "required": ["DUSK_GATEWAY_TOKEN", "DUSK_SIGNING_KEY", "DUSK_SCOPE_CONTEXT_KEY"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 }
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DUSK_RUNTIME", "class_name": "DuskRuntimeDO" },
+      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" },
+      { "name": "SCOPE_GUARD", "class_name": "ScopeGuardDO" }
+    ]
+  },
+  "exports": {
+    "DuskRuntimeDO": { "type": "durable-object", "storage": "sqlite", "container": "dusk-scope-sandbox-runtime" },
+    "ReplayGuardDO": { "type": "durable-object", "storage": "sqlite" },
+    "ScopeGuardDO": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "containers": [{
+    "name": "dusk-scope-sandbox-runtime",
+    "class_name": "DuskRuntimeDO",
+    "image": "./workers/dusk-runtime/Dockerfile",
+    "image_build_context": ".",
+    "instance_type": "lite",
+    "max_instances": 1
+  }],
+  "services": [{ "binding": "DUSK_SCOPE_TARGET", "service": "dusk-owned-sandbox-target" }],
+  "r2_buckets": [{ "binding": "AUDIT_RECEIPTS", "bucket_name": "dusk-scope-sandbox-audit" }],
+  "analytics_engine_datasets": [{ "binding": "DUSK_EVENTS", "dataset": "dusk_scope_sandbox_events" }]
+}

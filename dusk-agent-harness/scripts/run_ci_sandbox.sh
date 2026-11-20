@@ -33,8 +33,15 @@ trap cleanup EXIT HUP INT TERM
 # makes the executed artifacts identical to the scanned artifacts.
 $COMPOSE down --volumes --remove-orphans >/dev/null 2>&1 || true
 $COMPOSE up --detach --no-build --wait dusk-gate mock-prod
-python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
-  | tee "$LOG_DIR/$MODE-evidence.json"
+EVIDENCE_LOG="$LOG_DIR/$MODE-evidence.json"
+if ! python scripts/verify_ci_sandbox.py "$MODE" --token "$DUSK_GATE_API_KEY" \
+  > "$EVIDENCE_LOG" 2>&1
+then
+  cat "$EVIDENCE_LOG"
+  echo "containment verification failed; see $EVIDENCE_LOG" >&2
+  exit 1
+fi
+cat "$EVIDENCE_LOG"
 
 # Load phase: 100 mixed requests at concurrency 10.
 # p50 must stay under 100 ms and p95 under 200 ms.

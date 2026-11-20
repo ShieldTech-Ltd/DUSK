@@ -1,11 +1,14 @@
 {
   // Cloudflare Worker: dusk
   // Secrets are configured outside Git via `wrangler secret put`.
-  // Required secrets: DUSK_GATEWAY_TOKEN (high-entropy bearer secret).
+  // Required secrets: distinct DUSK_GATEWAY_TOKEN and DUSK_SIGNING_KEY values.
   // Never commit real values, account IDs, or real URLs here.
   "name": "dusk",
   "main": "workers/dusk-gateway/src/index.ts",
   "compatibility_date": "2026-09-06",
+  "secrets": {
+    "required": ["DUSK_GATEWAY_TOKEN", "DUSK_SIGNING_KEY"]
+  },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },
@@ -14,12 +17,17 @@
   "durable_objects": {
     "bindings": [
       { "name": "DUSK_RUNTIME", "class_name": "DuskRuntimeDO" },
-      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" }
+      { "name": "REPLAY_GUARD", "class_name": "ReplayGuardDO" },
+      { "name": "SCOPE_GUARD", "class_name": "ScopeGuardDO" }
     ]
   },
   // exports replaces migrations for Container-capable DOs.
   // DuskRuntimeDO attaches the dusk-runtime Container; ReplayGuardDO is SQLite-only.
   "exports": {
+    "ScopeGuardDO": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
     "DuskRuntimeDO": {
       "type": "durable-object",
       "storage": "sqlite",
