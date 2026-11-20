@@ -1,7 +1,7 @@
 # DUSK terminal and MCP candidate
 
 This branch adds real fixed-command execution through `dusk run` and an MCP
-stdio server through `dusk mcp`. Version 0.3.0rc1 is a prerelease candidate,
+stdio server through `dusk mcp`. Version 0.3.0rc2 is a prerelease candidate,
 not a production release. Do not install the unrelated PyPI package named `dusk`.
 
 ## Install from GitHub
@@ -28,7 +28,7 @@ Build with `python -m build --wheel`, then install the resulting wheel into a
 dedicated virtual environment with `python -m pip install PATH_TO_WHEEL`.
 The distribution is `dusk-security`; its terminal command is `dusk`.
 
-The candidate uses version 0.3.0rc1. Do not replace published 0.2.0 release assets.
+The candidate uses version 0.3.0rc2. Do not replace published 0.2.0 release assets.
 The harness now imports as `dusk_harness`, allowing both distributions to be
 installed without overwriting each other's `dusk` modules. Harness launchers
 must use `python -m dusk_harness.api` or `dusk_harness.api:app`.
