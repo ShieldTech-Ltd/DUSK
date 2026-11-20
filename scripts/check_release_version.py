@@ -25,11 +25,26 @@ def _runtime_version(path: Path) -> str:
     return match.group(1)
 
 
+def _control_plane_pin() -> str:
+    path = ROOT / "services/control-plane/pyproject.toml"
+    with path.open("rb") as handle:
+        dependencies = tomllib.load(handle)["project"]["dependencies"]
+    pins = [
+        dependency.removeprefix("dusk-security==")
+        for dependency in dependencies
+        if dependency.startswith("dusk-security==")
+    ]
+    if len(pins) != 1:
+        raise ValueError(f"Expected one exact dusk-security pin in {path}")
+    return pins[0]
+
+
 def main() -> int:
     """Return nonzero when package versions or an optional expected version differ."""
     versions = {
         "root project": _project_version(ROOT / "pyproject.toml"),
         "root runtime": _runtime_version(ROOT / "src/dusk/__init__.py"),
+        "control plane dependency": _control_plane_pin(),
         "production harness project": _project_version(ROOT / "dusk-agent-harness/pyproject.toml"),
         "production harness gate": _runtime_version(
             ROOT / "dusk-agent-harness/src/dusk_harness/__init__.py"
