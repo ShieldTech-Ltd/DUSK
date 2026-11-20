@@ -23,7 +23,7 @@ dependencies = [
     "PyYAML>=6.0,<7",
     "SQLAlchemy[asyncio]>=2.0.52,<2.1",
     "urllib3>=2.8,<3",
-    "dusk-security==0.3.0rc1",
+    "dusk-security==0.3.0rc2",
     "uvicorn>=0.35,<1",
 ]
 

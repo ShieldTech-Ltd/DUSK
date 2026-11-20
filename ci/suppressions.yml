@@ -1,13 +1,9 @@
 version: 1
 suppressions:
   - control: CTR-010
-    finding: CVE-2025-6297
-    reason: Debian bookworm classifies the dpkg issue as won't-fix; no fixed package exists.
+    finding: CVE-2026-119586
+    kind: false-component-attribution
+    package: sqlite-libs=3.54.1-r0
+    reason: SQLite identifies this as a C CLI .recover issue, not a core-library bug. The CLI package and executable are absent and CI asserts this before scanning. No library CVE is exempted.
     owner: Security Engineering
-    expires: 2026-09-30
-  - {control: CTR-010, finding: CVE-2026-0915, reason: Debian bookworm has no fixed glibc package, owner: Security Engineering, expires: 2026-09-30}
-  - {control: CTR-010, finding: CVE-2026-0861, reason: Debian bookworm has no fixed glibc package, owner: Security Engineering, expires: 2026-09-30}
-  - {control: CTR-010, finding: CVE-2025-15281, reason: Debian bookworm has no fixed glibc package, owner: Security Engineering, expires: 2026-09-30}
-  - {control: CTR-010, finding: CVE-2025-7458, reason: Debian bookworm has no fixed SQLite package, owner: Security Engineering, expires: 2026-09-30}
-  - {control: CTR-010, finding: CVE-2025-13151, reason: Debian bookworm has no fixed libtasn1 package, owner: Security Engineering, expires: 2026-09-30}
-  - {control: CTR-010, finding: CVE-2023-45853, reason: Debian bookworm has no fixed zlib package, owner: Security Engineering, expires: 2026-09-30}
+    expires: 2026-11-30
