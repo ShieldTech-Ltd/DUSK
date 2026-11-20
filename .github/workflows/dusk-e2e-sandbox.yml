@@ -53,6 +53,7 @@ jobs:
 
       - name: Test native Worker evidence path
         run: |
-          npm ci
+          npm ci --ignore-scripts
+          node scripts/ci/picomatch-backport.cjs apply .
           npm run typecheck:worker
           npm run test:worker

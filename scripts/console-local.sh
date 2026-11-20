@@ -16,6 +16,7 @@ case "${1:-}" in
     PYTHONPATH=. .venv/bin/python -m pytest -q -n 0
     .venv/bin/python -m pytest services/control-plane/tests -q -n 0
     cd apps/console
+    node ../../scripts/ci/picomatch-backport.cjs apply .
     npm run format:check
     npm run lint
     npm run typecheck
@@ -23,7 +24,7 @@ case "${1:-}" in
     npm run build
     npm run check:bundle
     npm run check:api
-    npm audit --audit-level=moderate
+    node ../../scripts/ci/picomatch-backport.cjs audit . moderate
     npm run test:e2e
     ;;
   dev)
