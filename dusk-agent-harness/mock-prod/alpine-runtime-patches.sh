@@ -38,8 +38,7 @@ printf '%s  %s\n' "$libcrypto_hash" "$patch_dir/libcrypto.apk" \
 apk add --no-cache --no-network "$patch_dir/sqlite.apk" "$patch_dir/zlib.apk" \
   "$patch_dir/libcrypto.apk" "$patch_dir/libssl.apk"
 apk info -v sqlite-libs zlib
-apk info -v libcrypto3 | grep -Fx "libcrypto3-$openssl_revision"
-apk info -v libssl3 | grep -Fx "libssl3-$openssl_revision"
+apk info -e -v "libcrypto3=$openssl_revision" "libssl3=$openssl_revision"
 if apk info -e sqlite || command -v sqlite3; then
   echo 'Unexpected SQLite CLI invalidates library-only applicability' >&2
   exit 1
