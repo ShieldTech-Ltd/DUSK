@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG PYTHON_IMAGE=python:3.13.11-slim-trixie@sha256:2b9c9803c6a287cafa0a8c917211dddd23dcd2016f049690ee5219f5d3f1636e
+ARG PYTHON_IMAGE=python:3.13.18-alpine3.24@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
 
 # hadolint ignore=DL3006
 FROM ${PYTHON_IMAGE} AS builder
@@ -11,7 +11,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 WORKDIR /build
 
 COPY services/control-plane/runtime-requirements.lock ./runtime-requirements.lock
-RUN python -m pip install --require-hashes --no-deps -r runtime-requirements.lock
+RUN python -m pip install --require-hashes --no-deps --only-binary=:all: -r runtime-requirements.lock
 
 COPY pyproject.toml README.md /build/dusk-package/
 COPY src/ /build/dusk-package/src/
@@ -28,7 +28,6 @@ FROM ${PYTHON_IMAGE} AS runtime
 ARG SOURCE_DATE_EPOCH=0
 ARG OCI_VERSION=0.0.0
 ARG OCI_REVISION=unknown
-ARG DEBIAN_SNAPSHOT=20260930T120000Z
 
 LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.description="Multi-tenant security decision control plane" \
@@ -36,17 +35,12 @@ LABEL org.opencontainers.image.title="DUSK control plane" \
     org.opencontainers.image.version="${OCI_VERSION}" \
     org.opencontainers.image.revision="${OCI_REVISION}" \
     org.opencontainers.image.licenses="Apache-2.0"
+COPY dusk-agent-harness/mock-prod/alpine-runtime-patches.sh /tmp/alpine-runtime-patches.sh
+RUN sh /tmp/alpine-runtime-patches.sh && rm /tmp/alpine-runtime-patches.sh
 
-RUN sed --in-place \
-      --expression="s|http://deb.debian.org/debian-security|https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|g" \
-      --expression="s|http://deb.debian.org/debian|https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|g" \
-      /etc/apt/sources.list.d/debian.sources \
-    && apt-get -o Acquire::Check-Valid-Until=false update \
-    && apt-get upgrade --yes \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 dusk \
-    && useradd --no-create-home --uid 10001 --gid 10001 --shell /usr/sbin/nologin dusk \
-    && mkdir --mode=0555 /app \
+RUN addgroup -g 10001 dusk \
+    && adduser -S -D -H -u 10001 -G dusk dusk \
+    && mkdir -m 0555 /app \
     && chown 10001:10001 /app
 
 COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/

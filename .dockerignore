@@ -9,6 +9,7 @@
 .mypy_cache
 .ruff_cache
 container-evidence
+**/dependency-evidence
 deploy
 docs
 !docs/
@@ -16,6 +17,11 @@ docs/*
 !docs/dusk-hero-banner.svg
 !docs/dusk-logo.svg
 dusk-agent-harness
+!dusk-agent-harness/
+dusk-agent-harness/*
+!dusk-agent-harness/mock-prod/
+dusk-agent-harness/mock-prod/*
+!dusk-agent-harness/mock-prod/alpine-runtime-patches.sh
 results
 tests
 services/control-plane/tests
