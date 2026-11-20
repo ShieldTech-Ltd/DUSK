@@ -1,11 +1,14 @@
 export { DuskRuntimeDO } from "./runtime-do";
 export { ReplayGuardDO } from "./replay-guard-do";
+export { ScopeGuardDO } from "./scope-guard-do";
+import { scopedRoute, type ScopedGatewayEnv } from "./scope-routes";
 
 const ACTION_PATH = "/v1/actions/evaluate";
 const MAX_BODY_BYTES = 65_536;
 
-export interface DuskGatewayEnv {
+export interface DuskGatewayEnv extends ScopedGatewayEnv {
   DUSK_GATEWAY_TOKEN?: string;
+  DUSK_SCOPE_CONTEXT_KEY?: string;
   DUSK_RUNTIME?: DurableObjectNamespace;
 }
 
@@ -134,6 +137,7 @@ async function handleAction(
   request: Request,
   env: DuskGatewayEnv,
   _context: ExecutionContext,
+  trustedScope = false,
 ): Promise<Response> {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
@@ -176,15 +180,21 @@ async function handleAction(
   const runtimeId = env.DUSK_RUNTIME.idFromName("runtime");
   const runtimeStub = env.DUSK_RUNTIME.get(runtimeId);
   try {
+    const internalHeaders = new Headers({ "Content-Type": "application/json", "X-DUSK-Gateway": "cloudflare-worker", "X-DUSK-Request-ID": requestId });
+    if (trustedScope) {
+      if (!env.DUSK_SCOPE_CONTEXT_KEY || new TextEncoder().encode(env.DUSK_SCOPE_CONTEXT_KEY).length < 32) return errorResponse(503, "scope_not_configured", requestId);
+      const stamp = String(Date.now());
+      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.DUSK_SCOPE_CONTEXT_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const message = new TextEncoder().encode(`${stamp}\n${new TextDecoder().decode(body)}`);
+      const proof = await crypto.subtle.sign("HMAC", key, message);
+      internalHeaders.set("X-DUSK-Scope-Time", stamp);
+      internalHeaders.set("X-DUSK-Scope-Proof", [...new Uint8Array(proof)].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
+    }
     const upstream = await runtimeStub.fetch(
       new Request(new URL(ACTION_PATH, "https://dusk-runtime"), {
         method: "POST",
         body,
-        headers: {
-          "Content-Type": "application/json",
-          "X-DUSK-Gateway": "cloudflare-worker",
-          "X-DUSK-Request-ID": requestId,
-        },
+        headers: internalHeaders,
       }),
     );
     log("dusk_gateway_request", {
@@ -201,7 +211,25 @@ async function handleAction(
 }
 
 export default {
-  fetch(request: Request, env: DuskGatewayEnv, context: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: DuskGatewayEnv, context: ExecutionContext): Promise<Response> {
+    if (["/v1/actions/preflight", "/v1/actions/execute"].includes(new URL(request.url).pathname)) {
+      const requestId = crypto.randomUUID();
+      if (!env.DUSK_GATEWAY_TOKEN?.trim()) return errorResponse(503, "gateway_not_configured", requestId);
+      if (!await tokensMatch(bearerToken(request), env.DUSK_GATEWAY_TOKEN)) return errorResponse(401, "unauthorized", requestId);
+      return scopedRoute(request, env, readBoundedBody, async (action, contract) => {
+        const response = await handleAction(new Request("https://dusk-internal/v1/actions/evaluate", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.DUSK_GATEWAY_TOKEN}` },
+          body: JSON.stringify({ tenant_id: action.tenant_id, agent_id: action.agent_id,
+            type: action.action_class, target: new URL(action.url).href, method: action.method, body: action.body,
+            environment: action.environment, session_id: action.session_id,
+            scope_context: { ...contract, origin: new URL(action.url).origin, method: action.method, action_class: action.action_class } }),
+        }), env, context, true);
+        const result: unknown = await response.json();
+        if (!isPublicDecision(result)) throw new Error("Native policy response invalid");
+        if (response.status !== (result.decision === "ALLOW" ? 200 : 403)) throw new Error("Native policy unavailable");
+        return result.decision;
+      });
+    }
     return handleAction(request, env, context);
   },
 } satisfies ExportedHandler<DuskGatewayEnv>;
