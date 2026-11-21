@@ -1,11 +1,9 @@
 # dusk-gate: the deterministic /v1/gate HTTP service and optional integration clients.
-FROM python:3.13.11-slim-bookworm@sha256:20080e807bfc404f8450b185cf0fc95d553462673598549613735f70a5b4d5d0
+FROM python:3.13.18-alpine3.24@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
 
 WORKDIR /app
-
-RUN apt-get update \
-    && apt-get upgrade --yes \
-    && rm -rf /var/lib/apt/lists/*
+COPY mock-prod/alpine-runtime-patches.sh /tmp/alpine-runtime-patches.sh
+RUN sh /tmp/alpine-runtime-patches.sh && rm /tmp/alpine-runtime-patches.sh
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
@@ -13,11 +11,12 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip==26.2.1 setuptools==84.1.0 wheel==0.47.0 \
     && pip install --no-cache-dir -e . \
     && pip uninstall --yes setuptools wheel pip \
-    && useradd --create-home --uid 1000 dusk \
+    && addgroup -g 1000 dusk \
+    && adduser -D -u 1000 -G dusk dusk \
     && mkdir -p /app/state \
     && chown -R dusk:dusk /app
 
-USER dusk
+USER 1000
 
 ENV FLASK_HOST=0.0.0.0 \
     FLASK_PORT=8000 \

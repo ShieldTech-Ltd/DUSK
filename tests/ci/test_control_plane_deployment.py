@@ -74,10 +74,12 @@ def test_runtime_image_has_no_mutable_os_package_operations() -> None:
     dockerfile = (ROOT / "services/control-plane/Dockerfile").read_text(encoding="utf-8")
     assert "FROM ${PYTHON_IMAGE}" in dockerfile
     assert "@sha256:" in dockerfile
-    assert "ARG DEBIAN_SNAPSHOT=" in dockerfile
-    assert "snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" in dockerfile
-    assert "apt-get upgrade --yes" in dockerfile
-    assert "apt-get dist-upgrade" not in dockerfile
+    # The Alpine candidate consumes OS packages only from its immutable base.
+    # Keep the original no-mutable-OS requirement across the platform change.
+    assert "-alpine3.24@sha256:" in dockerfile
+    assert "apk add" not in dockerfile
+    assert "apk upgrade" not in dockerfile
+    assert "apt-get" not in dockerfile
 
 
 def test_manifests_do_not_embed_kubernetes_secrets() -> None:

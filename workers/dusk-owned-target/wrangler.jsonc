@@ -1,0 +1,14 @@
+{
+  "name": "dusk-owned-sandbox-target",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-06",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "durable_objects": {
+    "bindings": [{ "name": "TARGET_COUNTER", "class_name": "OwnedTargetCounter" }]
+  },
+  "exports": {
+    "OwnedTargetCounter": { "type": "durable-object", "storage": "sqlite" }
+  }
+}
