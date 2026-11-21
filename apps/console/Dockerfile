@@ -4,20 +4,25 @@ ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:736aa11ab9
 
 # hadolint ignore=DL3006
 FROM ${NODE_IMAGE} AS build
-WORKDIR /build
+WORKDIR /build/apps/console
 COPY apps/console/package.json apps/console/package-lock.json ./
 RUN npm ci --ignore-scripts
-COPY docs/dusk-hero-banner.svg /docs/dusk-hero-banner.svg
-COPY docs/dusk-logo.svg /docs/dusk-logo.svg
+COPY scripts/ci/picomatch-backport.cjs /build/scripts/ci/picomatch-backport.cjs
+COPY ci/picomatch-single-branch-helper.txt /build/ci/picomatch-single-branch-helper.txt
+RUN node ../../scripts/ci/picomatch-backport.cjs apply .
+COPY docs/dusk-hero-banner.svg /build/docs/dusk-hero-banner.svg
+COPY docs/dusk-logo.svg /build/docs/dusk-logo.svg
 COPY apps/console/ ./
 RUN npm run build && npm prune --omit=dev
 
 # hadolint ignore=DL3006
 FROM ${NGINX_IMAGE} AS runtime
-USER root
+USER 0
 COPY apps/console/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build --chown=101:101 /build/dist /usr/share/nginx/html
+COPY --from=build --chown=101:101 /build/apps/console/dist /usr/share/nginx/html
 RUN apk add --no-cache --upgrade 'pcre2=10.49-r0' \
+      'musl=1.2.6-r3' 'musl-utils=1.2.6-r3' 'zlib=1.4-r0' \
+      'libcrypto3=3.5.9-r1' 'libssl3=3.5.9-r1' \
     && chmod -R a-w /usr/share/nginx/html /etc/nginx/conf.d/default.conf
 USER 101:101
 EXPOSE 8080

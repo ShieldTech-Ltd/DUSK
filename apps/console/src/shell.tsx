@@ -80,8 +80,7 @@ function ShellInner() {
     Boolean(auth.user && capabilities.audit),
   );
   const updatedAt = (summary.data as any)?.freshness?.source_last_updated_at as
-    | string
-    | undefined;
+    string | undefined;
   const auditItems = ((audit.data as any)?.items ?? []) as any[];
 
   useEffect(() => {
