@@ -6,3 +6,26 @@ ignore:
       name: sqlite-libs
       version: 3.54.1-r0
       type: apk
+  # OpenSSL 3.5.10 is scheduled for 2026-12-01. These exact package findings
+  # are documented, reachability-scoped and time-bounded in suppressions.yml.
+  # The policy validator rejects any unpinned or undocumented exception.
+  - vulnerability: CVE-2026-107493
+    package: {name: libcrypto3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-107493
+    package: {name: libssl3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-107494
+    package: {name: libcrypto3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-107494
+    package: {name: libssl3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-121482
+    package: {name: libcrypto3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-121482
+    package: {name: libssl3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-124709
+    package: {name: libcrypto3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-124709
+    package: {name: libssl3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-84786
+    package: {name: libcrypto3, version: 3.5.9-r1, type: apk}
+  - vulnerability: CVE-2026-84786
+    package: {name: libssl3, version: 3.5.9-r1, type: apk}
