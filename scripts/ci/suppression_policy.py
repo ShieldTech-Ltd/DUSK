@@ -27,13 +27,11 @@ def main() -> None:
         required = ("control", "finding", "kind", "package", "reason", "owner", "expires")
         if not all(item.get(key) for key in required):
             raise SystemExit(
-                "every suppression needs control, finding, kind, package, "
-                "reason, owner, and expiry"
+                "every suppression needs control, finding, kind, package, reason, owner, and expiry"
             )
         if date.fromisoformat(str(item["expires"])) < date.today():
             raise SystemExit(
-                f"expired suppression: {item['control']} "
-                f"{item['finding']} {item['package']}"
+                f"expired suppression: {item['control']} {item['finding']} {item['package']}"
             )
         package_name, package_version, package_type = parse_package(item["package"])
         documented.add((str(item["finding"]), package_name, package_version, package_type))
