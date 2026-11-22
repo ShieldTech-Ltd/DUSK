@@ -33,6 +33,11 @@ def test_materializes_private_digest_pinned_sandbox(tmp_path):
     assert config["r2_buckets"][0]["bucket_name"] == "dusk-scope-sandbox-audit"
 
 
+def test_generated_deployment_path_is_not_tracked_source():
+    assert not (ROOT / "wrangler.sandbox.jsonc").exists()
+    assert "wrangler.sandbox.jsonc" in (ROOT / ".gitignore").read_text()
+
+
 @pytest.mark.parametrize(
     "image",
     [
