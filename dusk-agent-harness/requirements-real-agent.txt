@@ -22,13 +22,13 @@ blinker==1.9.0 \
     --hash=sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf \
     --hash=sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc
     # via flask
-boto3==1.43.118 \
-    --hash=sha256:ab8f3d2c622ef039338b4f228d97ea55f1abd573d84bb9b9a5ee8cb6780c0ccd \
-    --hash=sha256:c0620f799e0f0c222ba42c337b65cdbcd3da38a3121187f634d8926cbbb28a9c
+boto3==1.43.123 \
+    --hash=sha256:055fabb990c5d2f31fce4ca569255bd640cdd11a3ca68c9ecad35f4f8a5b83b5 \
+    --hash=sha256:d18d66e1e13faa0c25d0b1b8c5ce946e29fb5fc0b6456b655a93a678ff4cc313
     # via -r requirements-real-agent.in
-botocore==1.43.119 \
-    --hash=sha256:6026aec97914a4fa116915fd3b05af899912eff51b93fb8dff95aa228a3e761b \
-    --hash=sha256:ed11934be6e6d398ac21b7fe03778c9584368eeff8ba5371581f19bb47db0b6a
+botocore==1.43.124 \
+    --hash=sha256:4651bac68d1aef78d42c8aefb514a6cd86fda07971b8348652a9d24f21b07965 \
+    --hash=sha256:6df80235995e2926e0768e7ad270e774adcd6ff0307da7ab87ffb8c384edb578
     # via
     #   aws-bedrock-token-generator
     #   boto3
