@@ -256,7 +256,12 @@ jobs:
           npm run typecheck:worker
           node scripts/ci/picomatch-backport.cjs audit . moderate
           npm run deploy:worker:dry-run
+          trap 'rm -f wrangler.sandbox.jsonc' EXIT
+          python3 scripts/ci/materialize_cloudflare_sandbox.py \
+            --image "registry.cloudflare.com/0123456789abcdef0123456789abcdef/dusk-scope-sandbox-runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           npx wrangler deploy --dry-run --config wrangler.sandbox.jsonc
+          rm wrangler.sandbox.jsonc
+          trap - EXIT
           npx wrangler deploy --dry-run --config workers/dusk-owned-target/wrangler.jsonc
       - name: Validate and audit Cloudflare demo
         working-directory: cloudflare-demo

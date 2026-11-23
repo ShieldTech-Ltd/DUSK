@@ -1,6 +1,6 @@
 # Isolated Cloudflare deployment candidate
 
-This configuration is prepared for the owned containment proof. It is not a live deployment or customer production approval. Use `wrangler.sandbox.jsonc` explicitly; the default `wrangler.jsonc` still targets the existing `dusk` Worker.
+This configuration is prepared for the owned containment proof. It is not a live deployment or customer production approval. Materialize `wrangler.sandbox.jsonc` from `wrangler.sandbox.template.jsonc` with `scripts/ci/materialize_cloudflare_sandbox.py`, then use that generated file explicitly. The default `wrangler.jsonc` still targets the existing `dusk` Worker. The materializer accepts only an immutable `registry.cloudflare.com` digest for the dedicated sandbox image and refuses to overwrite an existing output.
 
 ## Approval and image publication
 
@@ -31,14 +31,34 @@ All three required secrets must be fresh sandbox values, distinct from each othe
 2. Authenticate to the account owning the intended deployment. Record account, current versions, exact source commit and resource inventory. Current local OAuth access has not established access to that account.
 3. Configure a separately protected deployment environment and reviewer. An environment name alone does not establish protection. Never reuse the unprotected shared Production environment as evidence of approval.
 4. Explicitly create or verify the sandbox bucket and private fake target, then stage gateway secrets and contract through the approved deployment path. Review the resolved bindings before deployment. Do not attach customer resources.
-5. Keep ingress disabled. Establish a reviewed private service-binding invoker or Access-protected ingress before running remote tests. No test invoker or public route is included in this candidate. Test one native ALLOW, one DENY with zero target arrivals, replay denial, scope escape denial and redirect revocation, with matching durable receipts and target counts.
+5. Keep ingress disabled. Run `workers/dusk-private-invoker` locally with its two remote service bindings. The invoker exposes only the two gateway action routes and the owned target counter, requires a distinct local token, strips that token before forwarding, and is never deployed. Test one native ALLOW, one DENY with zero target arrivals, replay denial, scope escape denial and redirect revocation, with matching durable receipts and target counts.
 6. Record the deployed Worker version and Container image digest, actual cold-start result, telemetry, spend observations and rollback input. Cloudflare Container VM startup remains a separate live gate from CI Docker startup.
+
+Materialize the reviewed configuration only after the promoted Cloudflare Registry digest is known:
+
+```sh
+python scripts/ci/materialize_cloudflare_sandbox.py \
+  --image registry.cloudflare.com/<ACCOUNT_ID>/dusk-scope-sandbox-runtime@sha256:<DIGEST>
+```
+
+Start the private local invoker after both private Workers are deployed. Put its distinct token in an untracked `.dev.vars` file beside its Wrangler configuration, then run:
+
+```sh
+npx wrangler dev --config workers/dusk-private-invoker/wrangler.jsonc --port 8787
+python scripts/ci/cloudflare_live_proof.py \
+  --private-invoker-url http://127.0.0.1:8787 \
+  --contract fresh-contract.json \
+  --scenario allow-replay \
+  --output new-allow-report.json
+```
+
+The generated `wrangler.sandbox.jsonc`, `.dev.vars`, contract and evidence reports are operator artifacts. Keep secrets and short-lived contract values out of Git.
 
 ## Finite post-approval HTTP proof
 
-`scripts/ci/cloudflare_live_proof.py` is prepared for the reviewed remote run. It never creates resources, stages secrets or deploys. It constructs only `dusk-scope-sandbox` and `dusk-owned-sandbox-target` URLs under the same approved Cloudflare account subdomain. The committed configurations keep both private. Before using this optional HTTP harness, the approved operator must configure Access service-token protection for both endpoints, verify that unauthenticated traffic is blocked, and then enable only the reviewed endpoints. Do not enable the fake target publicly without Access protection. A private invoker is an alternative, but is not implemented by this script.
+`scripts/ci/cloudflare_live_proof.py` is prepared for the reviewed remote run. It never creates resources, stages secrets or deploys. The preferred mode is `--private-invoker-url http://127.0.0.1:<PORT>`, which talks through the locally running `workers/dusk-private-invoker` and requires `DUSK_INVOKER_TOKEN`. Both deployed Workers remain private. Access-protected `workers.dev` endpoints remain an optional alternative using `--account-subdomain`; do not enable either Worker publicly without Access protection.
 
-Provide `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` and the distinct sandbox `DUSK_GATEWAY_TOKEN` through the operator's secure process environment. Never include values in arguments or evidence. The harness first probes both endpoints without credentials and requires a denial or Access login redirect. It never follows redirects or retries action requests.
+Provide the distinct sandbox `DUSK_GATEWAY_TOKEN` and either `DUSK_INVOKER_TOKEN` for private-invoker mode or the two Cloudflare Access credentials through the operator's secure process environment. Never include values in arguments or evidence. The harness first probes both endpoints without credentials and requires a denial. It never follows redirects or retries action requests.
 
 For each scenario, stage a **fresh operator contract and session** matching a private local contract file. Use `owned-tenant`, `owned-agent`, `sandbox`, only `https://owned.example.test`, only GET and `http.request`, fresh UUID contract/session IDs, and expiry at most one hour away. The file must match the contract actually configured in the gateway. An initial ALLOW preflight proves the session is usable; reusing an already revoked session invalidates the test. Run scenarios serially with exclusive access to the target counter:
 
