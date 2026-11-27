@@ -5,7 +5,12 @@ import uuid
 
 import pytest
 
-from scripts.ci.cloudflare_live_proof import run_proof, validate_contract, verified_count
+from scripts.ci.cloudflare_live_proof import (
+    run_proof,
+    validate_contract,
+    verified_count,
+    verify_ingress,
+)
 
 
 def contract():
@@ -127,3 +132,29 @@ def test_real_targets_or_expired_contracts_are_rejected_before_requests():
     ):
         with pytest.raises(ValueError):
             validate_contract({**contract(), **changes})
+
+
+def test_private_invoker_ingress_requires_unauthenticated_401():
+    class Response:
+        status = 401
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url.startswith("http://127.0.0.1:8787/")
+            assert timeout == 10
+            return Response()
+
+    assert verify_ingress(
+        Opener(),
+        {
+            "gateway": "http://127.0.0.1:8787/gateway",
+            "counter": "http://127.0.0.1:8787/target",
+        },
+        (401,),
+    ) == {"gateway": 401, "counter": 401}

@@ -82,7 +82,9 @@ jobs:
           test "$GITHUB_SHA" = "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$native_id")"
           docker tag "$native_id" "$IMAGE:sha-$GITHUB_SHA"
           docker push "$IMAGE:sha-$GITHUB_SHA"
-          reference=$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$GITHUB_SHA")
+          reference=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$IMAGE:sha-$GITHUB_SHA" |
+            awk -v prefix="$IMAGE@" 'index($0, prefix) == 1 { print; exit }')
+          test -n "$reference"
           digest=${reference##*@}
           printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
           test "$reference" = "$IMAGE@$digest"

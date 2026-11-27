@@ -118,3 +118,6 @@ def test_publication_cannot_deploy_or_skip_protected_preflight():
     scan = next(i for i, step in enumerate(steps) if "container_controls.sh" in step.get("run", ""))
     push = next(i for i, step in enumerate(steps) if "docker push" in step.get("run", ""))
     assert scan < push
+    assert "index .RepoDigests 0" not in commands
+    assert 'awk -v prefix="$IMAGE@"' in commands
+    assert 'test -n "$reference"' in commands

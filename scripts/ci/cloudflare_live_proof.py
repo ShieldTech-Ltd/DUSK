@@ -173,7 +173,9 @@ def run_proof(contract: dict, scenario: str, exchange) -> dict:  # noqa: ANN001
     }
 
 
-def verify_ingress(opener: OpenerDirector, hosts: dict[str, str]) -> dict[str, int]:
+def verify_ingress(
+    opener: OpenerDirector, hosts: dict[str, str], accepted: tuple[int, ...] = (302, 403)
+) -> dict[str, int]:
     statuses = {}
     for role, path in (("gateway", "/v1/actions/preflight"), ("counter", "/__count")):
         request = Request(hosts[role] + path, method="GET")  # noqa: S310 - fixed HTTPS owned endpoints
@@ -183,39 +185,65 @@ def verify_ingress(opener: OpenerDirector, hosts: dict[str, str]) -> dict[str, i
             response = error
         with response:
             # No credentials, cookies or redirect following in this probe.
-            if response.status not in (302, 403):
+            if response.status not in accepted:
                 raise ValueError("Unauthenticated ingress is not protected")
             statuses[role] = response.status
     return statuses
 
 
+def proof_endpoints(
+    account_subdomain: str | None, private_invoker_url: str | None
+) -> tuple[dict[str, str], dict[str, str], tuple[int, ...]]:
+    if private_invoker_url:
+        if not re.fullmatch(r"http://127\.0\.0\.1:[1-9][0-9]{1,4}", private_invoker_url):
+            raise ValueError("Private invoker must use an explicit loopback URL and port")
+        return (
+            {
+                "gateway": private_invoker_url + "/gateway",
+                "counter": private_invoker_url + "/target",
+            },
+            {"X-Dusk-Invoker-Token": os.environ["DUSK_INVOKER_TOKEN"]},
+            (401,),
+        )
+    if not account_subdomain or not re.fullmatch(
+        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", account_subdomain
+    ):
+        raise ValueError("Invalid approved account subdomain")
+    return (
+        {
+            role: f"https://{worker}.{account_subdomain}.workers.dev"
+            for role, worker in (
+                ("gateway", "dusk-scope-sandbox"),
+                ("counter", "dusk-owned-sandbox-target"),
+            )
+        },
+        {
+            "CF-Access-Client-Id": os.environ["CF_ACCESS_CLIENT_ID"],
+            "CF-Access-Client-Secret": os.environ["CF_ACCESS_CLIENT_SECRET"],
+        },
+        (302, 403),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--account-subdomain", required=True)
+    endpoints = parser.add_mutually_exclusive_group(required=True)
+    endpoints.add_argument("--account-subdomain")
+    endpoints.add_argument("--private-invoker-url")
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--scenario", choices=SCENARIOS, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError("Use a new evidence path for every run")
-    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", args.account_subdomain):
-        raise ValueError("Invalid approved account subdomain")
-    hosts = {
-        role: f"https://{worker}.{args.account_subdomain}.workers.dev"
-        for role, worker in (
-            ("gateway", "dusk-scope-sandbox"),
-            ("counter", "dusk-owned-sandbox-target"),
-        )
-    }
-    access = {
-        "CF-Access-Client-Id": os.environ["CF_ACCESS_CLIENT_ID"],
-        "CF-Access-Client-Secret": os.environ["CF_ACCESS_CLIENT_SECRET"],
-    }
+    hosts, access, accepted_ingress = proof_endpoints(
+        args.account_subdomain, args.private_invoker_url
+    )
     token = os.environ["DUSK_GATEWAY_TOKEN"]
     if not token or not all(access.values()):
         raise ValueError("Nonempty sandbox authentication is required")
     opener = build_opener(NoRedirect())
-    ingress_status = verify_ingress(opener, hosts)
+    ingress_status = verify_ingress(opener, hosts, accepted_ingress)
     timings = []
 
     def exchange(role: str, method: str, path: str, value: dict | None) -> tuple[int, dict]:

@@ -3,7 +3,57 @@ suppressions:
   - control: CTR-010
     finding: CVE-2026-119586
     kind: false-component-attribution
-    package: sqlite-libs=3.54.1-r0
+    package: sqlite-libs=3.54.1-r0:apk
     reason: SQLite identifies this as a C CLI .recover issue, not a core-library bug. The CLI package and executable are absent and CI asserts this before scanning. No library CVE is exempted.
     owner: Security Engineering
     expires: 2026-11-30
+  - &openssl-pem-libcrypto
+    control: CTR-010
+    finding: CVE-2026-107493
+    kind: unreachable-code-path
+    package: libcrypto3=3.5.9-r1:apk
+    reason: DUSK never passes a caller-owned stack to the affected PEM_X509_INFO APIs. OpenSSL rates this Low and schedules 3.5.10 for 2026-12-01.
+    owner: Security Engineering
+    expires: 2026-12-02
+  - <<: *openssl-pem-libcrypto
+    package: libssl3=3.5.9-r1:apk
+  - &openssl-quic-retire-libcrypto
+    control: CTR-010
+    finding: CVE-2026-107494
+    kind: unreachable-code-path
+    package: libcrypto3=3.5.9-r1:apk
+    reason: DUSK exposes HTTP and TLS only and has no QUIC implementation or listener. The exception ends after the scheduled OpenSSL 3.5.10 release.
+    owner: Security Engineering
+    expires: 2026-12-02
+  - <<: *openssl-quic-retire-libcrypto
+    package: libssl3=3.5.9-r1:apk
+  - &openssl-cms-libcrypto
+    control: CTR-010
+    finding: CVE-2026-121482
+    kind: unreachable-code-path
+    package: libcrypto3=3.5.9-r1:apk
+    reason: DUSK does not parse or verify CMS or PKCS7 SignedData and does not enable CRL checking on untrusted CMS input. The exception ends after the scheduled OpenSSL update.
+    owner: Security Engineering
+    expires: 2026-12-02
+  - <<: *openssl-cms-libcrypto
+    package: libssl3=3.5.9-r1:apk
+  - &openssl-quic-stream-libcrypto
+    control: CTR-010
+    finding: CVE-2026-124709
+    kind: unreachable-code-path
+    package: libcrypto3=3.5.9-r1:apk
+    reason: DUSK has no QUIC server or QUIC stream policy. OpenSSL rates this Low and schedules 3.5.10 for 2026-12-01.
+    owner: Security Engineering
+    expires: 2026-12-02
+  - <<: *openssl-quic-stream-libcrypto
+    package: libssl3=3.5.9-r1:apk
+  - &openssl-dane-libcrypto
+    control: CTR-010
+    finding: CVE-2026-84786
+    kind: unreachable-code-path
+    package: libcrypto3=3.5.9-r1:apk
+    reason: DUSK does not enable OpenSSL DANE or process TLSA records. The exception ends after the scheduled OpenSSL update.
+    owner: Security Engineering
+    expires: 2026-12-02
+  - <<: *openssl-dane-libcrypto
+    package: libssl3=3.5.9-r1:apk

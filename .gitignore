@@ -46,6 +46,7 @@ dusk-agent-harness/tests/fixtures/*.json
 .env
 .dev.vars*
 !workers/dusk-gateway/.dev.vars.example
+!workers/dusk-private-invoker/.dev.vars.example
 
 # Node / Wrangler
 node_modules/
@@ -53,6 +54,7 @@ node_modules/
 playwright-report/
 test-results/
 .wrangler/
+wrangler.sandbox.jsonc
 
 # Editors / OS
 .idea/
